@@ -144,7 +144,7 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                 </div>
                 <div className="flex items-center justify-between py-2 border-b border-[#252525]">
                   <span>Background Sync</span>
-                  <span className="font-mono text-[#E8E6E3]">Every 15 min (WorkManager)</span>
+                  <span className="font-mono text-[#E8E6E3]">Periodic (WorkManager)</span>
                 </div>
               </div>
 
@@ -240,7 +240,7 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
             <div className="p-4 rounded-xl bg-[#FF6B1A]/10 border border-[#FF6B1A]/20 flex items-start gap-3 text-xs text-[#E8E6E3]">
               <AlertCircle className="w-5 h-5 text-[#FF6B1A] shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold text-[#FF6B1A]">Automatic 15-Minute Sync: </span>
+                <span className="font-bold text-[#FF6B1A]">Background Widget Sync: </span>
                 To guarantee the widget updates seamlessly in the background, set Battery Usage for Sked to <strong className="text-white">Unrestricted</strong> in Android App Info.
               </div>
             </div>

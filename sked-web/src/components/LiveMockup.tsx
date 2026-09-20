@@ -137,7 +137,7 @@ export const LiveMockup: React.FC = () => {
           <div className="flex items-center justify-between px-2 mb-4">
             <div>
               <span className="text-[10px] font-mono font-bold text-[#7A7774] block">
-                REG: 12407229
+                REG: 1240XXXX
               </span>
               <span className="text-xs font-bold text-[#E8E6E3] font-['Barlow_Condensed']">
                 {selectedDay === 'SUN' ? 'Sunday • Relax' : `${selectedDay} Schedule`}

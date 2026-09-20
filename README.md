@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/Platform-Android%20%7C%20iOS-FF6B1A?style=for-the-badge&logo=android&logoColor=white" />
   <img src="https://img.shields.io/badge/Version-1.1.0-FF6B1A?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Privacy-100%25%20On--Device-22C55E?style=for-the-badge&logo=shieldcheck&logoColor=white" />
-  <img src="https://img.shields.io/badge/License-Personal-7A7774?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Website-sked--gold.vercel.app-FF6B1A?style=for-the-badge" />
 </p>
 
 ---
@@ -60,14 +60,10 @@ Sked/
 │   ├── exam/
 │   │   ├── ExamParser.kt        Datesheet & seating plan extractor (studentums & classic)
 │   │   └── ExamScreen.kt        Exam Radar hero card, countdown chips, and MTE/ETE lists
-│   ├── admin/
-│   │   └── AdminDashboardScreen.kt Live installs counter, batch & department charts
-│   ├── telemetry/
-│   │   └── TelemetryManager.kt  Anonymous aggregate installation & batch metrics
 │   └── widget/
 │       ├── TimetableWidget.kt          Glance home-screen widget
 │       ├── TimetableWidgetReceiver.kt  Widget broadcast receiver
-│       └── TimetableRefreshWorker.kt   Background sync worker
+│       └── TimetableRefreshWorker.kt   Widget background refresh worker
 │
 ├── sked-app/              Flutter mobile client (iOS .IPA + cross-platform)
 │   ├── lib/main.dart
@@ -109,7 +105,7 @@ Built around a bold, logo-anchored visual identity: **Blaze orange on Ink near-b
 
 ### Lecture & Exam Status Colors
 | State | Color | Hex | Role |
-|:---:|:---:|:---:|:---|
+|:---:|:---:|:---|:---|
 | **ON GOING** | 🟢 Green | `#22C55E` | Currently active lecture |
 | **UPCOMING** | 🔵 Light Blue | `#38BDF8` | Lectures scheduled for later today |
 | **OVER** | ⚫ Dark Slate | `#3A3A3A` | Concluded lectures |
@@ -151,7 +147,7 @@ Grab the latest `sked-android.apk` directly from the [Sked Web Portal](https://s
 - Free Apple ID (7-day certificate) or paid Developer account (365-day)
 
 ### Steps
-1. Download `sked-ios.ipa` from the [Sked website](https://sked-gold.vercel.app/) or `sked-web/public/downloads/sked-ios.ipa`.
+1. Download `sked-ios.ipa` from the [Sked Web Portal](https://sked-gold.vercel.app/) or `sked-web/public/downloads/sked-ios.ipa`.
 2. Open AltStore/SideStore on your iPhone → tap **"+"** in My Apps.
 3. Select the downloaded `sked-ios.ipa` → sign with your Apple ID.
 4. Go to **Settings → General → VPN & Device Management** → Trust the developer profile.
@@ -163,7 +159,9 @@ Grab the latest `sked-android.apk` directly from the [Sked Web Portal](https://s
 
 ## 🌐 Website (sked-web)
 
-The landing page serves as the download portal, feature showcase, interactive mockups, and telemetry monitor.
+The landing page serves as the download portal, feature showcase, and interactive schedule mockups.
+
+- **Production URL**: [https://sked-gold.vercel.app/](https://sked-gold.vercel.app/)
 
 ### Run Locally
 ```bash
@@ -215,7 +213,6 @@ When releasing a new version:
 The Jetpack Glance widget brings your schedule directly to your home screen:
 
 - **Resizable**: 4×2, 4×3, 4×4, or 4×5
-- **Auto-syncs** every 15 minutes via WorkManager
 - **Status Badges**: Distinct `ON GOING` and `UPCOMING` lecture tags
 - **Sunday mode**: Displays Bitmoji chill illustration with "Enjoy your Sunday."
 - **Tablet optimized**: Scales smoothly up to full-screen on any tablet layout
@@ -225,8 +222,6 @@ The Jetpack Glance widget brings your schedule directly to your home screen:
 2. Tap **Widgets** → Find **Sked**
 3. Place the **Timetable Widget**
 4. Resize to your preferred dimensions
-
-> **Tip:** Set Battery Usage for Sked to **Unrestricted** in Android App Info to ensure seamless 15-minute background syncs.
 
 ---
 
@@ -238,9 +233,8 @@ The Jetpack Glance widget brings your schedule directly to your home screen:
 | `TimetableParser.kt` | On-device HTML table extraction from UMS |
 | `ExamParser.kt` | Examination datesheet & seating plan parser (Next.js & classic) |
 | `ExamScreen.kt` | Exam Radar hero card, countdown chips, and MTE/ETE cards |
-| `AdminDashboardScreen.kt` | Telemetry dashboard with live installs, batches, and departments |
 | `TimetableWidget.kt` | Jetpack Glance home-screen widget |
-| `TimetableRefreshWorker.kt` | 15-min background WorkManager sync |
+| `TimetableRefreshWorker.kt` | Background widget refresh worker |
 | `AppUpdateManager.kt` | In-app OTA update — fetch, download, install APK |
 | `AboutDeveloperDialog.kt` | Developer info + manual update check button |
 | `version.json` | OTA update metadata — bump to push new versions |

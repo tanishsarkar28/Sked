@@ -193,7 +193,7 @@ export const WidgetPreview: React.FC = () => {
 
           {/* Caption */}
           <p className="text-center text-[11px] font-mono text-[#7A7774] mt-4">
-            Resizable from 4×2 to 4×5 • Auto-syncs every 15 minutes via WorkManager
+            Resizable from 4×2 to 4×5 • Powered by Jetpack Glance
           </p>
         </div>
       </div>

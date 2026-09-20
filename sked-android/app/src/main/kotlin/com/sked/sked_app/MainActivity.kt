@@ -178,13 +178,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private fun verifyAdminCredentials(id: String, pass: String): Boolean {
-    val input = "${id.trim()}:${pass}:sked_admin_salt_99"
-    val md = java.security.MessageDigest.getInstance("SHA-256")
-    val digest = md.digest(input.toByteArray(Charsets.UTF_8))
-    val hash = digest.joinToString("") { "%02x".format(it) }
-    return hash == "724a25c83f0bc481e107a9b40df041af5fdee54ef7353f411917af941f901b76"
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -284,20 +277,10 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
         onWidgetUpdate()
     }
 
-    var showAdminDashboard by remember { mutableStateOf(false) }
-
-    // ── SCREEN SWITCHING: Admin / Login / Dashboard ──────────────
-    if (showAdminDashboard) {
-        com.sked.sked_app.admin.AdminDashboardScreen(
-            onExit = { showAdminDashboard = false }
-        )
-    } else if (currentUserId.isBlank()) {
+    // ── SCREEN SWITCHING: Login / Dashboard ──────────────────────
+    if (currentUserId.isBlank()) {
         LoginScreen(
             onStartLogin = { id, pass ->
-                if (verifyAdminCredentials(id, pass)) {
-                    showAdminDashboard = true
-                    return@LoginScreen
-                }
                 loginUserIdInput = id
                 loginPasswordInput = pass
                 prefs.edit().putString("saved_ums_pwd", pass).apply()
