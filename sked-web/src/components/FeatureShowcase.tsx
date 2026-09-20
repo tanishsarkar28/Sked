@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { 
   CalendarClock, 
-  Calculator, 
+  GraduationCap, 
   Coffee, 
   ShieldCheck, 
   Zap, 
@@ -31,10 +31,10 @@ export const FeatureShowcase: React.FC = () => {
       desc: "Sundays are meant for relaxing. The widget automatically strips all academic stress and displays a centered chilling Bitmoji mascot with 'Enjoy your Sunday.'",
     },
     {
-      icon: ShieldCheck,
-      title: "100% ON-DEVICE PRIVACY",
-      tag: "ZERO PROXY",
-      desc: "No third-party cloud servers, telemetry, or external proxies. All UMS authentication and HTML parsing happens directly inside your phone's secure storage.",
+      icon: GraduationCap,
+      title: "EXAM DATESHEET & SEATING",
+      tag: "LIVE COUNTDOWN",
+      desc: "Complete MTE, ETE, and Practical examination timetable with live countdown radars, session reporting hours, and room seating allocations cached 100% offline.",
     },
     {
       icon: Zap,

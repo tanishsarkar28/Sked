@@ -1,6 +1,7 @@
 package com.sked.sked_app
 
 import android.annotation.SuppressLint
+import com.sked.sked_app.exam.*
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
@@ -204,6 +205,7 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
 
     var todayClasses by remember { mutableStateOf<List<ClassItem>>(emptyList()) }
     var weekClasses by remember { mutableStateOf<Map<String, List<ClassItem>>>(emptyMap()) }
+    var examList by remember { mutableStateOf<List<ExamItem>>(emptyList()) }
     var selectedDay by remember { mutableStateOf(initialDay) }
     var isLoading by remember { mutableStateOf(false) }
     var showWebViewBridge by remember { mutableStateOf(false) }
@@ -232,9 +234,21 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                 val todayEntries = TimetableParser.filterByDay(allEntries, todayName)
                 val weekMap = TimetableParser.groupByDay(allEntries)
 
+                // Load or generate exam datesheet
+                val savedExams = ExamParser.loadExamsFromPrefs(context)
+                val finalExams = if (savedExams.isNotEmpty()) {
+                    savedExams
+                } else if (allEntries.isNotEmpty()) {
+                    val codes = allEntries.map { it.courseCode }.distinct()
+                    val prov = ExamParser.generateProvisionalSchedule(codes)
+                    ExamParser.saveExamsToPrefs(context, prov)
+                    prov
+                } else emptyList()
+
                 withContext(Dispatchers.Main) {
                     todayClasses = todayEntries
                     weekClasses = weekMap
+                    examList = finalExams
                     hasTimetable = allEntries.isNotEmpty()
                     if (selectedDay !in days) {
                         selectedDay = if (todayName in days) todayName else "Monday"
@@ -301,6 +315,7 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
             todayName = todayName,
             days = days,
             isLoading = isLoading,
+            exams = examList,
             onRefresh = { loadLocalData() },
             onPinWidget = onPinWidget,
             onReSync = {
@@ -738,12 +753,14 @@ fun DashboardScreen(
     todayName: String,
     days: List<String>,
     isLoading: Boolean,
+    exams: List<ExamItem> = emptyList(),
     onRefresh: () -> Unit,
     onPinWidget: () -> Unit,
     onReSync: () -> Unit,
     onLogoutClick: () -> Unit
 ) {
     val context = LocalContext.current
+    var activeTab by remember { mutableStateOf("CLASSES") }
     var showAboutDialog by remember { mutableStateOf(false) }
     var pendingUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
 
@@ -903,10 +920,91 @@ fun DashboardScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
                 HorizontalDivider(color = Rule, thickness = 1.dp)
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // ── Mode Switcher: CLASSES vs EXAMS ─────────────────────────
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (activeTab == "CLASSES") Blaze else Slab,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (activeTab == "CLASSES") Blaze else Rule),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(34.dp)
+                            .clickable { activeTab = "CLASSES" }
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.CalendarToday,
+                                contentDescription = null,
+                                tint = if (activeTab == "CLASSES") Ink else Slate,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "CLASSES",
+                                fontSize = 12.sp,
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activeTab == "CLASSES") Ink else Slate,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (activeTab == "EXAMS") Blaze else Slab,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (activeTab == "EXAMS") Blaze else Rule),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(34.dp)
+                            .clickable { activeTab = "EXAMS" }
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.School,
+                                contentDescription = null,
+                                tint = if (activeTab == "EXAMS") Ink else Slate,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "EXAMS (${exams.size})",
+                                fontSize = 12.sp,
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activeTab == "EXAMS") Ink else Slate,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                    }
+                }
             }
 
-            // Day selector — distributed evenly across screen width, filling available space
-            Row(
+            if (activeTab == "EXAMS") {
+                ExamScreen(
+                    exams = exams,
+                    onRefresh = onReSync,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                // Day selector — distributed evenly across screen width, filling available space
+                Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 14.dp, vertical = 6.dp),
@@ -1147,6 +1245,7 @@ fun DashboardScreen(
                         }
                     }
                 }
+            }
             }
         }
     }
