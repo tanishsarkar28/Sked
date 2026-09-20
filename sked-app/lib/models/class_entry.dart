@@ -28,25 +28,25 @@ class ClassEntry {
 
   factory ClassEntry.fromJson(Map<String, dynamic> json) {
     return ClassEntry(
-      day: json[''day''] as String? ?? '''',
-      timeRange: json[''timeRange''] as String? ?? '''',
-      start: json[''start''] as String? ?? '''',
-      end: json[''end''] as String? ?? '''',
-      room: json[''room''] as String? ?? '''',
-      courseCode: json[''courseCode''] as String? ?? '''',
-      type: json[''type''] as String? ?? '''',
-      teacher: json[''teacher''] as String? ?? '''',
-      section: json[''section''] as String? ?? '''',
-      group: json[''group''] as String? ?? '''',
-      description: json[''description''] as String? ?? '''',
+      day: json['day'] as String? ?? '',
+      timeRange: json['timeRange'] as String? ?? '',
+      start: json['start'] as String? ?? '',
+      end: json['end'] as String? ?? '',
+      room: json['room'] as String? ?? '',
+      courseCode: json['courseCode'] as String? ?? '',
+      type: json['type'] as String? ?? '',
+      teacher: json['teacher'] as String? ?? '',
+      section: json['section'] as String? ?? '',
+      group: json['group'] as String? ?? '',
+      description: json['description'] as String? ?? '',
     );
   }
 
   /// Returns true if this class is currently ongoing at [now].
   bool isOngoing(DateTime now) {
     final todayDate = DateTime(now.year, now.month, now.day);
-    final startParts = start.split('':'');
-    final endParts = end.split('':'');
+    final startParts = start.split(':');
+    final endParts = end.split(':');
     if (startParts.length < 2 || endParts.length < 2) return false;
     final startDt = todayDate.add(Duration(
       hours: int.tryParse(startParts[0]) ?? 0,
@@ -62,7 +62,7 @@ class ClassEntry {
   /// Returns true if this class is upcoming (starts in the future) at [now].
   bool isUpcoming(DateTime now) {
     final todayDate = DateTime(now.year, now.month, now.day);
-    final startParts = start.split('':'');
+    final startParts = start.split(':');
     if (startParts.length < 2) return false;
     final startDt = todayDate.add(Duration(
       hours: int.tryParse(startParts[0]) ?? 0,
@@ -72,5 +72,5 @@ class ClassEntry {
   }
 
   @override
-  String toString() => ''ClassEntry($courseCode @ $start–$end, $day)'';
+  String toString() => 'ClassEntry($courseCode @ $start–$end, $day)';
 }
