@@ -2042,13 +2042,14 @@ fun ClassCard(
     }
 
     val isOnGoing = timingState == ClassTimingState.ON_GOING
+    val onGoingGreen   = Color(0xFF10B981)
     val upcomingOrange = Color(0xFFFF8533)
     val pendingIndigo  = Color(0xFF818CF8)
     val overGrey       = Color(0xFF71717A)
 
     // Vertical bar colour inside the app:
     val verticalColor = when (timingState) {
-        ClassTimingState.ON_GOING -> Blaze
+        ClassTimingState.ON_GOING -> onGoingGreen
         ClassTimingState.UPCOMING -> upcomingOrange
         ClassTimingState.PENDING  -> pendingIndigo.copy(alpha = 0.7f)
         ClassTimingState.OVER     -> Color(0xFF383838)
@@ -2059,7 +2060,7 @@ fun ClassCard(
         color = Slab,
         border = androidx.compose.foundation.BorderStroke(
             if (isOnGoing) 1.5.dp else 1.dp,
-            if (isOnGoing) Blaze.copy(alpha = 0.4f) else Rule
+            if (isOnGoing) onGoingGreen.copy(alpha = 0.4f) else Rule
         ),
         modifier = Modifier
             .fillMaxWidth()
@@ -2125,19 +2126,19 @@ fun ClassCard(
                             ClassTimingState.OVER     -> "OVER"
                         }
                         val statusColor = when (timingState) {
-                            ClassTimingState.ON_GOING -> Blaze
+                            ClassTimingState.ON_GOING -> onGoingGreen
                             ClassTimingState.UPCOMING -> upcomingOrange
                             ClassTimingState.PENDING  -> pendingIndigo
                             ClassTimingState.OVER     -> overGrey
                         }
                         val statusBorder = when (timingState) {
-                            ClassTimingState.ON_GOING -> Blaze
+                            ClassTimingState.ON_GOING -> onGoingGreen
                             ClassTimingState.UPCOMING -> upcomingOrange
                             ClassTimingState.PENDING  -> pendingIndigo.copy(alpha = 0.6f)
                             ClassTimingState.OVER     -> Color(0xFF3F3F46)
                         }
                         val statusBg = when (timingState) {
-                            ClassTimingState.ON_GOING -> Blaze.copy(alpha = 0.15f)
+                            ClassTimingState.ON_GOING -> onGoingGreen.copy(alpha = 0.15f)
                             ClassTimingState.UPCOMING -> upcomingOrange.copy(alpha = 0.14f)
                             ClassTimingState.PENDING  -> pendingIndigo.copy(alpha = 0.12f)
                             ClassTimingState.OVER     -> Color(0xFF27272A).copy(alpha = 0.40f)
@@ -2171,7 +2172,7 @@ fun ClassCard(
                         text = item.timeRange.ifEmpty { "${item.start} – ${item.end}" },
                         fontFamily = FontFamily.Monospace,
                         fontSize = 13.sp,
-                        color = if (isOnGoing) Blaze else Slate
+                        color = if (isOnGoing) onGoingGreen else Slate
                     )
 
                     Spacer(modifier = Modifier.width(8.dp))

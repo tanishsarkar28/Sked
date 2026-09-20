@@ -71,9 +71,9 @@ export const LiveMockup: React.FC = () => {
     switch (status) {
       case 'ON GOING':
         return {
-          pill: 'text-[#FF6B1A] bg-[#FF6B1A]/15 border-[#FF6B1A]',
-          bar: 'border-l-[#FF6B1A]',
-          border: 'border-[#FF6B1A]/40',
+          pill: 'text-emerald-400 bg-emerald-500/15 border-emerald-500',
+          bar: 'border-l-emerald-500',
+          border: 'border-emerald-500/40',
         };
       case 'UPCOMING':
         return {
@@ -218,7 +218,7 @@ export const LiveMockup: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2 text-[11px] font-mono mb-0.5">
-                      <span className={isOnGoing ? 'text-[#FF6B1A]' : 'text-[#7A7774]'}>
+                      <span className={isOnGoing ? 'text-emerald-400' : 'text-[#7A7774]'}>
                         {c.time}
                       </span>
                       <span className="text-[#3F3F46]">•</span>
