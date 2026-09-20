@@ -33,8 +33,15 @@ data class ExamItem(
             val formats = listOf(
                 SimpleDateFormat("yyyy-MM-dd", Locale.US),
                 SimpleDateFormat("dd-MM-yyyy", Locale.US),
+                SimpleDateFormat("dd/MM/yyyy", Locale.US),
+                SimpleDateFormat("dd-MMM-yyyy", Locale.US),
+                SimpleDateFormat("d-MMM-yyyy", Locale.US),
                 SimpleDateFormat("dd MMM yyyy", Locale.US),
-                SimpleDateFormat("MMM dd, yyyy", Locale.US)
+                SimpleDateFormat("d MMM yyyy", Locale.US),
+                SimpleDateFormat("MMM dd, yyyy", Locale.US),
+                SimpleDateFormat("MMM d, yyyy", Locale.US),
+                SimpleDateFormat("dd-MMM-yy", Locale.US),
+                SimpleDateFormat("d-MMM-yy", Locale.US)
             )
             for (fmt in formats) {
                 try {

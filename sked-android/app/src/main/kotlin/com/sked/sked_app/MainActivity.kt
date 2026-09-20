@@ -234,21 +234,20 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                 val todayEntries = TimetableParser.filterByDay(allEntries, todayName)
                 val weekMap = TimetableParser.groupByDay(allEntries)
 
-                // Load or generate exam datesheet
-                val savedExams = ExamParser.loadExamsFromPrefs(context)
-                val finalExams = if (savedExams.isNotEmpty()) {
-                    savedExams
-                } else if (allEntries.isNotEmpty()) {
-                    val codes = allEntries.map { it.courseCode }.distinct()
-                    val prov = ExamParser.generateProvisionalSchedule(codes)
-                    ExamParser.saveExamsToPrefs(context, prov)
-                    prov
-                } else emptyList()
+                // Clear any legacy demo exam data if present
+                val examPrefs = context.getSharedPreferences("SkedExamPrefs", Context.MODE_PRIVATE)
+                if (!examPrefs.getBoolean("demo_cleared_v1", false)) {
+                    ExamParser.clearExams(context)
+                    examPrefs.edit().putBoolean("demo_cleared_v1", true).apply()
+                }
+
+                // Load real exam datesheet only
+                val realExams = ExamParser.loadExamsFromPrefs(context)
 
                 withContext(Dispatchers.Main) {
                     todayClasses = todayEntries
                     weekClasses = weekMap
-                    examList = finalExams
+                    examList = realExams
                     hasTimetable = allEntries.isNotEmpty()
                     if (selectedDay !in days) {
                         selectedDay = if (todayName in days) todayName else "Monday"
@@ -271,9 +270,11 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
     // Logout function
     fun performLogout() {
         prefs.edit().clear().apply()
+        ExamParser.clearExams(context)
         currentUserId = ""
         todayClasses = emptyList()
         weekClasses = emptyMap()
+        examList = emptyList()
         hasTimetable = false
         loginUserIdInput = ""
         loginPasswordInput = ""
@@ -1688,7 +1689,7 @@ fun UmsAuthBridgeDialog(
                                         }
 
                                         function fetchAllData(loginHtml, curUser, curPass) {
-                                            window._skedStatus = 'Fetching timetable...';
+                                            window._skedStatus = 'Fetching schedule & datesheet...';
 
                                             function safeFetch(url, name) {
                                                 return fetch(url, { credentials: 'include' })
@@ -1706,7 +1707,7 @@ fun UmsAuthBridgeDialog(
                                                     });
                                             }
 
-                                            return safeFetch('/lpuums/frmMyCurrentTimeTable.aspx', 'ttAspx')
+                                            var ttPromise = safeFetch('/lpuums/frmMyCurrentTimeTable.aspx', 'ttAspx')
                                                 .then(function(res) {
                                                     var m = res.html ? res.html.match(/id=["']Select1["'][^>]*>([\s\S]*?)<\/select>/i) : null;
                                                     var termId = '';
@@ -1720,8 +1721,8 @@ fun UmsAuthBridgeDialog(
                                                         method: 'POST',
                                                         credentials: 'include',
                                                         headers: {
-                                                            'Content-Type': 'application/json; charset=utf-8',
-                                                            'X-Requested-With': 'XMLHttpRequest'
+                                                             'Content-Type': 'application/json; charset=utf-8',
+                                                             'X-Requested-With': 'XMLHttpRequest'
                                                         },
                                                         body: JSON.stringify({ TermId: termId || null })
                                                     }).then(function(r) { return r.text(); });
@@ -1732,6 +1733,30 @@ fun UmsAuthBridgeDialog(
                                                 .catch(function(e) {
                                                     window._skedError = 'Failed to fetch timetable: ' + e.toString();
                                                 });
+
+                                            var dsPromise = safeFetch('/lpuums/frmStudentDateSheet.aspx', 'datesheet')
+                                                .then(function(res) {
+                                                    if (res.html && res.html.length > 200 && !res.html.includes('LoginNew')) {
+                                                        window._skedDatesheetResult = res.html;
+                                                    } else {
+                                                        return safeFetch('/lpuums/frmDateSheet.aspx', 'datesheet2')
+                                                            .then(function(res2) {
+                                                                if (res2.html && res2.html.length > 200 && !res2.html.includes('LoginNew')) {
+                                                                    window._skedDatesheetResult = res2.html;
+                                                                } else {
+                                                                    return safeFetch('/lpuums/frmSeatingPlan.aspx', 'seating')
+                                                                        .then(function(res3) {
+                                                                            window._skedDatesheetResult = (res3.html && res3.html.length > 200 && !res3.html.includes('LoginNew')) ? res3.html : '';
+                                                                        });
+                                                                }
+                                                            });
+                                                    }
+                                                })
+                                                .catch(function() {
+                                                    window._skedDatesheetResult = '';
+                                                });
+
+                                            return Promise.all([ttPromise, dsPromise]);
                                         }
 
                                         fetch(form ? form.action : window.location.href, {
@@ -1819,40 +1844,55 @@ fun UmsAuthBridgeDialog(
 
                                     if (hasRes && !isDone) {
                                         isDone = true
-                                        statusText = "Parsing timetable..."
+                                        statusText = "Syncing schedule & datesheet..."
                                         isSyncing = true
                                         wv.evaluateJavascript("window._skedTimetableResult") { ttRaw ->
-                                            coroutineScope.launch(Dispatchers.IO) {
-                                                try {
-                                                    val entries = if (!ttRaw.isNullOrBlank()) TimetableParser.parse(ttRaw) else emptyList()
-                                                    if (entries.isNotEmpty()) {
-                                                        TimetableParser.saveToPrefs(context, entries, userId)
-                                                    }
-
+                                            wv.evaluateJavascript("window._skedDatesheetResult || ''") { dsRaw ->
+                                                coroutineScope.launch(Dispatchers.IO) {
                                                     try {
-                                                        val manager = GlanceAppWidgetManager(context)
-                                                        val ids = manager.getGlanceIds(TimetableWidget::class.java)
-                                                        ids.forEach { id ->
-                                                            TimetableWidget().update(context, id)
-                                                        }
-                                                    } catch (_: Exception) {}
-                                                    TimetableRefreshWorker.runNow(context)
-
-                                                    withContext(Dispatchers.Main) {
+                                                        val entries = if (!ttRaw.isNullOrBlank()) TimetableParser.parse(ttRaw) else emptyList()
                                                         if (entries.isNotEmpty()) {
-                                                            Toast.makeText(context, "Synced timetable (${entries.size} classes)", Toast.LENGTH_SHORT).show()
-                                                            onSuccess(userId)
-                                                        } else {
-                                                            isSyncing = false
-                                                            statusText = "No classes found in timetable"
-                                                            Toast.makeText(context, "Found 0 classes in timetable", Toast.LENGTH_LONG).show()
+                                                            TimetableParser.saveToPrefs(context, entries, userId)
                                                         }
-                                                    }
-                                                } catch (e: Exception) {
-                                                    withContext(Dispatchers.Main) {
-                                                        isSyncing = false
-                                                        statusText = "Parse error: ${e.message}"
-                                                        Toast.makeText(context, "Parse error: ${e.message}", Toast.LENGTH_LONG).show()
+
+                                                        // Parse real datesheet from UMS HTML
+                                                        val cleanDsHtml = if (!dsRaw.isNullOrBlank() && dsRaw != "\"\"" && dsRaw != "null") {
+                                                            try {
+                                                                if (dsRaw.startsWith("\"") && dsRaw.endsWith("\"")) {
+                                                                    JSONObject("{\"v\":$dsRaw}").getString("v")
+                                                                } else dsRaw
+                                                            } catch (_: Exception) { dsRaw }
+                                                        } else ""
+
+                                                        val exams = ExamParser.parseDatesheetHtml(cleanDsHtml)
+                                                        ExamParser.saveExamsToPrefs(context, exams)
+
+                                                        try {
+                                                            val manager = GlanceAppWidgetManager(context)
+                                                            val ids = manager.getGlanceIds(TimetableWidget::class.java)
+                                                            ids.forEach { id ->
+                                                                TimetableWidget().update(context, id)
+                                                            }
+                                                        } catch (_: Exception) {}
+                                                        TimetableRefreshWorker.runNow(context)
+
+                                                        withContext(Dispatchers.Main) {
+                                                             if (entries.isNotEmpty()) {
+                                                                 val examMsg = if (exams.isNotEmpty()) " & ${exams.size} exams" else ""
+                                                                 Toast.makeText(context, "Synced timetable (${entries.size} classes$examMsg)", Toast.LENGTH_SHORT).show()
+                                                                 onSuccess(userId)
+                                                             } else {
+                                                                 isSyncing = false
+                                                                 statusText = "No classes found in timetable"
+                                                                 Toast.makeText(context, "Found 0 classes in timetable", Toast.LENGTH_LONG).show()
+                                                             }
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        withContext(Dispatchers.Main) {
+                                                            isSyncing = false
+                                                            statusText = "Parse error: ${e.message}"
+                                                            Toast.makeText(context, "Parse error: ${e.message}", Toast.LENGTH_LONG).show()
+                                                        }
                                                     }
                                                 }
                                             }

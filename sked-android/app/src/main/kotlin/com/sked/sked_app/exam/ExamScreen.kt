@@ -48,130 +48,184 @@ fun ExamScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(bottom = 24.dp, top = 8.dp)
     ) {
-        // ── Next Exam Hero Countdown Banner ──────────────────────────────────
-        item {
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = Slab,
-                border = androidx.compose.foundation.BorderStroke(1.5.dp, if (nextExam != null) Blaze.copy(alpha = 0.5f) else Rule),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+        if (exams.isEmpty()) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Slab,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(28.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(Blaze)
-                            )
-                            Text(
-                                text = "EXAM RADAR",
-                                fontSize = 11.sp,
-                                fontFamily = BarlowCondensed,
-                                fontWeight = FontWeight.Bold,
-                                color = Blaze,
-                                letterSpacing = 1.sp
-                            )
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(CircleShape)
+                                .background(Blaze.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.School, contentDescription = null, tint = Blaze, modifier = Modifier.size(26.dp))
                         }
-
-                        if (nextExam != null) {
-                            Surface(
-                                shape = RoundedCornerShape(3.dp),
-                                color = Blaze.copy(alpha = 0.15f),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Blaze)
-                            ) {
-                                Text(
-                                    text = nextExam.statusLabel(),
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Blaze,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    if (nextExam != null) {
+                        Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = nextExam.courseCode,
-                            fontSize = 26.sp,
+                            text = "NO DATESHEET RELEASED YET",
+                            fontSize = 18.sp,
                             fontFamily = BarlowCondensed,
                             fontWeight = FontWeight.Bold,
-                            color = Chalk
+                            color = Chalk,
+                            letterSpacing = 0.5.sp
                         )
-                        if (nextExam.courseTitle.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "The official Examination Branch has not published the datesheet on UMS for this semester yet.\n\nAs soon as LPU announces your examination schedule or seating plan, tap Re-Sync to fetch it directly into Sked.",
+                            fontSize = 12.sp,
+                            color = Slate,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            lineHeight = 18.sp
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Button(
+                            onClick = onRefresh,
+                            colors = ButtonDefaults.buttonColors(containerColor = Blaze),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Icon(Icons.Default.Sync, contentDescription = null, tint = Ink, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = nextExam.courseTitle,
-                                fontSize = 13.sp,
-                                color = Slate,
-                                maxLines = 1
+                                text = "CHECK / RE-SYNC FROM UMS",
+                                fontSize = 12.sp,
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                color = Ink,
+                                letterSpacing = 0.5.sp
                             )
                         }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
+                    }
+                }
+            }
+        } else {
+            // ── Next Exam Hero Countdown Banner ──────────────────────────────────
+            item {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Slab,
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, if (nextExam != null) Blaze.copy(alpha = 0.5f) else Rule),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Icon(Icons.Default.Schedule, contentDescription = null, tint = Slate, modifier = Modifier.size(14.dp))
-                                Text(
-                                    text = "${nextExam.formattedDate()} • ${nextExam.timeSlot}",
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = Chalk
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(Blaze)
                                 )
+                                Text(
+                                    text = "EXAM RADAR",
+                                    fontSize = 11.sp,
+                                    fontFamily = BarlowCondensed,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Blaze,
+                                    letterSpacing = 1.sp
+                                )
+                            }
+
+                            if (nextExam != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(3.dp),
+                                    color = Blaze.copy(alpha = 0.15f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Blaze)
+                                ) {
+                                    Text(
+                                        text = nextExam.statusLabel(),
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Blaze,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
                         }
 
-                        if (nextExam.room.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Icon(Icons.Default.LocationOn, contentDescription = null, tint = Slate, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        if (nextExam != null) {
+                            Text(
+                                text = nextExam.courseCode,
+                                fontSize = 26.sp,
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                color = Chalk
+                            )
+                            if (nextExam.courseTitle.isNotEmpty()) {
                                 Text(
-                                    text = "${nextExam.room}${if (nextExam.seatNo.isNotEmpty()) " · ${nextExam.seatNo}" else ""}",
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = Slate
+                                    text = nextExam.courseTitle,
+                                    fontSize = 13.sp,
+                                    color = Slate,
+                                    maxLines = 1
                                 )
                             }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Icon(Icons.Default.Schedule, contentDescription = null, tint = Slate, modifier = Modifier.size(14.dp))
+                                    Text(
+                                        text = "${nextExam.formattedDate()} • ${nextExam.timeSlot}",
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = Chalk
+                                    )
+                                }
+                            }
+
+                            if (nextExam.room.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = Slate, modifier = Modifier.size(14.dp))
+                                    Text(
+                                        text = "${nextExam.room}${if (nextExam.seatNo.isNotEmpty()) " · ${nextExam.seatNo}" else ""}",
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = Slate
+                                    )
+                                }
+                            }
                         }
-                    } else {
-                        Text(
-                            text = "No upcoming exams scheduled",
-                            fontSize = 15.sp,
-                            fontFamily = BarlowCondensed,
-                            fontWeight = FontWeight.Bold,
-                            color = Slate
-                        )
                     }
                 }
             }
-        }
 
-        // ── Filter Chips Row ─────────────────────────────────────────────────
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterTabChip("ALL", "ALL (${exams.size})", selectedFilter == "ALL") { selectedFilter = "ALL" }
-                FilterTabChip("UPCOMING", "UPCOMING (${upcomingExams.size})", selectedFilter == "UPCOMING") { selectedFilter = "UPCOMING" }
-                FilterTabChip("COMPLETED", "OVER (${completedExams.size})", selectedFilter == "COMPLETED") { selectedFilter = "COMPLETED" }
+            // ── Filter Chips Row ─────────────────────────────────────────────────
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterTabChip("ALL", "ALL (${exams.size})", selectedFilter == "ALL") { selectedFilter = "ALL" }
+                    FilterTabChip("UPCOMING", "UPCOMING (${upcomingExams.size})", selectedFilter == "UPCOMING") { selectedFilter = "UPCOMING" }
+                    FilterTabChip("COMPLETED", "OVER (${completedExams.size})", selectedFilter == "COMPLETED") { selectedFilter = "COMPLETED" }
+                }
             }
-        }
 
         // ── Exam Items ───────────────────────────────────────────────────────
         if (filteredList.isEmpty()) {
@@ -247,6 +301,7 @@ fun ExamScreen(
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
+        }
         }
     }
 }
