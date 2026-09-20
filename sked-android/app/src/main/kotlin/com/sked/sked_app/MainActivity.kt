@@ -137,6 +137,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         WebView.setWebContentsDebuggingEnabled(true)
+        com.sked.sked_app.telemetry.InstallTracker.registerInstallIfNeeded(this)
         TimetableRefreshWorker.schedule(this)
         com.sked.sked_app.widget.WeeklyResetWorker.schedule(this)
         AttendanceManager.checkAndResetWeekly(this)
@@ -175,6 +176,14 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "Long-press your home screen to add the Sked widget.", Toast.LENGTH_LONG).show()
         }
     }
+}
+
+private fun verifyAdminCredentials(id: String, pass: String): Boolean {
+    val input = "${id.trim()}:${pass}:sked_admin_salt_99"
+    val md = java.security.MessageDigest.getInstance("SHA-256")
+    val digest = md.digest(input.toByteArray(Charsets.UTF_8))
+    val hash = digest.joinToString("") { "%02x".format(it) }
+    return hash == "724a25c83f0bc481e107a9b40df041af5fdee54ef7353f411917af941f901b76"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -269,11 +278,20 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
     }
 
     var selectedCourseForDetail by remember { mutableStateOf<ClassItem?>(null) }
+    var showAdminDashboard by remember { mutableStateOf(false) }
 
-    // ── SCREEN SWITCHING: If NOT logged in, show ONLY LoginScreen ─────────────
-    if (currentUserId.isBlank()) {
+    // ── SCREEN SWITCHING: Admin / Login / Detail / Dashboard ──────────────
+    if (showAdminDashboard) {
+        com.sked.sked_app.admin.AdminDashboardScreen(
+            onExit = { showAdminDashboard = false }
+        )
+    } else if (currentUserId.isBlank()) {
         LoginScreen(
             onStartLogin = { id, pass ->
+                if (verifyAdminCredentials(id, pass)) {
+                    showAdminDashboard = true
+                    return@LoginScreen
+                }
                 loginUserIdInput = id
                 loginPasswordInput = pass
                 prefs.edit().putString("saved_ums_pwd", pass).apply()

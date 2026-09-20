@@ -48,10 +48,10 @@ jobs:
           cd sked-app
           flutter pub get
 
-      - name: Build iOS Archive (Unsigned)
+      - name: Build iOS Release Binary (Unsigned)
         run: |
           cd sked-app
-          flutter build ipa --no-codesign
+          flutter build ios --no-codesign --release
 
       - name: Package Unsigned .IPA
         run: |
