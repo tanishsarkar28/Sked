@@ -1120,15 +1120,15 @@ fun DashboardScreen(
                             }
 
                             val timingState = when {
-                                isOver -> ClassTimingState.OVER
+                                isLive -> ClassTimingState.ON_GOING
                                 isUpcoming -> ClassTimingState.UPCOMING
+                                isOver -> ClassTimingState.OVER
                                 else -> ClassTimingState.PENDING
                             }
 
                             StaggeredClassCard(
                                 item = item,
                                 index = index,
-                                isLive = isLive,
                                 timingState = timingState
                             )
                         }
@@ -1980,12 +1980,11 @@ fun SkeletonClassCard() {
 
 // ── Class Timing State & Cards ───────────────────────────────────────────────
 
-// ── Class Timing State & Cards ───────────────────────────────────────────────
-
 enum class ClassTimingState {
-    OVER,       // Class time is over
-    UPCOMING,   // Next upcoming class
-    PENDING     // Pending future class
+    ON_GOING,
+    UPCOMING,
+    PENDING,
+    OVER
 }
 
 // ── Staggered Animated Class Item Reveal ────────────────────────────────────
@@ -1994,7 +1993,6 @@ enum class ClassTimingState {
 fun StaggeredClassCard(
     item: ClassItem,
     index: Int,
-    isLive: Boolean = false,
     timingState: ClassTimingState = ClassTimingState.PENDING,
     onClick: (() -> Unit)? = null
 ) {
@@ -2021,7 +2019,6 @@ fun StaggeredClassCard(
     ) {
         ClassCard(
             item = item,
-            isLive = isLive,
             timingState = timingState,
             onClick = onClick
         )
@@ -2033,7 +2030,6 @@ fun StaggeredClassCard(
 @Composable
 fun ClassCard(
     item: ClassItem,
-    isLive: Boolean = false,
     timingState: ClassTimingState = ClassTimingState.PENDING,
     onClick: (() -> Unit)? = null
 ) {
@@ -2045,24 +2041,25 @@ fun ClassCard(
         else        -> item.type.uppercase().take(3)
     }
 
-    val upcomingOrange = Blaze
+    val isOnGoing = timingState == ClassTimingState.ON_GOING
+    val upcomingOrange = Color(0xFFFF8533)
     val pendingIndigo  = Color(0xFF818CF8)
-    val notMarkedGrey  = Color(0xFF71717A)
+    val overGrey       = Color(0xFF71717A)
 
     // Vertical bar colour inside the app:
-    val verticalColor = when {
-        isLive -> Blaze
-        timingState == ClassTimingState.UPCOMING -> upcomingOrange
-        timingState == ClassTimingState.PENDING  -> pendingIndigo.copy(alpha = 0.7f)
-        else -> Color(0xFF383838)
+    val verticalColor = when (timingState) {
+        ClassTimingState.ON_GOING -> Blaze
+        ClassTimingState.UPCOMING -> upcomingOrange
+        ClassTimingState.PENDING  -> pendingIndigo.copy(alpha = 0.7f)
+        ClassTimingState.OVER     -> Color(0xFF383838)
     }
 
     Surface(
         shape = RoundedCornerShape(6.dp),
         color = Slab,
         border = androidx.compose.foundation.BorderStroke(
-            if (isLive) 1.5.dp else 1.dp,
-            if (isLive) Blaze.copy(alpha = 0.4f) else Rule
+            if (isOnGoing) 1.5.dp else 1.dp,
+            if (isOnGoing) Blaze.copy(alpha = 0.4f) else Rule
         ),
         modifier = Modifier
             .fillMaxWidth()
@@ -2103,18 +2100,6 @@ fun ClassCard(
                     )
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // NOW. status tag for currently ongoing class
-                        if (isLive) {
-                            Text(
-                                text = "NOW.",
-                                fontSize = 12.sp,
-                                fontFamily = BarlowCondensed,
-                                fontWeight = FontWeight.Bold,
-                                color = Blaze,
-                                modifier = Modifier.padding(end = 8.dp)
-                            )
-                        }
-
                         // Monochrome type pill
                         Surface(
                             shape = RoundedCornerShape(3.dp),
@@ -2132,30 +2117,30 @@ fun ClassCard(
 
                         Spacer(modifier = Modifier.width(6.dp))
 
-                        // Timing State Pill: LIVE, NEXT, PENDING, OVER
-                        val statusText = when {
-                            isLive -> "LIVE"
-                            timingState == ClassTimingState.UPCOMING -> "NEXT"
-                            timingState == ClassTimingState.PENDING -> "PENDING"
-                            else -> "OVER"
+                        // Timing State Pill: OVER, UPCOMING, ON GOING, PENDING
+                        val statusText = when (timingState) {
+                            ClassTimingState.ON_GOING -> "ON GOING"
+                            ClassTimingState.UPCOMING -> "UPCOMING"
+                            ClassTimingState.PENDING  -> "PENDING"
+                            ClassTimingState.OVER     -> "OVER"
                         }
-                        val statusColor = when {
-                            isLive -> Blaze
-                            timingState == ClassTimingState.UPCOMING -> upcomingOrange
-                            timingState == ClassTimingState.PENDING -> pendingIndigo
-                            else -> notMarkedGrey
+                        val statusColor = when (timingState) {
+                            ClassTimingState.ON_GOING -> Blaze
+                            ClassTimingState.UPCOMING -> upcomingOrange
+                            ClassTimingState.PENDING  -> pendingIndigo
+                            ClassTimingState.OVER     -> overGrey
                         }
-                        val statusBorder = when {
-                            isLive -> Blaze
-                            timingState == ClassTimingState.UPCOMING -> upcomingOrange
-                            timingState == ClassTimingState.PENDING -> pendingIndigo.copy(alpha = 0.6f)
-                            else -> Color(0xFF3F3F46)
+                        val statusBorder = when (timingState) {
+                            ClassTimingState.ON_GOING -> Blaze
+                            ClassTimingState.UPCOMING -> upcomingOrange
+                            ClassTimingState.PENDING  -> pendingIndigo.copy(alpha = 0.6f)
+                            ClassTimingState.OVER     -> Color(0xFF3F3F46)
                         }
-                        val statusBg = when {
-                            isLive -> Blaze.copy(alpha = 0.15f)
-                            timingState == ClassTimingState.UPCOMING -> upcomingOrange.copy(alpha = 0.14f)
-                            timingState == ClassTimingState.PENDING -> pendingIndigo.copy(alpha = 0.12f)
-                            else -> Color(0xFF27272A).copy(alpha = 0.40f)
+                        val statusBg = when (timingState) {
+                            ClassTimingState.ON_GOING -> Blaze.copy(alpha = 0.15f)
+                            ClassTimingState.UPCOMING -> upcomingOrange.copy(alpha = 0.14f)
+                            ClassTimingState.PENDING  -> pendingIndigo.copy(alpha = 0.12f)
+                            ClassTimingState.OVER     -> Color(0xFF27272A).copy(alpha = 0.40f)
                         }
 
                         Surface(
@@ -2186,7 +2171,7 @@ fun ClassCard(
                         text = item.timeRange.ifEmpty { "${item.start} – ${item.end}" },
                         fontFamily = FontFamily.Monospace,
                         fontSize = 13.sp,
-                        color = if (isLive) Blaze else Slate
+                        color = if (isOnGoing) Blaze else Slate
                     )
 
                     Spacer(modifier = Modifier.width(8.dp))
