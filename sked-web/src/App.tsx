@@ -54,8 +54,8 @@ export default function App() {
           onSecondaryCtaClick={handleDownloadIos}
           features={[
             "100% On-Device & Private",
-            "15-Min Background Glance Sync",
-            "Sunday Bitmoji Chill Mode"
+            "Zero LPU Touch Logouts",
+            "Live Departures Widget"
           ]}
         />
       </div>

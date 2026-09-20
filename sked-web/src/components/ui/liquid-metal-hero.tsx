@@ -147,13 +147,13 @@ export default function LiquidMetalHero({
                 whileHover={{ y: -4 }}
                 transition={{ duration: 0.3 }}
               >
-                <Card className="bg-foreground/10 border-foreground/20 backdrop-blur-md shadow-2xl">
-                  <div className="p-8">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Card className="bg-[#141414]/80 border-[#252525] backdrop-blur-md shadow-2xl hover:border-[#FF6B1A]/30 transition-colors">
+                  <div className="py-6 px-4 sm:px-8">
+                    <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[#252525]">
                       {features.map((feature, index) => (
                         <motion.div 
                           key={index}
-                          className="flex items-center justify-center text-center"
+                          className="flex items-center justify-center text-center gap-2.5 py-3 md:py-0 px-4"
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ 
@@ -161,7 +161,8 @@ export default function LiquidMetalHero({
                             delay: 0.8 + (index * 0.1)
                           }}
                         >
-                          <p className="text-foreground/90 font-medium text-lg">
+                          <span className="w-2 h-2 rounded-full bg-[#FF6B1A] shrink-0" />
+                          <p className="text-[#E8E6E3] font-medium text-sm sm:text-base font-['Barlow_Condensed'] tracking-wide uppercase">
                             {feature}
                           </p>
                         </motion.div>
