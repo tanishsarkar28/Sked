@@ -200,8 +200,9 @@ fun ExamScreen(
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Icon(Icons.Default.LocationOn, contentDescription = null, tint = Slate, modifier = Modifier.size(14.dp))
+                                    val seatText = if (nextExam.seatNo.isNotEmpty() && nextExam.seatNo != "Awaited") " · ${nextExam.seatNo}" else ""
                                     Text(
-                                        text = "${nextExam.room}${if (nextExam.seatNo.isNotEmpty()) " · ${nextExam.seatNo}" else ""}",
+                                        text = "${nextExam.room}$seatText",
                                         fontSize = 11.sp,
                                         fontFamily = FontFamily.Monospace,
                                         color = Slate
@@ -479,7 +480,7 @@ fun ExamCard(exam: ExamItem) {
                             color = Slate
                         )
 
-                        if (exam.seatNo.isNotEmpty()) {
+                        if (exam.seatNo.isNotEmpty() && exam.seatNo != "Awaited") {
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(text = "·", color = Slate)
                             Spacer(modifier = Modifier.width(6.dp))
@@ -496,8 +497,9 @@ fun ExamCard(exam: ExamItem) {
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(text = "·", color = Slate)
                             Spacer(modifier = Modifier.width(6.dp))
+                            val rep = if (exam.reportingTime.startsWith("Report", ignoreCase = true)) exam.reportingTime else "Report ${exam.reportingTime}"
                             Text(
-                                text = "Report ${exam.reportingTime}",
+                                text = rep,
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp,
                                 color = Slate

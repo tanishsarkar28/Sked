@@ -1864,7 +1864,8 @@ fun UmsAuthBridgeDialog(
                                                             } catch (_: Exception) { dsRaw }
                                                         } else ""
 
-                                                        val exams = ExamParser.parseDatesheetHtml(cleanDsHtml)
+                                                        val parsedExams = ExamParser.parseDatesheetHtml(cleanDsHtml)
+                                                        val exams = parsedExams.ifEmpty { ExamParser.loadExamsFromPrefs(context) }
                                                         ExamParser.saveExamsToPrefs(context, exams)
 
                                                         try {
