@@ -140,8 +140,6 @@ class MainActivity : ComponentActivity() {
         com.sked.sked_app.telemetry.TelemetryManager.recordInstallIfNeeded(this)
         com.sked.sked_app.telemetry.TelemetryManager.recordDailyActiveUser(this)
         TimetableRefreshWorker.schedule(this)
-        com.sked.sked_app.widget.WeeklyResetWorker.schedule(this)
-        AttendanceManager.checkAndResetWeekly(this)
 
         setContent {
             SkedApp(
@@ -226,7 +224,6 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                 val todayEntries = TimetableParser.filterByDay(allEntries, todayName)
                 val weekMap = TimetableParser.groupByDay(allEntries)
 
-                AttendanceManager.populateWeekFromHistory(context)
                 withContext(Dispatchers.Main) {
                     todayClasses = todayEntries
                     weekClasses = weekMap
@@ -235,19 +232,6 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                         selectedDay = if (todayName in days) todayName else "Monday"
                     }
                     isLoading = false
-                }
-
-                // Background sync live attendance from mobile API without blocking timetable display
-                try {
-                    val savedPwd = prefs.getString("saved_ums_pwd", "") ?: ""
-                    val hasToken = !prefs.getString("mobile_token", "").isNullOrBlank()
-                    if (!hasToken && savedPwd.isNotBlank() && currentUserId.isNotBlank()) {
-                        AttendanceManager.loginAndSyncMobileApi(context, currentUserId, savedPwd)
-                    } else {
-                        AttendanceManager.refreshFromMobileApi(context)
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e("Sked", "Error refreshing from mobile API", e)
                 }
             } catch (_: Exception) {
             } finally {
@@ -265,7 +249,6 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
     // Logout function
     fun performLogout() {
         prefs.edit().clear().apply()
-        AttendanceManager.clearAll(context)
         currentUserId = ""
         todayClasses = emptyList()
         weekClasses = emptyMap()
@@ -278,10 +261,9 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
         onWidgetUpdate()
     }
 
-    var selectedCourseForDetail by remember { mutableStateOf<ClassItem?>(null) }
     var showAdminDashboard by remember { mutableStateOf(false) }
 
-    // ── SCREEN SWITCHING: Admin / Login / Detail / Dashboard ──────────────
+    // ── SCREEN SWITCHING: Admin / Login / Dashboard ──────────────
     if (showAdminDashboard) {
         com.sked.sked_app.admin.AdminDashboardScreen(
             onExit = { showAdminDashboard = false }
@@ -297,21 +279,8 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                 loginPasswordInput = pass
                 prefs.edit().putString("saved_ums_pwd", pass).apply()
                 com.sked.sked_app.telemetry.TelemetryManager.recordStudentBatch(context, id)
-                coroutineScope.launch(Dispatchers.IO) {
-                    AttendanceManager.loginAndSyncMobileApi(context, id, pass)
-                }
                 showWebViewBridge = true
             }
-        )
-    } else if (selectedCourseForDetail != null) {
-        val detailTarget = selectedCourseForDetail!!
-        CourseDetailScreen(
-            courseCode = detailTarget.courseCode,
-            courseName = detailTarget.description,
-            teacher = detailTarget.teacher,
-            room = detailTarget.room,
-            section = detailTarget.section,
-            onBack = { selectedCourseForDetail = null }
         )
     } else {
         // ── LOGGED IN: Main Timetable Dashboard ──────────────────────────────
@@ -326,7 +295,6 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
             isLoading = isLoading,
             onRefresh = { loadLocalData() },
             onPinWidget = onPinWidget,
-            onCourseClick = { selectedCourseForDetail = it },
             onReSync = {
                 loginUserIdInput = currentUserId
                 showReSyncDialog = true
@@ -416,9 +384,6 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                             prefs.edit().putString("saved_ums_pwd", resyncPassword).apply()
                             loginPasswordInput = resyncPassword
                             showReSyncDialog = false
-                            coroutineScope.launch(Dispatchers.IO) {
-                                AttendanceManager.loginAndSyncMobileApi(context, currentUserId, resyncPassword)
-                            }
                             showWebViewBridge = true
                         }
                     },
@@ -767,29 +732,15 @@ fun DashboardScreen(
     isLoading: Boolean,
     onRefresh: () -> Unit,
     onPinWidget: () -> Unit,
-    onCourseClick: (ClassItem) -> Unit = {},
     onReSync: () -> Unit,
     onLogoutClick: () -> Unit
 ) {
     val context = LocalContext.current
-    var attendanceVersion by remember { mutableStateOf(0) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var pendingUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            val popCount = AttendanceManager.populateWeekFromHistory(context)
-            if (popCount > 0) {
-                withContext(Dispatchers.Main) {
-                    attendanceVersion++
-                }
-            }
-            val count = AttendanceManager.refreshFromMobileApi(context)
-            if (count > 0) {
-                withContext(Dispatchers.Main) {
-                    attendanceVersion++
-                }
-            }
             try {
                 val update = AppUpdateManager.checkForUpdate(context)
                 if (update != null) {
@@ -1151,7 +1102,6 @@ fun DashboardScreen(
                         }
 
                         itemsIndexed(listForDay) { index, item ->
-                            val _v = attendanceVersion
                             val sM = parseTimeInMinutes(item.start)
                             val eEnd = parseTimeInMinutes(item.end)
                             val eM = if (eEnd > 0) eEnd else if (sM > 0) sM + 50 else 0
@@ -1175,18 +1125,11 @@ fun DashboardScreen(
                                 else -> ClassTimingState.PENDING
                             }
 
-                            val targetDateKey = AttendanceManager.getDateKeyForDay(targetDay)
-                            val status = AttendanceManager.getStatus(context, item.courseCode, item.start, targetDateKey)
-                            val courseAtt = AttendanceManager.getCourseAttendance(context, item.courseCode)
-
                             StaggeredClassCard(
                                 item = item,
                                 index = index,
                                 isLive = isLive,
-                                timingState = timingState,
-                                attendanceStatus = status,
-                                courseAttendance = courseAtt,
-                                onClick = { onCourseClick(item) }
+                                timingState = timingState
                             )
                         }
 
@@ -1637,195 +1580,8 @@ fun UmsAuthBridgeDialog(
                                             params.append(submitBtn.name, submitBtn.value || 'Login');
                                         }
 
-                                        function extractAttendance(docSources) {
-                                            var todayStatus = [];
-                                            var courses = [];
-                                            var debug = [];
-                                            var courseCodeRegex = /\b([A-Z]{2,5}\d{3,4})\b/i;
-                                            function clean(s) { return (s || '').replace(/\s+/g, ' ').trim(); }
-                                            function getText(el) { return clean(el.textContent || el.innerText || ''); }
-
-                                            var parser = new DOMParser();
-                                            var allHrefs = [];
-
-                                            for (var s = 0; s < docSources.length; s++) {
-                                                var src = docSources[s];
-                                                if (!src.html || src.html.length < 30) continue;
-                                                var doc = parser.parseFromString(src.html, 'text/html');
-                                                var rows = doc.querySelectorAll('tr');
-                                                debug.push(src.name + ':r=' + rows.length + '(' + src.html.length + 'b)');
-
-                                                // Discover attendance-related links
-                                                var links = doc.querySelectorAll('a[href]');
-                                                for (var l = 0; l < links.length; l++) {
-                                                    var h = links[l].getAttribute('href') || '';
-                                                    if (/attend|daily|present|absent/i.test(h) && !allHrefs.includes(h)) {
-                                                        allHrefs.push(h);
-                                                    }
-                                                }
-
-                                                // Pass 1: check rows for today's classes and status
-                                                for (var i = 0; i < rows.length; i++) {
-                                                    var row = rows[i];
-                                                    var rowText = getText(row);
-                                                    var cMatch = rowText.match(courseCodeRegex);
-                                                    if (!cMatch) continue;
-
-                                                    var code = cMatch[1].toUpperCase();
-                                                    var timeMatch = rowText.match(/(\d{1,2}:\d{2})\s*(?:-\s*(\d{1,2}:\d{2}))?/);
-                                                    var start = timeMatch ? timeMatch[1] : '';
-                                                    var end = (timeMatch && timeMatch[2]) ? timeMatch[2] : '';
-
-                                                    var status = 'UNMARKED';
-                                                    var lower = rowText.toLowerCase();
-
-                                                    if (/\b(present|attended)\b/.test(lower)) {
-                                                        status = 'PRESENT';
-                                                    } else if (/\b(absent)\b/.test(lower)) {
-                                                        status = 'ABSENT';
-                                                    } else if (/\b(duty\s*leave|dl)\b/.test(lower)) {
-                                                        status = 'DUTY_LEAVE';
-                                                    } else if (/\b(leave)\b/.test(lower)) {
-                                                        status = 'DUTY_LEAVE';
-                                                    } else if (/\b(pending|not\s*marked|yet\s*to\s*be|unmarked)\b/.test(lower)) {
-                                                        status = 'UNMARKED';
-                                                    } else {
-                                                        var cells = row.querySelectorAll('td');
-                                                        for (var c = 0; c < cells.length; c++) {
-                                                            var cell = cells[c];
-                                                            var style = (cell.getAttribute('style') || '').toLowerCase();
-                                                            var cls = (cell.className || '').toLowerCase();
-                                                            var cellTxt = getText(cell).toLowerCase();
-                                                            if (cls.includes('success') || style.includes('green') || cls.includes('present')) {
-                                                                if (!cellTxt.includes('total') && !cellTxt.includes('%')) status = 'PRESENT';
-                                                            } else if (cls.includes('danger') || style.includes('red') || cls.includes('absent')) {
-                                                                if (!cellTxt.includes('total') && !cellTxt.includes('%')) status = 'ABSENT';
-                                                            }
-                                                        }
-                                                    }
-
-                                                    var existing = todayStatus.find(function(x) {
-                                                        return x.courseCode === code && (!start || x.start === start);
-                                                    });
-                                                    if (!existing) {
-                                                        todayStatus.push({
-                                                            courseCode: code,
-                                                            start: start,
-                                                            timeRange: (start && end) ? (start + ' - ' + end) : (start || ''),
-                                                            status: status,
-                                                            raw: rowText.substring(0, 120)
-                                                        });
-                                                    } else if (existing.status === 'UNMARKED' && status !== 'UNMARKED') {
-                                                        existing.status = status;
-                                                    }
-                                                }
-
-                                                // Pass 1b: check timetable popup cells (openPopup)
-                                                var tdCells = doc.querySelectorAll('td[onclick*="openPopup"]');
-                                                for (var t = 0; t < tdCells.length; t++) {
-                                                    var td = tdCells[t];
-                                                    var onclick = td.getAttribute('onclick') || '';
-                                                    var popupMatch = onclick.match(/openPopup\([^,]*,\s*"([^"]*)"[^,]*,\s*"([^"]*)"[^,]*,\s*"([^"]*)"[^,]*,\s*"([^"]*)"/);
-                                                    if (!popupMatch) continue;
-                                                    var timeR = popupMatch[1];
-                                                    var cCode = popupMatch[2].toUpperCase();
-                                                    var startT = timeR.split('-')[0].trim();
-                                                    var tdStyle = (td.getAttribute('style') || '').toLowerCase();
-                                                    var tdBg = (td.getAttribute('bgcolor') || '').toLowerCase();
-                                                    var tdCls = (td.className || '').toLowerCase();
-                                                    var tdText = getText(td).toLowerCase();
-
-                                                    var cellStatus = null;
-                                                    if (tdStyle.includes('green') || tdBg.includes('green') || tdCls.includes('present') || tdCls.includes('success')) {
-                                                        cellStatus = 'PRESENT';
-                                                    } else if (tdStyle.includes('red') || tdBg.includes('red') || tdCls.includes('absent') || tdCls.includes('danger')) {
-                                                        cellStatus = 'ABSENT';
-                                                    } else if (/\bpresent\b/.test(tdText)) {
-                                                        cellStatus = 'PRESENT';
-                                                    } else if (/\babsent\b/.test(tdText)) {
-                                                        cellStatus = 'ABSENT';
-                                                    }
-
-                                                    if (cellStatus) {
-                                                        var ex = todayStatus.find(function(x) { return x.courseCode === cCode && (!startT || x.start === startT); });
-                                                        if (ex) {
-                                                            if (ex.status === 'UNMARKED') ex.status = cellStatus;
-                                                        } else {
-                                                            todayStatus.push({
-                                                                courseCode: cCode,
-                                                                start: startT,
-                                                                timeRange: timeR,
-                                                                status: cellStatus,
-                                                                raw: 'cell:' + getText(td).substring(0, 60)
-                                                            });
-                                                        }
-                                                    }
-                                                }
-
-                                                // Pass 2: Course-wise summary table
-                                                for (var i = 0; i < rows.length; i++) {
-                                                    var row = rows[i];
-                                                    var cells = row.querySelectorAll('td');
-                                                    if (cells.length < 3) continue;
-
-                                                    var rowText = getText(row);
-                                                    var cMatch = rowText.match(courseCodeRegex);
-                                                    if (!cMatch) continue;
-                                                    var code = cMatch[1].toUpperCase();
-
-                                                    var percMatch = rowText.match(/(\d+(?:\.\d+)?)\s*%/);
-                                                    var percentage = percMatch ? parseFloat(percMatch[1]) : 0;
-
-                                                    var nums = [];
-                                                    for (var c = 0; c < cells.length; c++) {
-                                                        var val = parseInt(getText(cells[c]), 10);
-                                                        if (!isNaN(val) && val >= 0 && val < 500) nums.push(val);
-                                                    }
-
-                                                    var attended = 0, delivered = 0, dl = 0;
-                                                    if (nums.length >= 2) {
-                                                        nums.sort(function(a, b) { return a - b; });
-                                                        attended = nums[0];
-                                                        delivered = nums[nums.length - 1];
-                                                    }
-
-                                                    var existingC = courses.find(function(x) { return x.courseCode === code; });
-                                                    if (!existingC) {
-                                                        courses.push({
-                                                            courseCode: code,
-                                                            courseName: '',
-                                                            attended: attended,
-                                                            delivered: delivered,
-                                                            percentage: percentage > 0 ? percentage : (delivered > 0 ? (attended * 100.0 / delivered) : 0),
-                                                            dutyLeave: dl
-                                                        });
-                                                    } else if (percentage > 0 && existingC.percentage === 0) {
-                                                        existingC.percentage = percentage;
-                                                        existingC.delivered = delivered;
-                                                        existingC.attended = attended;
-                                                    }
-                                                }
-                                            }
-
-                                            if (allHrefs.length > 0) {
-                                                debug.push('Hrefs=' + allHrefs.join(','));
-                                            }
-                                            debug.push('statusCnt=' + todayStatus.length + ' crsCnt=' + courses.length);
-                                            window._skedAttDebug = debug.join(' | ');
-
-                                            return {
-                                                todayStatus: todayStatus,
-                                                courses: courses
-                                            };
-                                        }
-
                                         function fetchAllData(loginHtml, curUser, curPass) {
-                                            window._skedStatus = 'Fetching timetable & live attendance...';
-                                            var docSources = [];
-                                            if (loginHtml) docSources.push({ name: 'login', html: loginHtml });
-
-                                            var uid = curUser || $safeUser;
-                                            var pwd = curPass || $safePass;
+                                            window._skedStatus = 'Fetching timetable...';
 
                                             function safeFetch(url, name) {
                                                 return fetch(url, { credentials: 'include' })
@@ -1843,9 +1599,8 @@ fun UmsAuthBridgeDialog(
                                                     });
                                             }
 
-                                            var timetablePromise = safeFetch('/lpuums/frmMyCurrentTimeTable.aspx', 'ttAspx')
+                                            return safeFetch('/lpuums/frmMyCurrentTimeTable.aspx', 'ttAspx')
                                                 .then(function(res) {
-                                                    if (res.html) docSources.push(res);
                                                     var m = res.html ? res.html.match(/id=["']Select1["'][^>]*>([\s\S]*?)<\/select>/i) : null;
                                                     var termId = '';
                                                     if (m) {
@@ -1866,218 +1621,10 @@ fun UmsAuthBridgeDialog(
                                                 })
                                                 .then(function(json) {
                                                     window._skedTimetableResult = json;
-                                                    try {
-                                                        var dObj = JSON.parse(json);
-                                                        if (dObj && dObj.d) docSources.push({ name: 'GetTimeTable', html: dObj.d });
-                                                    } catch (_) {
-                                                        if (json) docSources.push({ name: 'GetTimeTableRaw', html: json });
-                                                    }
+                                                })
+                                                .catch(function(e) {
+                                                    window._skedError = 'Failed to fetch timetable: ' + e.toString();
                                                 });
-
-                                            var candidateUrls = [
-                                                ['/lpuums/StudentDashboard.aspx', 'StudentDash'],
-                                                ['/lpuums/Default3.aspx', 'Default3']
-                                            ];
-
-                                            var attFetches = candidateUrls.map(function(item) {
-                                                return safeFetch(item[0], item[1]).then(function(res) {
-                                                    if (res.html) docSources.push(res);
-                                                    return res;
-                                                });
-                                            });
-
-                                            var mobilePromise = (function() {
-                                                return new Promise(function(resolve) {
-                                                    try {
-                                                        if (!uid || !pwd) {
-                                                            return resolve({ error: 'Empty credentials' });
-                                                        }
-                                                        var devId = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
-                                                        var body = {
-                                                            UserId: uid,
-                                                            password: pwd,
-                                                            Identity: 'aphone',
-                                                            DeviceId: devId,
-                                                            PlayerId: 'vbnxvcjhvbvcgghgjhgjhdddddjhgjf'
-                                                        };
-                                                        var buildInfo = {
-                                                            baseUrl: null,
-                                                            packageName: 'ums.lovely.university',
-                                                            basePackageName: 'ums.lovely.university',
-                                                            displayName: 'LPUTouch',
-                                                            name: 'App',
-                                                            version: '20.87',
-                                                            versionCode: '20.87',
-                                                            debug: true,
-                                                            buildDate: '2025-11-08T08:02:50.000Z',
-                                                            installDate: '2025-11-08T08:02:50.000Z',
-                                                            buildType: '',
-                                                            flavor: ''
-                                                        };
-
-                                                        // Standalone AES-CBC encryption using Web Crypto API
-                                                        var keyB64 = "m0rDSdPyzt+bo/BuTLgmXssN6TSzRPACdahgiCt5SLs=";
-                                                        var rawKey = window.atob(keyB64);
-                                                        var keyBytes = new Uint8Array(rawKey.length);
-                                                        for (var i = 0; i < rawKey.length; i++) keyBytes[i] = rawKey.charCodeAt(i);
-
-                                                        var iv = window.crypto.getRandomValues(new Uint8Array(16));
-                                                        var payload = {
-                                                            url: 'milkyway',
-                                                            action: 'post',
-                                                            data: body,
-                                                            guest: buildInfo.packageName,
-                                                            guestcount: buildInfo.version
-                                                        };
-                                                        var dataStr = JSON.stringify(payload);
-                                                        var enc = new TextEncoder().encode(dataStr);
-
-                                                        window.crypto.subtle.importKey(
-                                                            "raw", keyBytes.buffer, { name: "AES-CBC", length: 256 }, false, ["encrypt"]
-                                                        ).then(function(cKey) {
-                                                            return window.crypto.subtle.encrypt({ name: "AES-CBC", iv: iv }, cKey, enc);
-                                                        }).then(function(encBuf) {
-                                                            var encBytes = new Uint8Array(encBuf);
-                                                            var encBin = "";
-                                                            for (var j = 0; j < encBytes.byteLength; j++) encBin += String.fromCharCode(encBytes[j]);
-                                                            var ivBin = "";
-                                                            for (var k = 0; k < iv.byteLength; k++) ivBin += String.fromCharCode(iv[k]);
-
-                                                            return fetch('https://ums.lpu.in/umswebservice/umswebservice.svc/PVR', {
-                                                                method: 'POST',
-                                                                headers: { 'Content-Type': 'application/json' },
-                                                                body: JSON.stringify({ v: window.btoa(ivBin), d: window.btoa(encBin) })
-                                                            });
-                                                        }).then(function(r) { return r.json(); })
-                                                        .then(function(pvrData) {
-                                                            var pvrList = JSON.parse(pvrData.PVRResult || '[]');
-                                                            var token = (pvrList && pvrList[0] && pvrList[0].AccessToken) || '';
-                                                            if (!token) {
-                                                                var em = (pvrList && pvrList[0] && pvrList[0].MenuText) || 'No token';
-                                                                return resolve({ error: em });
-                                                            }
-                                                            window._skedMobileToken = token;
-                                                            var bUrl = 'https://ums.lpu.in/umswebservice/umswebservice.svc/StudentBasicInfoForService/' + encodeURIComponent(uid) + '/' + encodeURIComponent(token) + '/' + encodeURIComponent(devId) + '/null/null';
-                                                            var cUrl = 'https://ums.lpu.in/umswebservice/umswebservice.svc/StudentAttendanceForServiceNew/' + encodeURIComponent(uid) + '/' + encodeURIComponent(token) + '/' + encodeURIComponent(devId);
-                                                            return Promise.all([
-                                                                fetch(bUrl).then(function(r) { return r.json(); }).catch(function(e) { return null; }),
-                                                                fetch(cUrl).then(function(r) { return r.json(); }).catch(function(e) { return null; })
-                                                            ]).then(function(pair) {
-                                                                var basicData = pair[0];
-                                                                var coursesData = pair[1] || [];
-                                                                var coursesList = Array.isArray(coursesData) ? coursesData : (coursesData && Array.isArray(coursesData.StudentAttendanceForServiceNewResult) ? coursesData.StudentAttendanceForServiceNewResult : (coursesData && Array.isArray(coursesData.StudentAttendanceForServiceResult) ? coursesData.StudentAttendanceForServiceResult : []));
-                                                                var detailFetches = [];
-                                                                if (Array.isArray(coursesList)) {
-                                                                    coursesList.forEach(function(c) {
-                                                                        var code = (c.CourseCode || c.courseCode || '').trim();
-                                                                        if (code) {
-                                                                            var dUrl = 'https://ums.lpu.in/umswebservice/umswebservice.svc/StudentAttendanceDetailForService/' + encodeURIComponent(uid) + '/' + encodeURIComponent(token) + '/' + encodeURIComponent(devId) + '/' + encodeURIComponent(code);
-                                                                            detailFetches.push(
-                                                                                fetch(dUrl)
-                                                                                    .then(function(r) { return r.json(); })
-                                                                                    .then(function(data) {
-                                                                                        var arr = Array.isArray(data) ? data : (data && Array.isArray(data.StudentAttendanceDetailForServiceResult) ? data.StudentAttendanceDetailForServiceResult : []);
-                                                                                        return { courseCode: code, records: arr };
-                                                                                    })
-                                                                                    .catch(function(e) { return { courseCode: code, records: [] }; })
-                                                                            );
-                                                                        }
-                                                                    });
-                                                                }
-                                                                return Promise.all(detailFetches).then(function(detailsList) {
-                                                                    resolve({
-                                                                        userId: uid,
-                                                                        token: token,
-                                                                        deviceId: devId,
-                                                                        basic: basicData,
-                                                                        courses: coursesList,
-                                                                        details: detailsList
-                                                                    });
-                                                                });
-                                                            });
-                                                        }).catch(function(e) {
-                                                            resolve({ error: e.toString() });
-                                                        });
-                                                    } catch (e) {
-                                                        resolve({ error: e.toString() });
-                                                    }
-                                                });
-                                            })();
-
-                                            return Promise.all([timetablePromise, Promise.all(attFetches), mobilePromise]).then(function(resTriple) {
-                                                var parsed = extractAttendance(docSources);
-                                                var mobRes = resTriple[2] || null;
-
-                                                if (mobRes && !mobRes.error) {
-                                                    window._skedMobileToken = mobRes.token;
-                                                    window._skedMobileDeviceId = mobRes.deviceId;
-                                                    window._skedMobileUserId = mobRes.userId;
-
-                                                    var basic = mobRes.basic;
-                                                    var basicList = Array.isArray(basic) ? basic : (basic && Array.isArray(basic.StudentBasicInfoForServiceResult) ? basic.StudentBasicInfoForServiceResult : []);
-                                                    if (Array.isArray(basicList) && basicList[0] && Array.isArray(basicList[0].TimeTable)) {
-                                                        var mobToday = [];
-                                                        basicList[0].TimeTable.forEach(function(tt) {
-                                                            var at = (tt.AttendanceType || '').toLowerCase();
-                                                            var st = 'UNMARKED';
-                                                            if (at.includes('present')) st = 'PRESENT';
-                                                            else if (at.includes('absent')) st = 'ABSENT';
-                                                            else if (at.includes('duty') || at.includes('leave')) st = 'DUTY_LEAVE';
-
-                                                            var timeStr = tt.AttendanceTime || '';
-                                                            var start = timeStr.split('-')[0].trim().replace(/\s+/g, '');
-                                                            if (start.length > 5) start = start.substring(0, 5);
-
-                                                            mobToday.push({
-                                                                courseCode: (tt.CourseCode || tt.courseCode || '').toUpperCase().trim(),
-                                                                start: start,
-                                                                timeRange: timeStr,
-                                                                status: st,
-                                                                raw: 'mobile:' + JSON.stringify(tt)
-                                                            });
-                                                        });
-                                                        if (mobToday.length > 0) {
-                                                            parsed.todayStatus = mobToday;
-                                                        }
-                                                    }
-
-                                                    var coursesData = mobRes.courses;
-                                                    var coursesList = Array.isArray(coursesData) ? coursesData : (coursesData && Array.isArray(coursesData.StudentAttendanceForServiceNewResult) ? coursesData.StudentAttendanceForServiceNewResult : (coursesData && Array.isArray(coursesData.StudentAttendanceForServiceResult) ? coursesData.StudentAttendanceForServiceResult : []));
-                                                    if (Array.isArray(coursesList) && coursesList.length > 0) {
-                                                        var mobCourses = [];
-                                                        coursesList.forEach(function(c) {
-                                                            var code = (c.CourseCode || c.courseCode || '').toUpperCase().trim();
-                                                            if (!code) return;
-                                                            var attd = parseInt(c.Total_Attd || c.attended || '0', 10);
-                                                            var delv = parseInt(c.Total_Delv || c.delivered || '0', 10);
-                                                            var perc = parseFloat(c.Total_Perc || c.percentage || '0');
-                                                            var dl = parseInt(c.DutyLeave || c.dutyLeave || '0', 10);
-                                                            mobCourses.push({
-                                                                courseCode: code,
-                                                                courseName: c.CourseName || c.courseName || '',
-                                                                attended: attd,
-                                                                delivered: delv,
-                                                                percentage: perc,
-                                                                dutyLeave: dl
-                                                            });
-                                                        });
-                                                        if (mobCourses.length > 0) {
-                                                            parsed.courses = mobCourses;
-                                                        }
-                                                    }
-
-                                                    if (Array.isArray(mobRes.details)) {
-                                                        parsed.courseDetails = mobRes.details;
-                                                    }
-                                                }
-
-                                                window._skedAttendanceResult = JSON.stringify(parsed);
-                                                window._skedAttDebug = (mobRes && mobRes.token ? 'MobileToken:OK' : (mobRes && mobRes.error ? 'MobErr:' + mobRes.error : 'NoMob')) + ' | statusCnt=' + parsed.todayStatus.length + ' crsCnt=' + parsed.courses.length + ' dtlCnt=' + (parsed.courseDetails ? parsed.courseDetails.length : 0);
-                                            }).catch(function(e) {
-                                                var parsed = extractAttendance(docSources);
-                                                window._skedAttendanceResult = JSON.stringify(parsed);
-                                                window._skedAttDebug = 'Err:' + e.toString();
-                                            });
                                         }
 
                                         fetch(form ? form.action : window.location.href, {
@@ -2165,98 +1712,50 @@ fun UmsAuthBridgeDialog(
 
                                     if (hasRes && !isDone) {
                                         isDone = true
-                                        statusText = "Parsing timetable & live attendance..."
+                                        statusText = "Parsing timetable..."
                                         isSyncing = true
                                         wv.evaluateJavascript("window._skedTimetableResult") { ttRaw ->
-                                            wv.evaluateJavascript("window._skedAttendanceResult") { attRaw ->
-                                                wv.evaluateJavascript("window._skedAttDebug || ''") { debugRaw ->
-                                                    wv.evaluateJavascript("window._skedMobileToken || ''") { tokenRaw ->
-                                                coroutineScope.launch(Dispatchers.IO) {
+                                            coroutineScope.launch(Dispatchers.IO) {
+                                                try {
+                                                    val entries = if (!ttRaw.isNullOrBlank()) TimetableParser.parse(ttRaw) else emptyList()
+                                                    if (entries.isNotEmpty()) {
+                                                        TimetableParser.saveToPrefs(context, entries, userId)
+                                                    }
+
                                                     try {
-                                                        val entries = if (!ttRaw.isNullOrBlank()) TimetableParser.parse(ttRaw) else emptyList()
+                                                        val manager = GlanceAppWidgetManager(context)
+                                                        val ids = manager.getGlanceIds(TimetableWidget::class.java)
+                                                        ids.forEach { id ->
+                                                            TimetableWidget().update(context, id)
+                                                        }
+                                                    } catch (_: Exception) {}
+                                                    TimetableRefreshWorker.runNow(context)
+
+                                                    withContext(Dispatchers.Main) {
                                                         if (entries.isNotEmpty()) {
-                                                            TimetableParser.saveToPrefs(context, entries, userId)
-                                                        }
-
-                                                        var markedCount = 0
-                                                        if (!attRaw.isNullOrBlank() && attRaw != "null" && attRaw != "\"\"") {
-                                                            val unquotedAtt = if (attRaw.startsWith("\"") && attRaw.endsWith("\"")) {
-                                                                try { JSONObject("{\"v\":$attRaw}").getString("v") } catch (_: Exception) { attRaw }
-                                                            } else attRaw
-                                                            markedCount = AttendanceManager.saveLiveAttendanceBatch(context, unquotedAtt)
-                                                        }
-
-                                                        val tokenClean = if (!tokenRaw.isNullOrBlank() && tokenRaw != "null" && tokenRaw != "\"\"") {
-                                                            try {
-                                                                if (tokenRaw.startsWith("\"")) JSONObject("{\"v\":$tokenRaw}").getString("v") else tokenRaw
-                                                            } catch (_: Exception) { tokenRaw }
-                                                        } else ""
-
-                                                        android.util.Log.e("SkedSync", "=== SYNC RESULT ===")
-                                                        android.util.Log.e("SkedSync", "ttRaw length: ${ttRaw?.length}")
-                                                        android.util.Log.e("SkedSync", "attRaw: $attRaw")
-                                                        android.util.Log.e("SkedSync", "debugRaw: $debugRaw")
-                                                        android.util.Log.e("SkedSync", "tokenClean: ${if (tokenClean.isNotBlank()) "OK" else "NONE"}")
-                                                        android.util.Log.e("SkedSync", "markedCount: $markedCount")
-
-                                                        val prefsEditor = context.getSharedPreferences("sked_attendance_prefs", Context.MODE_PRIVATE).edit()
-                                                        prefsEditor.putString("last_sync_debug", debugRaw ?: "")
-                                                        prefsEditor.putString("last_att_raw", attRaw ?: "")
-                                                        if (tokenClean.isNotBlank()) {
-                                                            prefsEditor.putString("mobile_token", tokenClean)
-                                                            prefsEditor.putString("mobile_user_id", userId)
-                                                            prefsEditor.putString("mobile_device_id", "3fa85f64-5717-4562-b3fc-2c963f66afa6")
-                                                        }
-                                                        prefsEditor.apply()
-
-                                                        try {
-                                                            val manager = GlanceAppWidgetManager(context)
-                                                            val ids = manager.getGlanceIds(TimetableWidget::class.java)
-                                                            ids.forEach { id ->
-                                                                TimetableWidget().update(context, id)
-                                                            }
-                                                        } catch (_: Exception) {}
-                                                        TimetableRefreshWorker.runNow(context)
-
-                                                        withContext(Dispatchers.Main) {
-                                                            if (entries.isNotEmpty()) {
-                                                                val debugInfo = try {
-                                                                    val dq = if (!debugRaw.isNullOrBlank() && debugRaw != "null" && debugRaw != "\"\"") {
-                                                                        if (debugRaw.startsWith("\"")) JSONObject("{\"v\":$debugRaw}").getString("v") else debugRaw
-                                                                    } else ""
-                                                                    dq
-                                                                } catch (_: Exception) { "" }
-                                                                val msg = if (markedCount > 0) {
-                                                                    "Synced timetable & $markedCount live attendance records"
-                                                                } else {
-                                                                    "Synced timetable (0 attendance records${if (debugInfo.isNotBlank()) " · $debugInfo" else ""})"
-                                                                }
-                                                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                                                onSuccess(userId)
-                                                            } else {
-                                                                isSyncing = false
-                                                                statusText = "No classes found in timetable"
-                                                                Toast.makeText(context, "Found 0 classes in timetable", Toast.LENGTH_LONG).show()
-                                                            }
-                                                        }
-                                                    } catch (e: Exception) {
-                                                        withContext(Dispatchers.Main) {
+                                                            Toast.makeText(context, "Synced timetable (${entries.size} classes)", Toast.LENGTH_SHORT).show()
+                                                            onSuccess(userId)
+                                                        } else {
                                                             isSyncing = false
-                                                            statusText = "Parse error: ${e.message}"
-                                                            Toast.makeText(context, "Parse error: ${e.message}", Toast.LENGTH_LONG).show()
+                                                            statusText = "No classes found in timetable"
+                                                            Toast.makeText(context, "Found 0 classes in timetable", Toast.LENGTH_LONG).show()
                                                         }
                                                     }
+                                                } catch (e: Exception) {
+                                                    withContext(Dispatchers.Main) {
+                                                        isSyncing = false
+                                                        statusText = "Parse error: ${e.message}"
+                                                        Toast.makeText(context, "Parse error: ${e.message}", Toast.LENGTH_LONG).show()
                                                     }
                                                 }
                                             }
                                         }
                                     }
-                                }
-                            } catch (_: Exception) {}
+                                } catch (_: Exception) {}
+                            }
                         }
                     }
                 }
-            }
 
                 // WebView Container
                 Box(
@@ -2481,10 +1980,12 @@ fun SkeletonClassCard() {
 
 // ── Class Timing State & Cards ───────────────────────────────────────────────
 
+// ── Class Timing State & Cards ───────────────────────────────────────────────
+
 enum class ClassTimingState {
-    OVER,       // Class time is over and attendance is still not marked -> NOT MKD
-    UPCOMING,   // Next upcoming class -> UPCOMING
-    PENDING     // Pending future class -> PENDING
+    OVER,       // Class time is over
+    UPCOMING,   // Next upcoming class
+    PENDING     // Pending future class
 }
 
 // ── Staggered Animated Class Item Reveal ────────────────────────────────────
@@ -2495,8 +1996,6 @@ fun StaggeredClassCard(
     index: Int,
     isLive: Boolean = false,
     timingState: ClassTimingState = ClassTimingState.PENDING,
-    attendanceStatus: AttendanceStatus = AttendanceStatus.UNMARKED,
-    courseAttendance: CourseAttendance? = null,
     onClick: (() -> Unit)? = null
 ) {
     var visible by remember(item) { mutableStateOf(false) }
@@ -2524,8 +2023,6 @@ fun StaggeredClassCard(
             item = item,
             isLive = isLive,
             timingState = timingState,
-            attendanceStatus = attendanceStatus,
-            courseAttendance = courseAttendance,
             onClick = onClick
         )
     }
@@ -2538,8 +2035,6 @@ fun ClassCard(
     item: ClassItem,
     isLive: Boolean = false,
     timingState: ClassTimingState = ClassTimingState.PENDING,
-    attendanceStatus: AttendanceStatus = AttendanceStatus.UNMARKED,
-    courseAttendance: CourseAttendance? = null,
     onClick: (() -> Unit)? = null
 ) {
     // Monochrome type labels — no multi-colour system
@@ -2550,23 +2045,16 @@ fun ClassCard(
         else        -> item.type.uppercase().take(3)
     }
 
-    val presentGreen   = Color(0xFF22C55E)
-    val absentRed      = Color(0xFFEF4444)
-    val dutyLeaveBlue  = Color(0xFF38BDF8)
-    val notMarkedGrey  = Color(0xFF71717A)
     val upcomingOrange = Blaze
     val pendingIndigo  = Color(0xFF818CF8)
+    val notMarkedGrey  = Color(0xFF71717A)
 
     // Vertical bar colour inside the app:
-    val verticalColor = when (attendanceStatus) {
-        AttendanceStatus.PRESENT    -> presentGreen
-        AttendanceStatus.ABSENT     -> absentRed
-        AttendanceStatus.DUTY_LEAVE -> dutyLeaveBlue
-        AttendanceStatus.UNMARKED   -> when (timingState) {
-            ClassTimingState.OVER     -> Color(0xFF383838)
-            ClassTimingState.UPCOMING -> upcomingOrange
-            ClassTimingState.PENDING  -> pendingIndigo.copy(alpha = 0.7f)
-        }
+    val verticalColor = when {
+        isLive -> Blaze
+        timingState == ClassTimingState.UPCOMING -> upcomingOrange
+        timingState == ClassTimingState.PENDING  -> pendingIndigo.copy(alpha = 0.7f)
+        else -> Color(0xFF383838)
     }
 
     Surface(
@@ -2599,7 +2087,7 @@ fun ClassCard(
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                // Top row: Course Code + status/type/attendance tags
+                // Top row: Course Code + status/type tags
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -2644,46 +2132,30 @@ fun ClassCard(
 
                         Spacer(modifier = Modifier.width(6.dp))
 
-                        // Status Pill: PRESENT (Green), ABSENT (Red), DUTY LV (Blue), NOT MKD (Slate), UPCOMING (Orange), PENDING (Indigo)
-                        val statusText = when (attendanceStatus) {
-                            AttendanceStatus.PRESENT    -> "PRESENT"
-                            AttendanceStatus.ABSENT     -> "ABSENT"
-                            AttendanceStatus.DUTY_LEAVE -> "DUTY LV"
-                            AttendanceStatus.UNMARKED   -> when (timingState) {
-                                ClassTimingState.OVER     -> "NOT MKD"
-                                ClassTimingState.UPCOMING -> "UPCOMING"
-                                ClassTimingState.PENDING  -> "PENDING"
-                            }
+                        // Timing State Pill: LIVE, NEXT, PENDING, OVER
+                        val statusText = when {
+                            isLive -> "LIVE"
+                            timingState == ClassTimingState.UPCOMING -> "NEXT"
+                            timingState == ClassTimingState.PENDING -> "PENDING"
+                            else -> "OVER"
                         }
-                        val statusColor = when (attendanceStatus) {
-                            AttendanceStatus.PRESENT    -> presentGreen
-                            AttendanceStatus.ABSENT     -> absentRed
-                            AttendanceStatus.DUTY_LEAVE -> dutyLeaveBlue
-                            AttendanceStatus.UNMARKED   -> when (timingState) {
-                                ClassTimingState.OVER     -> notMarkedGrey
-                                ClassTimingState.UPCOMING -> upcomingOrange
-                                ClassTimingState.PENDING  -> pendingIndigo
-                            }
+                        val statusColor = when {
+                            isLive -> Blaze
+                            timingState == ClassTimingState.UPCOMING -> upcomingOrange
+                            timingState == ClassTimingState.PENDING -> pendingIndigo
+                            else -> notMarkedGrey
                         }
-                        val statusBorder = when (attendanceStatus) {
-                            AttendanceStatus.PRESENT    -> presentGreen
-                            AttendanceStatus.ABSENT     -> absentRed
-                            AttendanceStatus.DUTY_LEAVE -> dutyLeaveBlue
-                            AttendanceStatus.UNMARKED   -> when (timingState) {
-                                ClassTimingState.OVER     -> Color(0xFF3F3F46)
-                                ClassTimingState.UPCOMING -> upcomingOrange
-                                ClassTimingState.PENDING  -> pendingIndigo.copy(alpha = 0.6f)
-                            }
+                        val statusBorder = when {
+                            isLive -> Blaze
+                            timingState == ClassTimingState.UPCOMING -> upcomingOrange
+                            timingState == ClassTimingState.PENDING -> pendingIndigo.copy(alpha = 0.6f)
+                            else -> Color(0xFF3F3F46)
                         }
-                        val statusBg = when (attendanceStatus) {
-                            AttendanceStatus.PRESENT    -> presentGreen.copy(alpha = 0.12f)
-                            AttendanceStatus.ABSENT     -> absentRed.copy(alpha = 0.12f)
-                            AttendanceStatus.DUTY_LEAVE -> dutyLeaveBlue.copy(alpha = 0.12f)
-                            AttendanceStatus.UNMARKED   -> when (timingState) {
-                                ClassTimingState.OVER     -> Color(0xFF27272A).copy(alpha = 0.40f)
-                                ClassTimingState.UPCOMING -> upcomingOrange.copy(alpha = 0.14f)
-                                ClassTimingState.PENDING  -> pendingIndigo.copy(alpha = 0.12f)
-                            }
+                        val statusBg = when {
+                            isLive -> Blaze.copy(alpha = 0.15f)
+                            timingState == ClassTimingState.UPCOMING -> upcomingOrange.copy(alpha = 0.14f)
+                            timingState == ClassTimingState.PENDING -> pendingIndigo.copy(alpha = 0.12f)
+                            else -> Color(0xFF27272A).copy(alpha = 0.40f)
                         }
 
                         Surface(
@@ -2705,50 +2177,26 @@ fun ClassCard(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Time + Room + Course Attendance % row
+                // Time + Room
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = item.timeRange.ifEmpty { "${item.start} – ${item.end}" },
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 13.sp,
-                            color = if (isLive) Blaze else Slate
-                        )
+                    Text(
+                        text = item.timeRange.ifEmpty { "${item.start} – ${item.end}" },
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 13.sp,
+                        color = if (isLive) Blaze else Slate
+                    )
 
-                        Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
 
-                        Text(
-                            text = "· ${item.room}",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
-                            color = Slate
-                        )
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (courseAttendance != null && courseAttendance.delivered > 0) {
-                            val pct = courseAttendance.percentage
-                            val pctColor = if (pct >= 75.0) Color(0xFF22C55E) else Color(0xFFEF4444)
-                            Text(
-                                text = "${String.format(Locale.US, "%.0f", pct)}%",
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = pctColor
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                        }
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = "View Details",
-                            tint = Slate,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
+                    Text(
+                        text = "· ${item.room}",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        color = Slate
+                    )
                 }
 
                 // Teacher + Section

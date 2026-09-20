@@ -37,7 +37,7 @@ export default function App() {
         <LiquidMetalHero
           badge="✨ SKED FOR LPU • ANDROID & iOS COMPANION"
           title="Never Miss A Class Again"
-          subtitle="Real-time class schedule, live attendance sync, smart attendance insights, and pure relaxation on Sundays. 100% on-device, zero SaaS clutter, zero tracking."
+          subtitle="Real-time class schedule, live departures widget, zero LPU Touch logouts, and pure relaxation on Sundays. 100% on-device, zero SaaS clutter, zero tracking."
           primaryCtaLabel={
             <span className="flex items-center gap-2">
               <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor"><path d="M17.523 2.262a.758.758 0 0 0-1.037.263l-1.1 1.907A6.6 6.6 0 0 0 12.012 3.5c-1.2 0-2.326.321-3.296.881L7.59 2.46a.758.758 0 1 0-1.312.762l1.07 1.852A6.62 6.62 0 0 0 5.4 9.5h13.2a6.62 6.62 0 0 0-1.894-4.478l1.08-1.873a.758.758 0 0 0-.263-1.037M9.5 7.5a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5m5 0a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5M5.25 10.5A1.25 1.25 0 0 0 4 11.75v4.5a1.25 1.25 0 0 0 2.5 0v-4.5a1.25 1.25 0 0 0-1.25-1.25m13.5 0A1.25 1.25 0 0 0 17.5 11.75v4.5a1.25 1.25 0 0 0 2.5 0v-4.5a1.25 1.25 0 0 0-1.25-1.25M5.5 11v6.5A2 2 0 0 0 7.5 19.5h1v2.75a1.25 1.25 0 0 0 2.5 0V19.5h2v2.75a1.25 1.25 0 0 0 2.5 0V19.5h1a2 2 0 0 0 2-2V11z"/></svg>

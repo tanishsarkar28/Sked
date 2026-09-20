@@ -112,16 +112,6 @@ class TimetableRefreshWorker(ctx: Context, params: WorkerParameters) :
                 }
             }
 
-            // 2b. Passive weekly attendance check (if new week rolled over)
-            try {
-                com.sked.sked_app.AttendanceManager.checkAndResetWeekly(applicationContext)
-            } catch (_: Exception) {}
-
-            // 2c. Attempt to refresh live attendance via saved mobile API token
-            try {
-                com.sked.sked_app.AttendanceManager.refreshFromMobileApi(applicationContext)
-            } catch (_: Exception) {}
-
             // 3. Trigger Glance widget redraw
             val manager = GlanceAppWidgetManager(applicationContext)
             val ids = manager.getGlanceIds(TimetableWidget::class.java)

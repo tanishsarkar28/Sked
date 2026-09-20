@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Never Miss A Class Again</strong><br/>
-  Real-time class schedule, live attendance sync, smart attendance insights, and pure relaxation on Sundays.<br/>
+  Real-time class schedule, live departures widget, zero LPU Touch conflicts, and pure relaxation on Sundays.<br/>
   100% on-device. Zero SaaS clutter. Zero tracking.
 </p>
 
@@ -22,10 +22,10 @@
 ## ✨ Features
 
 ### 📋 Live Departures Board
-Inspired by European airport departures boards. Shows ongoing, upcoming, and finished classes with color-coded status dots — **Present** (green), **Absent** (red), **Duty Leave** (blue), **Not Marked** (grey).
+Inspired by European airport departures boards. Shows ongoing, upcoming, and finished classes with real-time **NOW.** live spotlight, room numbers, and teacher details.
 
-### 📊 Attendance Insights
-Instant attendance analytics for every subject. See your percentage, track sessions attended vs delivered, and know exactly how many classes to attend to stay above the 75% threshold.
+### 🛡️ LPU Touch Compatible (Zero Session Conflict)
+Pure Web UMS timetable scraping with zero mobile webservice calls. Keeps your official **LPU Touch** mobile app permanently logged in without single-device session invalidations.
 
 ### ☕ Sunday Bitmoji Chill Mode
 Sundays are meant for relaxing. The widget automatically strips all academic stress and displays a centered chilling Bitmoji mascot with **"Enjoy your Sunday."**
@@ -34,7 +34,7 @@ Sundays are meant for relaxing. The widget automatically strips all academic str
 No third-party cloud servers, telemetry, or external proxies. All UMS authentication and HTML parsing happens directly inside your phone's secure storage.
 
 ### ⚡ 15-Min Background Auto Sync
-Android WorkManager background updates run every 15 minutes to guarantee your home screen widget reflects newly marked teacher attendance without opening the app.
+Android WorkManager background updates periodically sync your timetable so your home screen widget always reflects your upcoming classes and room changes without opening the app.
 
 ### 📴 100% Offline Ready
 UMS servers crash during 8:30 AM – 9:30 AM peak rush hours. Sked keeps your complete weekly timetable cached locally so you never miss your class or room number.
@@ -49,17 +49,14 @@ Automatic update detection linked to the Sked website. When a new version is upl
 ```
 Sked/
 ├── sked-android/          Native Android app (Primary — Kotlin + Jetpack Compose)
-│   ├── MainActivity.kt          Dashboard, Login, Attendance Cards, Update Dialog
+│   ├── MainActivity.kt          Dashboard, Login, Class Cards, Update Dialog
 │   ├── TimetableParser.kt       On-device HTML table extractor (no server needed)
-│   ├── AttendanceManager.kt     Attendance tracking, history, weekly reset logic
-│   ├── CourseDetailScreen.kt    Per-course attendance detail + session log
 │   ├── AboutDeveloperDialog.kt  Developer info + manual update check
 │   ├── AppUpdateManager.kt      OTA update manager (fetch, download, install)
 │   └── widget/
 │       ├── TimetableWidget.kt          Glance home-screen widget
 │       ├── TimetableWidgetReceiver.kt  Widget broadcast receiver
-│       ├── TimetableRefreshWorker.kt   15-min background sync worker
-│       └── WeeklyResetWorker.kt        Sunday 23:59 weekly attendance reset
+│       └── TimetableRefreshWorker.kt   Background sync worker
 │
 ├── sked-app/              Flutter mobile client (iOS .IPA + cross-platform)
 │   ├── lib/main.dart

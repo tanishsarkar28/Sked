@@ -20,8 +20,6 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.sked.sked_app.MainActivity
 import com.sked.sked_app.R
-import com.sked.sked_app.AttendanceManager
-import com.sked.sked_app.AttendanceStatus
 import org.json.JSONArray
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -56,11 +54,6 @@ class TimetableWidget : GlanceAppWidget() {
         val entries = parseEntries(context, rawJson)
 
         val isSunday = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY
-        val weekSummary = if (isSunday) {
-            AttendanceManager.getWeekAttendanceSummary(context)
-        } else {
-            com.sked.sked_app.WeekAttendanceSummary()
-        }
 
         val mondayEntries = if (isSunday) {
             val allEntries = com.sked.sked_app.TimetableParser.loadFromPrefs(context)
@@ -74,8 +67,7 @@ class TimetableWidget : GlanceAppWidget() {
                     type       = item.type,
                     timeRange  = item.timeRange,
                     teacher    = item.teacher,
-                    section    = item.section,
-                    status     = AttendanceStatus.UNMARKED
+                    section    = item.section
                 )
             }
         } else emptyList()
@@ -86,7 +78,6 @@ class TimetableWidget : GlanceAppWidget() {
                 entries = entries,
                 isLoggedIn = !userId.isNullOrBlank(),
                 isSunday = isSunday,
-                weekSummary = weekSummary,
                 mondayEntries = mondayEntries
             )
         }
@@ -98,7 +89,6 @@ class TimetableWidget : GlanceAppWidget() {
         entries: List<ClassData>,
         isLoggedIn: Boolean,
         isSunday: Boolean = false,
-        weekSummary: com.sked.sked_app.WeekAttendanceSummary = com.sked.sked_app.WeekAttendanceSummary(),
         mondayEntries: List<ClassData> = emptyList()
     ) {
         val launchApp = actionStartActivity<MainActivity>()
@@ -261,7 +251,6 @@ class TimetableWidget : GlanceAppWidget() {
                             SpotlightCard(
                                 entry = spotlightItem,
                                 isLive = liveClass != null,
-                                status = spotlightItem.status,
                                 onClick = launchApp
                             )
                             Spacer(GlanceModifier.height(10.dp))
@@ -305,7 +294,7 @@ class TimetableWidget : GlanceAppWidget() {
 
                         items(
                             remainingClasses,
-                            itemId = { entry -> (entry.start + "_" + entry.courseCode + "_" + entry.status.name).hashCode().toLong() }
+                            itemId = { entry -> (entry.start + "_" + entry.courseCode).hashCode().toLong() }
                         ) { entry ->
                             val startM = parseMinutes(entry.start)
                             val endM = parseMinutes(entry.end.ifEmpty { entry.start })
@@ -318,7 +307,6 @@ class TimetableWidget : GlanceAppWidget() {
                                 isDone = isDone,
                                 isLive = isLive,
                                 isNext = isNext,
-                                status = entry.status,
                                 onClick = launchApp
                             )
                             Spacer(GlanceModifier.height(6.dp))
@@ -335,7 +323,6 @@ class TimetableWidget : GlanceAppWidget() {
     private fun SpotlightCard(
         entry: ClassData,
         isLive: Boolean,
-        status: AttendanceStatus,
         onClick: androidx.glance.action.Action
     ) {
         val typeTag = when (entry.type) {
@@ -345,19 +332,8 @@ class TimetableWidget : GlanceAppWidget() {
             else        -> entry.type.uppercase().take(3)
         }
 
-        val dotColor = when (status) {
-            AttendanceStatus.PRESENT    -> PresentGreen
-            AttendanceStatus.ABSENT     -> AbsentRed
-            AttendanceStatus.DUTY_LEAVE -> DutyLeaveBlue
-            AttendanceStatus.UNMARKED   -> UpcomingOrange
-        }
-
-        val barColor = when (status) {
-            AttendanceStatus.PRESENT    -> PresentGreen
-            AttendanceStatus.ABSENT     -> AbsentRed
-            AttendanceStatus.DUTY_LEAVE -> DutyLeaveBlue
-            AttendanceStatus.UNMARKED   -> if (isLive) Blaze else Blaze.copy(alpha = 0.6f)
-        }
+        val dotColor = if (isLive) Blaze else Slate
+        val barColor = if (isLive) Blaze else Blaze.copy(alpha = 0.6f)
 
         Row(
             modifier = GlanceModifier
@@ -385,7 +361,7 @@ class TimetableWidget : GlanceAppWidget() {
                     modifier = GlanceModifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Attendance Dot in Spotlight
+                    // Status Dot in Spotlight
                     Box(
                         modifier = GlanceModifier
                             .size(6.dp)
@@ -559,7 +535,6 @@ class TimetableWidget : GlanceAppWidget() {
         isDone: Boolean,
         isLive: Boolean,
         isNext: Boolean = false,
-        status: AttendanceStatus,
         onClick: androidx.glance.action.Action
     ) {
         val typeTag = when (entry.type) {
@@ -569,15 +544,11 @@ class TimetableWidget : GlanceAppWidget() {
             else        -> entry.type.uppercase().take(3)
         }
 
-        val dotColor = when (status) {
-            AttendanceStatus.PRESENT    -> PresentGreen
-            AttendanceStatus.ABSENT     -> AbsentRed
-            AttendanceStatus.DUTY_LEAVE -> DutyLeaveBlue
-            AttendanceStatus.UNMARKED   -> when {
-                isLive || isNext -> UpcomingOrange
-                !isDone          -> PendingIndigo
-                else             -> NotMarkedGrey
-            }
+        val dotColor = when {
+            isLive -> Blaze
+            isNext -> UpcomingOrange
+            isDone -> Color(0xFF333333)
+            else   -> Slate
         }
 
         val rowBg = if (isDone) Color(0xFF0F0F0F) else Slab
@@ -594,7 +565,7 @@ class TimetableWidget : GlanceAppWidget() {
                 .padding(vertical = 8.dp, horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Attendance Status Dot
+            // Live/Next/Done indicator dot
             Box(
                 modifier = GlanceModifier
                     .size(6.dp)
@@ -670,8 +641,7 @@ class TimetableWidget : GlanceAppWidget() {
         val type: String,
         val timeRange: String,
         val teacher: String = "",
-        val section: String = "",
-        val status: AttendanceStatus = AttendanceStatus.UNMARKED
+        val section: String = ""
     )
 
     private fun parseMinutes(timeStr: String): Int {
@@ -701,8 +671,7 @@ class TimetableWidget : GlanceAppWidget() {
                     type       = obj.optString("type", "Lecture"),
                     timeRange  = obj.optString("timeRange"),
                     teacher    = obj.optString("teacher"),
-                    section    = obj.optString("section"),
-                    status     = AttendanceManager.getStatus(context, code, start)
+                    section    = obj.optString("section")
                 )
             }
         } catch (_: Exception) {

@@ -16,13 +16,13 @@ export const FeatureShowcase: React.FC = () => {
       icon: CalendarClock,
       title: "LIVE DEPARTURES BOARD",
       tag: "REAL-TIME",
-      desc: "Inspired by European airport departures boards. Shows ongoing, upcoming, and finished classes with color-coded status dots (Present, Absent, Duty Leave, Not Marked).",
+      desc: "Inspired by European airport departures boards. Shows ongoing, upcoming, and finished classes with real-time NOW. spotlight, room numbers, and teacher details.",
     },
     {
-      icon: Calculator,
-      title: "ATTENDANCE INSIGHTS",
-      tag: "SMART METRICS",
-      desc: "Instant attendance analytics for every subject. See your percentage, track sessions attended vs delivered, and know exactly how many classes to attend to stay above the 75% threshold.",
+      icon: ShieldCheck,
+      title: "LPU TOUCH COMPATIBLE",
+      tag: "ZERO CONFLICT",
+      desc: "Pure Web UMS timetable scraping with zero mobile webservice calls. Keeps your official LPU Touch mobile app permanently logged in without single-device session invalidations.",
     },
     {
       icon: Coffee,
@@ -38,9 +38,9 @@ export const FeatureShowcase: React.FC = () => {
     },
     {
       icon: Zap,
-      title: "15-MIN BACKGROUND AUTO SYNC",
+      title: "BACKGROUND AUTO SYNC",
       tag: "GLANCE WIDGET",
-      desc: "Android WorkManager background updates run every 15 minutes to guarantee your home screen widget reflects newly marked teacher attendance without opening the app.",
+      desc: "Android WorkManager background updates run periodically to guarantee your home screen widget stays up to date with your class schedule without opening the app.",
     },
     {
       icon: WifiOff,

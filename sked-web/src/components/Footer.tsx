@@ -14,7 +14,7 @@ export const Footer: React.FC = () => {
             SKED<span className="text-[#E8E6E3]">.</span>
           </span>
           <span className="text-xs text-[#7A7774] font-mono">
-            © 2026 • LPU Timetable & Attendance Companion
+            © 2026 • LPU Timetable & Widget Companion
           </span>
         </div>
 

@@ -2,7 +2,7 @@
   "versionCode": 1,
   "versionName": "1.0.0",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Initial public release of Sked\n• Live departures board & timetable widget\n• Attendance insights & offline-first cache",
+  "releaseNotes": "• Initial public release of Sked\n• Live departures board & timetable widget\n• Zero LPU Touch conflicts & offline-first cache",
   "apkUrl": "https://raw.githubusercontent.com/tanishsarkar28/Sked/main/sked-web/public/downloads/sked-android.apk",
   "directDownloadUrl": "/downloads/sked-android.apk",
   "fileSize": "19.5 MB",
