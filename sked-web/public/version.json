@@ -1,0 +1,10 @@
+{
+  "versionCode": 2,
+  "versionName": "1.1.0",
+  "minSupportedVersion": 1,
+  "releaseNotes": "• Automatic In-App Updates: Get new versions instantly with 1 tap\n• Tablet Layout Support: Expanded widget resizing up to 1024dp\n• Universal Department Support: Agriculture, Fashion Design & more\n• Enhanced background sync reliability",
+  "apkUrl": "https://raw.githubusercontent.com/tanishsarkar28/Sked/main/sked-web/public/downloads/sked-android.apk",
+  "directDownloadUrl": "/downloads/sked-android.apk",
+  "fileSize": "19.5 MB",
+  "updatedAt": "2026-09-20"
+}

@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build outputs
+dist/
+build/
+*.apk
+*.ipa
+*.aab
+
+# Android
+sked-android/.gradle/
+sked-android/build/
+sked-android/app/build/
+sked-android/local.properties
+sked-android/.idea/
+
+# Flutter
+sked-app/.dart_tool/
+sked-app/.packages
+sked-app/build/
+sked-app/.flutter-plugins
+sked-app/.flutter-plugins-dependencies
+sked-app/ios/Pods/
+sked-app/ios/.symlinks/
+sked-app/pubspec.lock
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Misc
+*.log
+.gemini/

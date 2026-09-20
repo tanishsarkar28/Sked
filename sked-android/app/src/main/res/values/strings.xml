@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Sked</string>
+    <string name="widget_description">Shows today\'s class schedule with live room and timing info.</string>
+</resources>
