@@ -14,15 +14,49 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+data class DepartmentItem(
+    val id: String,
+    val name: String,
+    val streamCode: String,
+    val count: Int,
+    val color: Long // ARGB color
+)
+
 data class TelemetrySnapshot(
     val totalInstalls: Int = 0,
     val dauToday: Int = 0,
     val widgetSyncsToday: Int = 0,
-    val batch2024: Int = 0,
-    val batch2023: Int = 0,
-    val batch2022: Int = 0,
-    val batchOther: Int = 0
-)
+    // Cohorts / Academic Years
+    val batch2026: Int = 0, // 1st Year
+    val batch2025: Int = 0, // 2nd Year
+    val batch2024: Int = 0, // 3rd Year
+    val batch2023: Int = 0, // 4th Year
+    val batchOther: Int = 0,
+    // Departments
+    val deptCse: Int = 0,
+    val deptMgmt: Int = 0,
+    val deptEce: Int = 0,
+    val deptMech: Int = 0,
+    val deptBio: Int = 0,
+    val deptPharma: Int = 0,
+    val deptLaw: Int = 0,
+    val deptDesign: Int = 0,
+    val deptOther: Int = 0
+) {
+    fun getDepartmentList(): List<DepartmentItem> {
+        return listOf(
+            DepartmentItem("cse", "Computer Science & IT", "CSE / INT / CAP", deptCse, 0xFFFF6B1A),
+            DepartmentItem("mgmt", "Mittal School of Business", "MBA / BBA / MKT", deptMgmt, 0xFFA855F7),
+            DepartmentItem("ece", "Electronics & Electrical", "ECE / EEE / PEL", deptEce, 0xFF38BDF8),
+            DepartmentItem("mech", "Mechanical & Civil Eng", "ME / CE / CHE", deptMech, 0xFFF59E0B),
+            DepartmentItem("bio", "Bioengineering & Biotech", "BTY / BIO / BOT", deptBio, 0xFF10B981),
+            DepartmentItem("pharma", "Pharmaceutical Sciences", "B.Pharm / M.Pharm", deptPharma, 0xFFF43F5E),
+            DepartmentItem("law", "School of Law", "BA-LLB / LLM", deptLaw, 0xFF818CF8),
+            DepartmentItem("design", "Design & Architecture", "B.Des / B.Arch", deptDesign, 0xFF14B8A6),
+            DepartmentItem("other", "Applied Sciences & Other", "General / Sciences", deptOther, 0xFF71717A)
+        )
+    }
+}
 
 object TelemetryManager {
 
@@ -31,7 +65,6 @@ object TelemetryManager {
     private const val KEY_INSTALLED = "has_registered_install"
     private const val KEY_LAST_DAU_DATE = "last_dau_date"
     private const val KEY_LAST_SYNC_HOUR = "last_sync_hour"
-    private const val KEY_BATCH_REGISTERED = "has_registered_batch"
 
     private const val BASE_URL = "https://abacus.jasoncameron.dev"
     private const val NAMESPACE = "sked_official_app"
@@ -70,7 +103,8 @@ object TelemetryManager {
             if (conn.responseCode in 200..299) {
                 val body = conn.inputStream.bufferedReader().use { it.readText() }
                 conn.disconnect()
-                JSONObject(body).optInt("value", 0)
+                val json = JSONObject(body)
+                if (json.has("value")) json.optInt("value", 0) else 0
             } else {
                 conn.disconnect()
                 0
@@ -125,21 +159,87 @@ object TelemetryManager {
 
     /**
      * Records student cohort/batch once per device based on Registration Number.
-     * E.g. 12407229 -> "24" -> batch_2024
+     * 2026: 1st Year (126... or K26...)
+     * 2025: 2nd Year (125... or K25...)
+     * 2024: 3rd Year (124... or K24...)
+     * 2023: 4th Year (123... or K23...)
      */
     fun recordStudentBatch(context: Context, regNo: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        if (!prefs.getBoolean(KEY_BATCH_REGISTERED, false) && regNo.length >= 3) {
+        if (regNo.length >= 3) {
             val trimmed = regNo.trim()
             val batchKey = when {
+                trimmed.startsWith("126") || trimmed.contains("K26", ignoreCase = true) -> "batch_2026"
+                trimmed.startsWith("125") || trimmed.contains("K25", ignoreCase = true) -> "batch_2025"
                 trimmed.startsWith("124") || trimmed.contains("K24", ignoreCase = true) -> "batch_2024"
                 trimmed.startsWith("123") || trimmed.contains("K23", ignoreCase = true) -> "batch_2023"
-                trimmed.startsWith("122") || trimmed.contains("K22", ignoreCase = true) -> "batch_2022"
                 else -> "batch_other"
             }
-            pingCounter(batchKey)
-            prefs.edit().putBoolean(KEY_BATCH_REGISTERED, true).apply()
-            Log.i(TAG, "Student cohort recorded: $batchKey")
+            if (!prefs.getBoolean("has_registered_$batchKey", false)) {
+                pingCounter(batchKey)
+                prefs.edit().putBoolean("has_registered_$batchKey", true).apply()
+                Log.i(TAG, "Student cohort recorded: $batchKey")
+            }
+        }
+    }
+
+    /**
+     * Identifies academic department from enrolled course codes.
+     */
+    fun detectDepartment(courseCodes: List<String>): String {
+        var cseCount = 0
+        var mgmtCount = 0
+        var eceCount = 0
+        var mechCount = 0
+        var bioCount = 0
+        var pharmaCount = 0
+        var lawCount = 0
+        var designCount = 0
+        var otherCount = 0
+
+        for (rawCode in courseCodes) {
+            val code = rawCode.trim().uppercase()
+            val prefix = if (code.length >= 3) code.take(3) else code
+            when (prefix) {
+                "CSE", "INT", "CAP", "CSN", "CYB", "DTA", "MCA", "BCA" -> cseCount++
+                "MKT", "MGM", "FIN", "ACC", "ECO", "HRM", "SCM", "BUS", "COM", "BBA", "MBA" -> mgmtCount++
+                "ECE", "EEE", "PEL", "ETE", "ICE", "POW" -> eceCount++
+                "MEC", "CIV", "CHE", "MEE", "AUT", "GEO", "STR" -> mechCount++
+                "BTY", "BOT", "ZOO", "BIO", "BCH", "GEN", "MIC" -> bioCount++
+                "PHA", "PCL", "PCG", "PHM" -> pharmaCount++
+                "LAW", "POL", "HIS", "PSY", "SOC", "PUB", "ENG" -> lawCount++
+                "DES", "ARC", "FAS", "GAM", "FIL", "IDN" -> designCount++
+                "PEA", "PES", "GEN" -> {} // General university foundation
+                else -> otherCount++
+            }
+        }
+
+        val candidates = listOf(
+            "cse" to cseCount,
+            "mgmt" to mgmtCount,
+            "ece" to eceCount,
+            "mech" to mechCount,
+            "bio" to bioCount,
+            "pharma" to pharmaCount,
+            "law" to lawCount,
+            "design" to designCount,
+            "other" to otherCount
+        )
+
+        val top = candidates.maxByOrNull { it.second }
+        return if (top != null && top.second > 0) top.first else "cse"
+    }
+
+    /**
+     * Records student department once per device.
+     */
+    fun recordStudentDepartment(context: Context, courseCodes: List<String>) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (courseCodes.isNotEmpty() && !prefs.getBoolean("has_registered_dept_v2", false)) {
+            val deptKey = detectDepartment(courseCodes)
+            pingCounter("dept_$deptKey")
+            prefs.edit().putBoolean("has_registered_dept_v2", true).putString("cached_dept", deptKey).apply()
+            Log.i(TAG, "Student department recorded: dept_$deptKey")
         }
     }
 
@@ -152,19 +252,43 @@ object TelemetryManager {
         val installsDeferred = async { fetchCounter("installs") }
         val dauDeferred = async { fetchCounter("dau_$today") }
         val syncsDeferred = async { fetchCounter("syncs_$today") }
+
+        // Cohort deferred
+        val b2026Deferred = async { fetchCounter("batch_2026") }
+        val b2025Deferred = async { fetchCounter("batch_2025") }
         val b2024Deferred = async { fetchCounter("batch_2024") }
         val b2023Deferred = async { fetchCounter("batch_2023") }
-        val b2022Deferred = async { fetchCounter("batch_2022") }
         val bOtherDeferred = async { fetchCounter("batch_other") }
+
+        // Department deferred
+        val deptCseDeferred = async { fetchCounter("dept_cse") }
+        val deptMgmtDeferred = async { fetchCounter("dept_mgmt") }
+        val deptEceDeferred = async { fetchCounter("dept_ece") }
+        val deptMechDeferred = async { fetchCounter("dept_mech") }
+        val deptBioDeferred = async { fetchCounter("dept_bio") }
+        val deptPharmaDeferred = async { fetchCounter("dept_pharma") }
+        val deptLawDeferred = async { fetchCounter("dept_law") }
+        val deptDesignDeferred = async { fetchCounter("dept_design") }
+        val deptOtherDeferred = async { fetchCounter("dept_other") }
 
         TelemetrySnapshot(
             totalInstalls = installsDeferred.await(),
             dauToday = dauDeferred.await(),
             widgetSyncsToday = syncsDeferred.await(),
+            batch2026 = b2026Deferred.await(),
+            batch2025 = b2025Deferred.await(),
             batch2024 = b2024Deferred.await(),
             batch2023 = b2023Deferred.await(),
-            batch2022 = b2022Deferred.await(),
-            batchOther = bOtherDeferred.await()
+            batchOther = bOtherDeferred.await(),
+            deptCse = deptCseDeferred.await(),
+            deptMgmt = deptMgmtDeferred.await(),
+            deptEce = deptEceDeferred.await(),
+            deptMech = deptMechDeferred.await(),
+            deptBio = deptBioDeferred.await(),
+            deptPharma = deptPharmaDeferred.await(),
+            deptLaw = deptLawDeferred.await(),
+            deptDesign = deptDesignDeferred.await(),
+            deptOther = deptOtherDeferred.await()
         )
     }
 }

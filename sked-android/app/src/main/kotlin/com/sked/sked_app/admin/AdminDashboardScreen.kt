@@ -272,15 +272,81 @@ fun AdminDashboardScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    val totalBatches = (telemetry.batch2024 + telemetry.batch2023 + telemetry.batch2022 + telemetry.batchOther).coerceAtLeast(1)
+                    val totalBatches = (telemetry.batch2026 + telemetry.batch2025 + telemetry.batch2024 + telemetry.batch2023 + telemetry.batchOther).coerceAtLeast(1)
 
-                    BatchBarItem("Batch 2024 (2nd Year)", telemetry.batch2024, totalBatches, Blaze)
+                    BatchBarItem("Batch 2026 (1st Year)", telemetry.batch2026, totalBatches, Color(0xFF38BDF8))
                     Spacer(modifier = Modifier.height(10.dp))
-                    BatchBarItem("Batch 2023 (3rd Year)", telemetry.batch2023, totalBatches, Color(0xFF38BDF8))
+                    BatchBarItem("Batch 2025 (2nd Year)", telemetry.batch2025, totalBatches, Color(0xFF22C55E))
                     Spacer(modifier = Modifier.height(10.dp))
-                    BatchBarItem("Batch 2022 (4th Year)", telemetry.batch2022, totalBatches, Color(0xFF22C55E))
+                    BatchBarItem("Batch 2024 (3rd Year)", telemetry.batch2024, totalBatches, Blaze)
                     Spacer(modifier = Modifier.height(10.dp))
-                    BatchBarItem("Freshers & Other", telemetry.batchOther, totalBatches, Slate)
+                    BatchBarItem("Batch 2023 (4th Year)", telemetry.batch2023, totalBatches, Color(0xFFA855F7))
+                    Spacer(modifier = Modifier.height(10.dp))
+                    BatchBarItem("Other / PG Cohorts", telemetry.batchOther, totalBatches, Slate)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ── Department & Stream Distribution Card ────────────────────────
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = Slab,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "DEPARTMENT & STREAM DISTRIBUTION",
+                                fontSize = 12.sp,
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                color = Slate,
+                                letterSpacing = 1.sp
+                            )
+                            Text(
+                                text = "Active students across academic schools",
+                                fontSize = 10.sp,
+                                color = Slate
+                            )
+                        }
+                        Icon(
+                            Icons.Default.Category,
+                            contentDescription = null,
+                            tint = Blaze,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    val deptList = telemetry.getDepartmentList()
+                    val totalDepts = deptList.sumOf { it.count }
+
+                    // Visual Multi-Segment Bar Chart
+                    DepartmentSegmentedBar(deptList, totalDepts)
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Department Table / Breakdown List
+                    deptList.forEachIndexed { index, dept ->
+                        DepartmentRowItem(
+                            name = dept.name,
+                            streamCode = dept.streamCode,
+                            count = dept.count,
+                            total = totalDepts,
+                            color = Color(dept.color)
+                        )
+                        if (index < deptList.lastIndex) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
                 }
             }
 
@@ -564,5 +630,123 @@ private fun DiagnosticRow(label: String, value: String) {
     ) {
         Text(text = label, fontSize = 12.sp, color = Slate)
         Text(text = value, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Chalk)
+    }
+}
+
+@Composable
+private fun DepartmentSegmentedBar(
+    departments: List<com.sked.sked_app.telemetry.DepartmentItem>,
+    total: Int
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (total > 0) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(Rule)
+            ) {
+                departments.filter { it.count > 0 }.forEach { dept ->
+                    val weight = dept.count.toFloat() / total.toFloat()
+                    Box(
+                        modifier = Modifier
+                            .weight(weight)
+                            .fillMaxHeight()
+                            .background(Color(dept.color))
+                    )
+                }
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(Rule)
+            )
+        }
+    }
+}
+
+@Composable
+private fun DepartmentRowItem(
+    name: String,
+    streamCode: String,
+    count: Int,
+    total: Int,
+    color: Color
+) {
+    val percentage = if (total > 0) (count * 100f / total) else 0f
+    val progress = if (total > 0 && count > 0) (count.toFloat() / total.toFloat()).coerceIn(0.04f, 1f) else 0f
+
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(color)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = name,
+                        fontSize = 13.sp,
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        color = Chalk
+                    )
+                    Text(
+                        text = streamCode,
+                        fontSize = 10.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        color = Slate
+                    )
+                }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "$count",
+                    fontSize = 12.sp,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = color
+                )
+                Text(
+                    text = " (${String.format(java.util.Locale.US, "%.0f", percentage)}%)",
+                    fontSize = 11.sp,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    color = Slate
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Rule)
+        ) {
+            if (progress > 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(color)
+                )
+            }
+        }
     }
 }

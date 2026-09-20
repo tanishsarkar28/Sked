@@ -220,6 +220,14 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
         coroutineScope.launch(Dispatchers.IO) {
             try {
                 val allEntries = TimetableParser.loadFromPrefs(context)
+                if (allEntries.isNotEmpty()) {
+                    val courseCodes = allEntries.map { it.courseCode }
+                    com.sked.sked_app.telemetry.TelemetryManager.recordStudentDepartment(context, courseCodes)
+                    val savedUserId = prefs.getString("user_id", "") ?: ""
+                    if (savedUserId.isNotBlank()) {
+                        com.sked.sked_app.telemetry.TelemetryManager.recordStudentBatch(context, savedUserId)
+                    }
+                }
                 todayName = TimetableParser.todayName()
                 val todayEntries = TimetableParser.filterByDay(allEntries, todayName)
                 val weekMap = TimetableParser.groupByDay(allEntries)
