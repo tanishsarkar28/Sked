@@ -137,7 +137,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         WebView.setWebContentsDebuggingEnabled(true)
-        com.sked.sked_app.telemetry.InstallTracker.registerInstallIfNeeded(this)
+        com.sked.sked_app.telemetry.TelemetryManager.recordInstallIfNeeded(this)
+        com.sked.sked_app.telemetry.TelemetryManager.recordDailyActiveUser(this)
         TimetableRefreshWorker.schedule(this)
         com.sked.sked_app.widget.WeeklyResetWorker.schedule(this)
         AttendanceManager.checkAndResetWeekly(this)
@@ -295,6 +296,7 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                 loginUserIdInput = id
                 loginPasswordInput = pass
                 prefs.edit().putString("saved_ums_pwd", pass).apply()
+                com.sked.sked_app.telemetry.TelemetryManager.recordStudentBatch(context, id)
                 coroutineScope.launch(Dispatchers.IO) {
                     AttendanceManager.loginAndSyncMobileApi(context, id, pass)
                 }

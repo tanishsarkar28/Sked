@@ -19,12 +19,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sked.sked_app.*
-import com.sked.sked_app.telemetry.InstallTracker
+import com.sked.sked_app.telemetry.TelemetryManager
+import com.sked.sked_app.telemetry.TelemetrySnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -39,9 +41,9 @@ fun AdminDashboardScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    var installCount by remember { mutableStateOf<Int?>(null) }
+    var telemetry by remember { mutableStateOf(TelemetrySnapshot()) }
     var isLoadingStats by remember { mutableStateOf(true) }
-    var remoteVersionName by remember { mutableStateOf("Loading...") }
+    var remoteVersionName by remember { mutableStateOf("Checking...") }
     var remoteVersionCode by remember { mutableStateOf<Int?>(null) }
     var lastRefreshedTime by remember { mutableStateOf("Just now") }
 
@@ -60,10 +62,10 @@ fun AdminDashboardScreen(
     fun loadData() {
         isLoadingStats = true
         coroutineScope.launch {
-            val count = InstallTracker.getLiveInstallCount()
-            installCount = if (count >= 0) count else 0
+            val snap = TelemetryManager.fetchFullTelemetry()
+            telemetry = snap
 
-            // Also check remote version.json
+            // Check remote version.json
             withContext(Dispatchers.IO) {
                 try {
                     val url = URL("https://raw.githubusercontent.com/tanishsarkar28/Sked/main/sked-web/public/version.json")
@@ -79,7 +81,7 @@ fun AdminDashboardScreen(
                     }
                     conn.disconnect()
                 } catch (_: Exception) {
-                    remoteVersionName = "v1.0.0 (offline)"
+                    remoteVersionName = "v1.0.0"
                 }
             }
 
@@ -103,10 +105,10 @@ fun AdminDashboardScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = 18.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // ── Top Bar Header ───────────────────────────────────────────────
             Row(
@@ -153,7 +155,7 @@ fun AdminDashboardScreen(
                         }
                     }
                     Text(
-                        text = "Root Master Control & Telemetry",
+                        text = "Real-time Telemetry & Engagement",
                         fontSize = 12.sp,
                         color = Slate
                     )
@@ -175,23 +177,85 @@ fun AdminDashboardScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // ── HERO CARD: Total User Installs ───────────────────────────────
+            // ── 2x2 Primary Engagement Metric Cards ──────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Card 1: Total Lifetime Installs
+                MetricGridCard(
+                    modifier = Modifier.weight(1f),
+                    title = "TOTAL INSTALLS",
+                    value = if (isLoadingStats) "..." else "${telemetry.totalInstalls}",
+                    subtitle = "Unique devices",
+                    icon = Icons.AutoMirrored.Filled.TrendingUp,
+                    accentColor = Blaze
+                )
+
+                // Card 2: Daily Active Users (DAU)
+                MetricGridCard(
+                    modifier = Modifier.weight(1f),
+                    title = "ACTIVE TODAY (DAU)",
+                    value = if (isLoadingStats) "..." else "${telemetry.dauToday}",
+                    subtitle = "Unique students today",
+                    icon = Icons.Default.Bolt,
+                    accentColor = Color(0xFF22C55E)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Card 3: Widget Background Syncs Today
+                MetricGridCard(
+                    modifier = Modifier.weight(1f),
+                    title = "WIDGET SYNCS",
+                    value = if (isLoadingStats) "..." else "${telemetry.widgetSyncsToday}",
+                    subtitle = "Glance updates today",
+                    icon = Icons.Default.Sync,
+                    accentColor = Color(0xFF38BDF8)
+                )
+
+                // Card 4: Retention / Active Ratio
+                val retentionPercent = if (telemetry.totalInstalls > 0) {
+                    val pct = (telemetry.dauToday.toFloat() / telemetry.totalInstalls.toFloat() * 100).toInt()
+                    "${pct.coerceIn(0, 100)}%"
+                } else {
+                    "100%"
+                }
+
+                MetricGridCard(
+                    modifier = Modifier.weight(1f),
+                    title = "ENGAGEMENT RATE",
+                    value = if (isLoadingStats) "..." else retentionPercent,
+                    subtitle = "DAU / Total ratio",
+                    icon = Icons.Default.Speed,
+                    accentColor = Color(0xFFA855F7)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ── Student Cohort & Batch Distribution Card ─────────────────────
             Surface(
                 shape = RoundedCornerShape(6.dp),
                 color = Slab,
                 border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(20.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "GLOBAL INSTALLATIONS",
+                            text = "STUDENT COHORT DISTRIBUTION",
                             fontSize = 12.sp,
                             fontFamily = BarlowCondensed,
                             fontWeight = FontWeight.Bold,
@@ -199,76 +263,24 @@ fun AdminDashboardScreen(
                             letterSpacing = 1.sp
                         )
                         Icon(
-                            Icons.AutoMirrored.Filled.TrendingUp,
+                            Icons.Default.School,
                             contentDescription = null,
                             tint = Blaze,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                    if (isLoadingStats) {
-                        CircularProgressIndicator(
-                            color = Blaze,
-                            modifier = Modifier.size(36.dp),
-                            strokeWidth = 3.dp
-                        )
-                    } else {
-                        Text(
-                            text = "${installCount ?: 0}",
-                            fontSize = 54.sp,
-                            fontFamily = BarlowCondensed,
-                            fontWeight = FontWeight.Bold,
-                            color = Chalk,
-                            letterSpacing = (-1).sp
-                        )
-                    }
+                    val totalBatches = (telemetry.batch2024 + telemetry.batch2023 + telemetry.batch2022 + telemetry.batchOther).coerceAtLeast(1)
 
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Text(
-                        text = "Unique devices that have installed and opened Sked.",
-                        fontSize = 13.sp,
-                        color = Slate
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Last synced: $lastRefreshedTime",
-                            fontSize = 11.sp,
-                            color = Slate
-                        )
-
-                        Button(
-                            onClick = { loadData() },
-                            colors = ButtonDefaults.buttonColors(containerColor = SlabElevated),
-                            shape = RoundedCornerShape(4.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = null,
-                                tint = Chalk,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "REFRESH",
-                                fontSize = 12.sp,
-                                fontFamily = BarlowCondensed,
-                                fontWeight = FontWeight.Bold,
-                                color = Chalk
-                            )
-                        }
-                    }
+                    BatchBarItem("Batch 2024 (2nd Year)", telemetry.batch2024, totalBatches, Blaze)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    BatchBarItem("Batch 2023 (3rd Year)", telemetry.batch2023, totalBatches, Color(0xFF38BDF8))
+                    Spacer(modifier = Modifier.height(10.dp))
+                    BatchBarItem("Batch 2022 (4th Year)", telemetry.batch2022, totalBatches, Color(0xFF22C55E))
+                    Spacer(modifier = Modifier.height(10.dp))
+                    BatchBarItem("Freshers & Other", telemetry.batchOther, totalBatches, Slate)
                 }
             }
 
@@ -277,9 +289,8 @@ fun AdminDashboardScreen(
             // ── Grid: Version & Release Diagnostics ──────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Left Card: Installed Version
                 Surface(
                     shape = RoundedCornerShape(6.dp),
                     color = Slab,
@@ -288,17 +299,17 @@ fun AdminDashboardScreen(
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Text(
-                            text = "LOCAL BUILD",
+                            text = "INSTALLED BUILD",
                             fontSize = 11.sp,
                             fontFamily = BarlowCondensed,
                             fontWeight = FontWeight.Bold,
                             color = Slate,
                             letterSpacing = 0.5.sp
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "v1.0.0",
-                            fontSize = 20.sp,
+                            fontSize = 18.sp,
                             fontFamily = BarlowCondensed,
                             fontWeight = FontWeight.Bold,
                             color = Chalk
@@ -311,7 +322,6 @@ fun AdminDashboardScreen(
                     }
                 }
 
-                // Right Card: OTA Remote Version
                 Surface(
                     shape = RoundedCornerShape(6.dp),
                     color = Slab,
@@ -327,10 +337,10 @@ fun AdminDashboardScreen(
                             color = Slate,
                             letterSpacing = 0.5.sp
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = remoteVersionName,
-                            fontSize = 20.sp,
+                            fontSize = 18.sp,
                             fontFamily = BarlowCondensed,
                             fontWeight = FontWeight.Bold,
                             color = Blaze
@@ -363,35 +373,45 @@ fun AdminDashboardScreen(
                         letterSpacing = 0.5.sp
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     DiagnosticRow("Device Hardware", "${Build.MANUFACTURER.uppercase()} ${Build.MODEL}")
                     DiagnosticRow("Android Version", "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
                     DiagnosticRow("Architecture", Build.SUPPORTED_ABIS.firstOrNull() ?: "Unknown")
-                    DiagnosticRow("OTA Host", "raw.githubusercontent.com")
-                    DiagnosticRow("Telemetry Provider", "Abacus REST Service")
+                    DiagnosticRow("Last Synced", lastRefreshedTime)
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // ── Admin Actions ────────────────────────────────────────────────
-            Text(
-                text = "ADMIN CONTROLS",
-                fontSize = 12.sp,
-                fontFamily = BarlowCondensed,
-                fontWeight = FontWeight.Bold,
-                color = Slate,
-                letterSpacing = 1.sp
-            )
+            // ── Action Buttons ───────────────────────────────────────────────
+            Button(
+                onClick = { loadData() },
+                colors = ButtonDefaults.buttonColors(containerColor = Slab),
+                shape = RoundedCornerShape(4.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = null, tint = Chalk, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "REFRESH LIVE TELEMETRY",
+                    fontSize = 13.sp,
+                    fontFamily = BarlowCondensed,
+                    fontWeight = FontWeight.Bold,
+                    color = Chalk,
+                    letterSpacing = 0.5.sp
+                )
+            }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Action: Purge App Cache
             Button(
                 onClick = {
                     context.cacheDir.deleteRecursively()
-                    Toast.makeText(context, "Local app cache purged successfully", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Local cache purged successfully", Toast.LENGTH_SHORT).show()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Slab),
                 shape = RoundedCornerShape(4.dp),
@@ -401,7 +421,7 @@ fun AdminDashboardScreen(
                     .height(48.dp)
             ) {
                 Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = Chalk, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "PURGE LOCAL APP CACHE",
                     fontSize = 13.sp,
@@ -413,7 +433,6 @@ fun AdminDashboardScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Action: Exit Console
             Button(
                 onClick = onExit,
                 colors = ButtonDefaults.buttonColors(containerColor = Blaze),
@@ -423,7 +442,7 @@ fun AdminDashboardScreen(
                     .height(48.dp)
             ) {
                 Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, tint = Ink, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "EXIT ADMIN CONSOLE",
                     fontSize = 15.sp,
@@ -434,7 +453,102 @@ fun AdminDashboardScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(30.dp))
+        }
+    }
+}
+
+@Composable
+private fun MetricGridCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    subtitle: String,
+    icon: ImageVector,
+    accentColor: Color
+) {
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = Slab,
+        border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
+        modifier = modifier
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    fontSize = 11.sp,
+                    fontFamily = BarlowCondensed,
+                    fontWeight = FontWeight.Bold,
+                    color = Slate,
+                    letterSpacing = 0.5.sp
+                )
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = value,
+                fontSize = 32.sp,
+                fontFamily = BarlowCondensed,
+                fontWeight = FontWeight.Bold,
+                color = Chalk,
+                letterSpacing = (-0.5).sp
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            Text(
+                text = subtitle,
+                fontSize = 11.sp,
+                color = Slate
+            )
+        }
+    }
+}
+
+@Composable
+private fun BatchBarItem(
+    label: String,
+    count: Int,
+    total: Int,
+    color: Color
+) {
+    val progress = (count.toFloat() / total.toFloat()).coerceIn(0.05f, 1f)
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = label, fontSize = 12.sp, color = Chalk)
+            Text(text = "$count students", fontSize = 12.sp, color = Slate, fontWeight = FontWeight.Medium)
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(Rule)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(color)
+            )
         }
     }
 }
@@ -444,7 +558,7 @@ private fun DiagnosticRow(label: String, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 5.dp),
+            .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
