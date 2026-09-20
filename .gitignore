@@ -9,6 +9,8 @@ build/
 *.apk
 *.ipa
 *.aab
+!sked-web/public/downloads/*.apk
+!sked-web/public/downloads/*.ipa
 
 # Android
 sked-android/.gradle/

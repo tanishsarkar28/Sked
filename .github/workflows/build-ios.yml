@@ -42,6 +42,23 @@ jobs:
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Sked" ios/Runner/Info.plist 2>/dev/null || \
             /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Sked" ios/Runner/Info.plist 2>/dev/null || true
           fi
+          # Disable code signing requirement in xcconfig files
+          echo "Disabling code signing requirement in xcconfig..."
+          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
+          echo "EXPANDED_CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
+
+          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Debug.xcconfig
+          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Debug.xcconfig
+          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Debug.xcconfig
+          echo "EXPANDED_CODE_SIGN_IDENTITY=" >> ios/Flutter/Debug.xcconfig
+
+          # Configure project.pbxproj for manual unsigned release build
+          if [ -f "ios/Runner.xcodeproj/project.pbxproj" ]; then
+            sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual; CODE_SIGNING_ALLOWED = NO; CODE_SIGNING_REQUIRED = NO; CODE_SIGN_IDENTITY = "";/g' ios/Runner.xcodeproj/project.pbxproj || true
+            sed -i '' 's/DevelopmentTeam = "";/DevelopmentTeam = "0000000000";/g' ios/Runner.xcodeproj/project.pbxproj || true
+          fi
 
       - name: Install Flutter Dependencies
         run: |
@@ -51,7 +68,31 @@ jobs:
       - name: Build iOS Release Binary (Unsigned)
         run: |
           cd sked-app
-          flutter build ios --no-codesign --release
+          # Prepare Flutter framework and CocoaPods dependencies
+          flutter build ios --config-only --release --no-codesign
+
+          # Archive with Xcode without code signing
+          xcodebuild -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO || {
+              echo "Archive failed, building target directly..."
+              xcodebuild -workspace ios/Runner.xcworkspace \
+                -scheme Runner \
+                -configuration Release \
+                -destination 'generic/platform=iOS' \
+                -derivedDataPath build/ios \
+                build \
+                CODE_SIGNING_ALLOWED=NO \
+                CODE_SIGNING_REQUIRED=NO \
+                CODE_SIGN_IDENTITY=""
+            }
 
       - name: Package Unsigned .IPA
         run: |
@@ -62,6 +103,8 @@ jobs:
             cp -R "build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app" Payload/
           elif [ -d "build/ios/iphoneos/Runner.app" ]; then
             cp -R "build/ios/iphoneos/Runner.app" Payload/
+          elif [ -d "build/ios/Build/Products/Release-iphoneos/Runner.app" ]; then
+            cp -R "build/ios/Build/Products/Release-iphoneos/Runner.app" Payload/
           else
             RUNNER_PATH=$(find build/ios -name "Runner.app" -type d | head -n 1)
             if [ -n "$RUNNER_PATH" ]; then
@@ -88,8 +131,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add sked-web/public/downloads/sked-ios.ipa
-          if [ -d "sked-app/ios" ]; then
-            git add sked-app/ios
-          fi
           git commit -m "chore: update native sked-ios.ipa binary [skip ci]" || echo "No changes to commit"
           git push origin main || echo "Push skipped or permissions restricted in repo settings"

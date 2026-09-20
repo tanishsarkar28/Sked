@@ -40,17 +40,11 @@ Sundays are meant for relaxing. The widget automatically strips all academic str
 ### 🔒 100% On-Device Privacy
 No third-party cloud servers, external proxies, or credential harvesting. All UMS authentication and HTML parsing happens directly inside your phone's secure sandboxed storage.
 
-### ⚡ 15-Min Background Auto Sync
-Android WorkManager background updates periodically sync your timetable so your home screen widget always reflects your upcoming classes and room changes without opening the app.
-
 ### 📴 100% Offline Ready
 UMS servers crash during 8:30 AM – 9:30 AM peak rush hours. Sked keeps your complete weekly timetable and datesheet cached locally so you never miss your class or exam room.
 
 ### 🔄 In-App OTA Updates (Android)
 Automatic update detection linked to the Sked website. When a new version is uploaded, the app detects it and prompts the user with a single-tap update flow — download, install, done.
-
-### 📊 Admin Telemetry & Batch Analytics
-Built-in developer dashboard with live anonymous install counts, batch distribution (1st–4th year: 2026, 2025, 2024, 2023), and department breakdown metrics.
 
 ---
 
@@ -145,7 +139,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ### Direct Download
-Grab the latest `sked-android.apk` directly from the [Sked Web Portal](https://sked.tanishsarkar.com) or download it from `sked-web/public/downloads/sked-android.apk`.
+Grab the latest `sked-android.apk` directly from the [Sked Web Portal](https://sked-gold.vercel.app/) or download it from `sked-web/public/downloads/sked-android.apk`.
 
 ---
 
@@ -157,7 +151,7 @@ Grab the latest `sked-android.apk` directly from the [Sked Web Portal](https://s
 - Free Apple ID (7-day certificate) or paid Developer account (365-day)
 
 ### Steps
-1. Download `sked-ios.ipa` from the [Sked website](https://sked.tanishsarkar.com) or `sked-web/public/downloads/sked-ios.ipa`.
+1. Download `sked-ios.ipa` from the [Sked website](https://sked-gold.vercel.app/) or `sked-web/public/downloads/sked-ios.ipa`.
 2. Open AltStore/SideStore on your iPhone → tap **"+"** in My Apps.
 3. Select the downloaded `sked-ios.ipa` → sign with your Apple ID.
 4. Go to **Settings → General → VPN & Device Management** → Trust the developer profile.
