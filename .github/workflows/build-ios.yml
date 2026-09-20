@@ -34,12 +34,13 @@ jobs:
         run: |
           cd sked-app
           if [ ! -d "ios" ]; then
-            echo "Generating iOS platform project files..."
-            flutter create --platforms=ios --org com.sked .
+            echo "Generating iOS platform project files with project-name sked_app..."
+            flutter create --project-name sked_app --platforms=ios --org com.sked .
           fi
-          # Ensure display name is Sked
+          # Ensure display name is Sked using macOS PlistBuddy
           if [ -f "ios/Runner/Info.plist" ]; then
-            sed -i '' 's/<string>sked_app<\/string>/<string>Sked<\/string>/g' ios/Runner/Info.plist || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Sked" ios/Runner/Info.plist 2>/dev/null || \
+            /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Sked" ios/Runner/Info.plist 2>/dev/null || true
           fi
 
       - name: Install Flutter Dependencies
@@ -55,9 +56,21 @@ jobs:
       - name: Package Unsigned .IPA
         run: |
           cd sked-app
-          echo "Packaging Payload into sked-ios.ipa..."
+          echo "Locating Runner.app..."
           mkdir -p Payload
-          cp -R build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app Payload/
+          if [ -d "build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app" ]; then
+            cp -R "build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app" Payload/
+          elif [ -d "build/ios/iphoneos/Runner.app" ]; then
+            cp -R "build/ios/iphoneos/Runner.app" Payload/
+          else
+            RUNNER_PATH=$(find build/ios -name "Runner.app" -type d | head -n 1)
+            if [ -n "$RUNNER_PATH" ]; then
+              cp -R "$RUNNER_PATH" Payload/
+            else
+              echo "Error: Runner.app not found!"
+              exit 1
+            fi
+          fi
           zip -r -y sked-ios.ipa Payload
           ls -lh sked-ios.ipa
 
