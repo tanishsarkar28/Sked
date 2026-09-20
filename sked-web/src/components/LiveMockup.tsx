@@ -1,7 +1,17 @@
 import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { RefreshCw, LayoutGrid, LogOut, ChevronRight } from 'lucide-react';
+import { RefreshCw, LayoutGrid, LogOut } from 'lucide-react';
+
+interface MockClass {
+  code: string;
+  name: string;
+  time: string;
+  room: string;
+  faculty: string;
+  type: 'LEC' | 'PRAC' | 'TUT';
+  status: 'OVER' | 'UPCOMING' | 'ON GOING' | 'PENDING';
+}
 
 export const LiveMockup: React.FC = () => {
   const [selectedDay, setSelectedDay] = useState<string>('THU');
@@ -16,53 +26,78 @@ export const LiveMockup: React.FC = () => {
     { name: 'SUN', count: 0 },
   ];
 
-  const thursdayClasses = [
-    {
-      code: 'INT252',
-      name: 'Web App Dev with ReactJS',
-      time: '10:20-11:10',
-      room: '33-507Y',
-      type: 'PRAC',
-      status: 'PRESENT',
-      perc: '96%',
-    },
-    {
-      code: 'INT252',
-      name: 'Web App Dev with ReactJS',
-      time: '11:10-12:00',
-      room: '33-507Y',
-      type: 'PRAC',
-      status: 'PRESENT',
-      perc: '96%',
-    },
-    {
-      code: 'MKT311',
-      name: 'Digital Marketing',
-      time: '12:50-13:40',
-      room: '37-905',
-      type: 'PRAC',
-      status: 'NOT MKD',
-      perc: '94%',
-    },
-    {
-      code: 'CSE408',
-      name: 'Design & Analysis of Algorithms',
-      time: '13:40-14:30',
-      room: '34-101',
-      type: 'LEC',
-      status: 'PRESENT',
-      perc: '93%',
-    },
-    {
-      code: 'PEA306',
-      name: 'Analytical Skills-II',
-      time: '16:10-17:00',
-      room: '34-101',
-      type: 'LEC',
-      status: 'PRESENT',
-      perc: '100%',
-    },
-  ];
+  const scheduleData: Record<string, MockClass[]> = {
+    MON: [
+      { code: 'INT257', name: 'Software Project Management', time: '10:20-11:10', room: '33-612', faculty: 'Akash Pundir • Sec K24RL', type: 'LEC', status: 'OVER' },
+      { code: 'INT257', name: 'Software Project Management', time: '11:10-12:00', room: '33-612', faculty: 'Akash Pundir • Sec K24RL', type: 'LEC', status: 'OVER' },
+      { code: 'CSE408', name: 'Design & Analysis of Algorithms', time: '13:40-14:30', room: '33-608', faculty: 'Ritesh Tiwari • Sec K24RL', type: 'LEC', status: 'OVER' },
+      { code: 'CSE408', name: 'Design & Analysis of Algorithms', time: '14:30-15:20', room: '33-608', faculty: 'Ritesh Tiwari • Sec K24RL', type: 'LEC', status: 'OVER' },
+    ],
+    TUE: [
+      { code: 'MKT311', name: 'Digital Marketing', time: '09:30-10:20', room: '37-905', faculty: 'Rohan Sharma • Sec K24RL', type: 'PRAC', status: 'OVER' },
+      { code: 'INT252', name: 'Web App Dev with ReactJS', time: '12:50-13:40', room: '33-507Y', faculty: 'Akash Pundir • Sec K24RL', type: 'PRAC', status: 'ON GOING' },
+      { code: 'CSE408', name: 'Design & Analysis of Algorithms', time: '15:30-16:20', room: '34-101', faculty: 'Ritesh Tiwari • Sec K24RL', type: 'LEC', status: 'UPCOMING' },
+    ],
+    WED: [
+      { code: 'INT252', name: 'Web App Dev with ReactJS', time: '10:20-11:10', room: '33-507Y', faculty: 'Akash Pundir • Sec K24RL', type: 'PRAC', status: 'OVER' },
+      { code: 'INT252', name: 'Web App Dev with ReactJS', time: '11:10-12:00', room: '33-507Y', faculty: 'Akash Pundir • Sec K24RL', type: 'PRAC', status: 'OVER' },
+      { code: 'PEA306', name: 'Analytical Skills-II', time: '13:40-14:30', room: '34-101', faculty: 'Sunita Rao • Sec K24RL', type: 'LEC', status: 'ON GOING' },
+      { code: 'MKT311', name: 'Digital Marketing', time: '14:40-15:30', room: '37-905', faculty: 'Rohan Sharma • Sec K24RL', type: 'PRAC', status: 'UPCOMING' },
+      { code: 'CSE408', name: 'Design & Analysis of Algorithms', time: '16:10-17:00', room: '34-101', faculty: 'Ritesh Tiwari • Sec K24RL', type: 'LEC', status: 'PENDING' },
+    ],
+    THU: [
+      { code: 'INT252', name: 'Web App Dev with ReactJS', time: '10:20-11:10', room: '33-507Y', faculty: 'Akash Pundir • Sec K24RL', type: 'PRAC', status: 'OVER' },
+      { code: 'INT252', name: 'Web App Dev with ReactJS', time: '11:10-12:00', room: '33-507Y', faculty: 'Akash Pundir • Sec K24RL', type: 'PRAC', status: 'OVER' },
+      { code: 'MKT311', name: 'Digital Marketing', time: '12:50-13:40', room: '37-905', faculty: 'Rohan Sharma • Sec K24RL', type: 'PRAC', status: 'ON GOING' },
+      { code: 'CSE408', name: 'Design & Analysis of Algorithms', time: '13:40-14:30', room: '34-101', faculty: 'Ritesh Tiwari • Sec K24RL', type: 'LEC', status: 'UPCOMING' },
+      { code: 'PEA306', name: 'Analytical Skills-II', time: '16:10-17:00', room: '34-101', faculty: 'Sunita Rao • Sec K24RL', type: 'LEC', status: 'PENDING' },
+    ],
+    FRI: [
+      { code: 'CSE408', name: 'Design & Analysis of Algorithms', time: '09:30-10:20', room: '34-101', faculty: 'Ritesh Tiwari • Sec K24RL', type: 'LEC', status: 'OVER' },
+      { code: 'INT252', name: 'Web App Dev with ReactJS', time: '10:20-11:10', room: '33-507Y', faculty: 'Akash Pundir • Sec K24RL', type: 'PRAC', status: 'OVER' },
+      { code: 'INT252', name: 'Web App Dev with ReactJS', time: '11:10-12:00', room: '33-507Y', faculty: 'Akash Pundir • Sec K24RL', type: 'PRAC', status: 'OVER' },
+      { code: 'MKT311', name: 'Digital Marketing', time: '12:50-13:40', room: '37-905', faculty: 'Rohan Sharma • Sec K24RL', type: 'PRAC', status: 'ON GOING' },
+      { code: 'PEA306', name: 'Analytical Skills-II', time: '14:40-15:30', room: '34-101', faculty: 'Sunita Rao • Sec K24RL', type: 'LEC', status: 'UPCOMING' },
+      { code: 'INT257', name: 'Software Project Management', time: '16:10-17:00', room: '33-612', faculty: 'Akash Pundir • Sec K24RL', type: 'LEC', status: 'PENDING' },
+    ],
+    SAT: [
+      { code: 'PEA306', name: 'Analytical Skills-II', time: '09:30-10:20', room: '34-101', faculty: 'Sunita Rao • Sec K24RL', type: 'LEC', status: 'OVER' },
+      { code: 'MKT311', name: 'Digital Marketing', time: '11:10-12:00', room: '37-905', faculty: 'Rohan Sharma • Sec K24RL', type: 'PRAC', status: 'UPCOMING' },
+    ],
+    SUN: [],
+  };
+
+  const getStatusStyles = (status: MockClass['status']) => {
+    switch (status) {
+      case 'ON GOING':
+        return {
+          pill: 'text-[#FF6B1A] bg-[#FF6B1A]/15 border-[#FF6B1A]',
+          bar: 'border-l-[#FF6B1A]',
+          border: 'border-[#FF6B1A]/40',
+        };
+      case 'UPCOMING':
+        return {
+          pill: 'text-[#FF8533] bg-[#FF8533]/15 border-[#FF8533]',
+          bar: 'border-l-[#FF8533]',
+          border: 'border-[#252525]',
+        };
+      case 'PENDING':
+        return {
+          pill: 'text-[#818CF8] bg-[#818CF8]/15 border-[#818CF8]/60',
+          bar: 'border-l-[#818CF8]/70',
+          border: 'border-[#252525]',
+        };
+      case 'OVER':
+      default:
+        return {
+          pill: 'text-[#71717A] bg-[#27272A]/40 border-[#3F3F46]',
+          bar: 'border-l-[#383838]',
+          border: 'border-[#252525]',
+        };
+    }
+  };
+
+  const currentClasses = scheduleData[selectedDay] || [];
 
   return (
     <section id="preview" className="py-24 px-6 max-w-7xl mx-auto border-t border-[#252525]">
@@ -102,7 +137,7 @@ export const LiveMockup: React.FC = () => {
           <div className="flex items-center justify-between px-2 mb-4">
             <div>
               <span className="text-[10px] font-mono font-bold text-[#7A7774] block">
-                REG: XXXXXXXX
+                REG: 12407229
               </span>
               <span className="text-xs font-bold text-[#E8E6E3] font-['Barlow_Condensed']">
                 {selectedDay === 'SUN' ? 'Sunday • Relax' : `${selectedDay} Schedule`}
@@ -152,59 +187,50 @@ export const LiveMockup: React.FC = () => {
                   </p>
                 </div>
               </div>
-            ) : selectedDay === 'SAT' ? (
-              <div className="space-y-2.5">
-                <Card className="bg-[#141414] border-[#252525] p-3.5 rounded-xl border-l-4 border-l-emerald-500">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-bold text-[#E8E6E3] text-sm">PEAS01</span>
-                    <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/30">PRESENT</span>
-                  </div>
-                  <div className="text-[11px] text-[#7A7774] font-mono">09:30-10:20 • Block 34</div>
-                </Card>
-                <Card className="bg-[#141414] border-[#252525] p-3.5 rounded-xl border-l-4 border-l-[#7A7774]">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-bold text-[#E8E6E3] text-sm">MKT311</span>
-                    <span className="text-[9px] font-mono text-[#7A7774] bg-[#252525] px-1.5 py-0.5 rounded">NOT MKD</span>
-                  </div>
-                  <div className="text-[11px] text-[#7A7774] font-mono">11:10-12:00 • Block 37</div>
-                </Card>
+            ) : currentClasses.length === 0 ? (
+              <div className="h-[360px] flex items-center justify-center text-center p-6 rounded-xl bg-[#141414] border border-[#252525]">
+                <p className="font-mono text-xs text-[#7A7774]">No classes scheduled</p>
               </div>
             ) : (
-              thursdayClasses.map((c, i) => (
-                <Card
-                  key={i}
-                  className={`bg-[#141414] border-[#252525] p-3 rounded-xl border-l-4 ${
-                    c.status === 'PRESENT' ? 'border-l-emerald-500' : 'border-l-[#7A7774]'
-                  } hover:border-[#FF6B1A]/40 transition-colors`}
-                >
-                  <div className="flex items-center justify-between mb-0.5">
-                    <div className="flex items-center gap-2">
+              currentClasses.map((c, i) => {
+                const styles = getStatusStyles(c.status);
+                const isOnGoing = c.status === 'ON GOING';
+
+                return (
+                  <Card
+                    key={i}
+                    className={`bg-[#141414] ${styles.border} p-3 rounded-xl border-l-4 ${
+                      styles.bar
+                    } hover:border-[#FF6B1A]/40 transition-colors`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
                       <span className="font-bold text-[#E8E6E3] font-['Barlow_Condensed'] text-base tracking-wide">
                         {c.code}
                       </span>
-                      <span className="text-[9px] font-mono text-[#7A7774] border border-[#252525] px-1 rounded">
-                        {c.type}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] font-mono text-[#7A7774] border border-[#252525] px-1.5 py-0.5 rounded">
+                          {c.type}
+                        </span>
+                        <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${styles.pill}`}>
+                          {c.status}
+                        </span>
+                      </div>
                     </div>
-                    <span
-                      className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
-                        c.status === 'PRESENT'
-                          ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
-                          : 'text-[#7A7774] bg-[#1A1A1A] border-[#252525]'
-                      }`}
-                    >
-                      {c.status}
-                    </span>
-                  </div>
 
-                  <div className="flex items-center justify-between text-[11px] text-[#7A7774]">
-                    <span>{c.time} • {c.room}</span>
-                    <span className="text-emerald-400 font-mono flex items-center gap-0.5">
-                      {c.perc} <ChevronRight className="w-3 h-3" />
-                    </span>
-                  </div>
-                </Card>
-              ))
+                    <div className="flex items-center gap-2 text-[11px] font-mono mb-0.5">
+                      <span className={isOnGoing ? 'text-[#FF6B1A]' : 'text-[#7A7774]'}>
+                        {c.time}
+                      </span>
+                      <span className="text-[#3F3F46]">•</span>
+                      <span className="text-[#7A7774]">{c.room}</span>
+                    </div>
+
+                    <div className="text-[10px] font-mono text-[#52525B]">
+                      {c.faculty}
+                    </div>
+                  </Card>
+                );
+              })
             )}
           </div>
 
