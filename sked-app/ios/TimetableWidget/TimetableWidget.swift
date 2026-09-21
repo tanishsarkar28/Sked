@@ -473,10 +473,10 @@ struct MediumWidgetView: View {
                     .background(Color.skedSlabElevated)
                     .cornerRadius(8)
 
-                    // Right Departure List
+                    // Right Departure List (shows classes including live/next)
                     VStack(spacing: 4) {
-                        let remaining = entry.classes.filter { $0.id != spotlight.id }.prefix(3)
-                        if remaining.isEmpty {
+                        let classList = Array(entry.classes.prefix(3))
+                        if classList.isEmpty {
                             VStack(spacing: 2) {
                                 Spacer()
                                 Text("All caught up")
@@ -485,15 +485,20 @@ struct MediumWidgetView: View {
                                 Spacer()
                             }
                         } else {
-                            ForEach(Array(remaining)) { item in
+                            ForEach(classList) { item in
+                                let isLive = item.id == entry.liveClass?.id
+                                let isNext = item.id == entry.nextClass?.id
                                 HStack {
+                                    Circle()
+                                        .fill(isLive ? Color.skedGreen : (isNext ? Color.skedBlaze : Color.skedSlate))
+                                        .frame(width: 5, height: 5)
                                     Text(item.start)
                                         .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                        .foregroundColor(.skedSlate)
+                                        .foregroundColor(isLive ? .skedGreen : (isNext ? .skedChalk : .skedSlate))
                                         .frame(width: 36, alignment: .leading)
                                     Text(item.courseCode)
                                         .font(.system(size: 11, weight: .bold))
-                                        .foregroundColor(.skedChalk)
+                                        .foregroundColor(isLive ? .skedGreen : (isNext ? .skedChalk : .skedSlate))
                                     Spacer()
                                     Text(item.room)
                                         .font(.system(size: 9, weight: .medium))
@@ -505,7 +510,7 @@ struct MediumWidgetView: View {
                                 }
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 4)
-                                .background(Color.skedSlab)
+                                .background(isLive ? Color.skedSlabElevated : Color.skedSlab)
                                 .cornerRadius(4)
                             }
                         }

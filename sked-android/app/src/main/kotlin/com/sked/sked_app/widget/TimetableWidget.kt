@@ -359,14 +359,8 @@ class TimetableWidget : GlanceAppWidget() {
                         }
                     }
 
-                    // Remaining Classes
-                    val remainingClasses = if (spotlightItem != null) {
-                        entries.filter { it != spotlightItem }
-                    } else {
-                        entries
-                    }
-
-                    if (remainingClasses.isNotEmpty()) {
+                    // All Today's Classes (shown in schedule list as well as spotlight hero)
+                    if (entries.isNotEmpty()) {
                         item {
                             Row(
                                 modifier = GlanceModifier
@@ -387,7 +381,7 @@ class TimetableWidget : GlanceAppWidget() {
                         }
 
                         items(
-                            remainingClasses,
+                            entries,
                             itemId = { entry -> (entry.start + "_" + entry.courseCode).hashCode().toLong() }
                         ) { entry ->
                             val startM = parseMinutes(entry.start)
