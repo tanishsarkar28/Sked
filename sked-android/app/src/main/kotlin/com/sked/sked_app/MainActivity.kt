@@ -227,13 +227,6 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                 val todayEntries = TimetableParser.filterByDay(allEntries, todayName)
                 val weekMap = TimetableParser.groupByDay(allEntries)
 
-                // Clear any legacy demo exam data if present
-                val examPrefs = context.getSharedPreferences("SkedExamPrefs", Context.MODE_PRIVATE)
-                if (!examPrefs.getBoolean("demo_cleared_v1", false)) {
-                    ExamParser.clearExams(context)
-                    examPrefs.edit().putBoolean("demo_cleared_v1", true).apply()
-                }
-
                 // Load real exam datesheet only
                 val realExams = ExamParser.loadExamsFromPrefs(context)
 

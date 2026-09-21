@@ -76,16 +76,6 @@ object ExamParser {
                     )
                 }
 
-                // Check if this was the legacy hardcoded fallback data
-                val isLegacyDummy = list.size == 4 &&
-                    list.any { it.courseCode == "PEA306" && it.dateStr.contains("Oct 2026") } &&
-                    list.any { it.courseCode == "CSE408" && it.dateStr.contains("Oct 2026") }
-
-                if (isLegacyDummy) {
-                    clearExams(context)
-                    return emptyList()
-                }
-
                 if (list.isNotEmpty()) return list.sortedBy { it.getExamDate()?.time ?: Long.MAX_VALUE }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load exams from prefs", e)

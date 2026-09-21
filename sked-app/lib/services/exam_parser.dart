@@ -34,16 +34,6 @@ class ExamParser {
         final decoded = jsonDecode(raw) as List<dynamic>;
         final list = decoded.map((e) => ExamItem.fromJson(e as Map<String, dynamic>)).toList();
 
-        // Purge legacy hardcoded fallback data if present
-        final isLegacyDummy = list.length == 4 &&
-            list.any((it) => it.courseCode == 'PEA306' && it.dateStr.contains('Oct 2026')) &&
-            list.any((it) => it.courseCode == 'CSE408' && it.dateStr.contains('Oct 2026'));
-
-        if (isLegacyDummy) {
-          await clearExams();
-          return [];
-        }
-
         if (list.isNotEmpty) {
           list.sort((a, b) => (a.getExamDate()?.millisecondsSinceEpoch ?? 9999999999999)
               .compareTo(b.getExamDate()?.millisecondsSinceEpoch ?? 9999999999999));
