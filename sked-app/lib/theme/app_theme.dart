@@ -31,6 +31,14 @@ class SkedColors {
   static const success       = blaze;
   static const warning       = blaze;
   static const error         = Color(0xFFFF4D4D);
+  static const dangerRed     = Color(0xFFEF4444);
+
+  // Timing State Colors (matching Android)
+  static const onGoingGreen   = Color(0xFF10B981);
+  static const upcomingOrange = Color(0xFFFF8533);
+  static const pendingIndigo  = Color(0xFF818CF8);
+  static const overGrey       = Color(0xFF71717A);
+  static const overBar        = Color(0xFF383838);
 }
 
 // ── Gradients removed in favour of flat mechanical surfaces ──────────────────

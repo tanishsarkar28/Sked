@@ -1,4 +1,12 @@
-/// Represents a single class/lecture entry returned from the Sked backend.
+/// Timing states for departure-board class cards, matching native Android app.
+enum ClassTimingState {
+  onGoing,
+  upcoming,
+  pending,
+  over,
+}
+
+/// Represents a single class/lecture entry in Sked.
 class ClassEntry {
   final String day;
   final String timeRange;
@@ -34,7 +42,7 @@ class ClassEntry {
       end: json['end'] as String? ?? '',
       room: json['room'] as String? ?? '',
       courseCode: json['courseCode'] as String? ?? '',
-      type: json['type'] as String? ?? '',
+      type: json['type'] as String? ?? 'Lecture',
       teacher: json['teacher'] as String? ?? '',
       section: json['section'] as String? ?? '',
       group: json['group'] as String? ?? '',
@@ -42,33 +50,49 @@ class ClassEntry {
     );
   }
 
-  /// Returns true if this class is currently ongoing at [now].
-  bool isOngoing(DateTime now) {
-    final todayDate = DateTime(now.year, now.month, now.day);
-    final startParts = start.split(':');
-    final endParts = end.split(':');
-    if (startParts.length < 2 || endParts.length < 2) return false;
-    final startDt = todayDate.add(Duration(
-      hours: int.tryParse(startParts[0]) ?? 0,
-      minutes: int.tryParse(startParts[1]) ?? 0,
-    ));
-    final endDt = todayDate.add(Duration(
-      hours: int.tryParse(endParts[0]) ?? 0,
-      minutes: int.tryParse(endParts[1]) ?? 0,
-    ));
-    return now.isAfter(startDt) && now.isBefore(endDt);
+  Map<String, dynamic> toJson() {
+    return {
+      'day': day,
+      'timeRange': timeRange,
+      'start': start,
+      'end': end,
+      'room': room,
+      'courseCode': courseCode,
+      'type': type,
+      'teacher': teacher,
+      'section': section,
+      'group': group,
+      'description': description,
+    };
   }
 
-  /// Returns true if this class is upcoming (starts in the future) at [now].
-  bool isUpcoming(DateTime now) {
-    final todayDate = DateTime(now.year, now.month, now.day);
-    final startParts = start.split(':');
-    if (startParts.length < 2) return false;
-    final startDt = todayDate.add(Duration(
-      hours: int.tryParse(startParts[0]) ?? 0,
-      minutes: int.tryParse(startParts[1]) ?? 0,
-    ));
-    return now.isBefore(startDt);
+  int get startMinutes {
+    final parts = start.split(':');
+    if (parts.length >= 2) {
+      final h = int.tryParse(parts[0].trim()) ?? 0;
+      final m = int.tryParse(parts[1].trim()) ?? 0;
+      return h * 60 + m;
+    }
+    return 0;
+  }
+
+  int get endMinutes {
+    final parts = end.split(':');
+    if (parts.length >= 2) {
+      final h = int.tryParse(parts[0].trim()) ?? 0;
+      final m = int.tryParse(parts[1].trim()) ?? 0;
+      final val = h * 60 + m;
+      if (val > 0) return val;
+    }
+    final s = startMinutes;
+    return s > 0 ? s + 50 : 0;
+  }
+
+  /// Returns true if this class is currently ongoing at [nowMinutes].
+  bool isOngoingNow(int nowMinutes) {
+    final s = startMinutes;
+    final e = endMinutes;
+    return s > 0 && e > 0 && nowMinutes >= s && nowMinutes <= e;
   }
 
   @override

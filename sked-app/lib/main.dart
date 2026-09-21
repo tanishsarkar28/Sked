@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'screens/today_screen.dart';
-import 'screens/week_screen.dart';
-import 'screens/settings_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'screens/login_screen.dart';
+import 'screens/dashboard_screen.dart';
+import 'widgets/ums_auth_bridge_sheet.dart';
 import 'theme/app_theme.dart';
 
 void main() {
@@ -32,72 +33,99 @@ class SkedApp extends StatelessWidget {
           displayColor: SkedColors.chalk,
         ),
       ),
-      initialRoute: '/',
-      routes: {
-        '/': (_) => const MainShell(),
-        '/settings': (_) => const SettingsScreen(),
-      },
+      home: const SkedAuthGate(),
     );
   }
 }
 
-class MainShell extends StatefulWidget {
-  const MainShell({super.key});
+class SkedAuthGate extends StatefulWidget {
+  const SkedAuthGate({super.key});
 
   @override
-  State<MainShell> createState() => _MainShellState();
+  State<SkedAuthGate> createState() => _SkedAuthGateState();
 }
 
-class _MainShellState extends State<MainShell> {
-  int _selectedIndex = 0;
+class _SkedAuthGateState extends State<SkedAuthGate> {
+  String _currentUserId = '';
+  bool _isCheckingAuth = true;
 
-  static const _pages = <Widget>[
-    TodayScreen(),
-    WeekScreen(),
-  ];
+  bool _showBridge = false;
+  String _pendingUserId = '';
+  String _pendingPassword = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _checkSavedUser();
+  }
+
+  Future<void> _checkSavedUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedId = prefs.getString('sked_user_id') ?? '';
+    if (mounted) {
+      setState(() {
+        _currentUserId = savedId;
+        _isCheckingAuth = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: SkedColors.ink,
-      body: IndexedStack(index: _selectedIndex, children: _pages),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: SkedColors.rule, width: 1)),
+    if (_isCheckingAuth) {
+      return const Scaffold(
+        backgroundColor: SkedColors.ink,
+        body: Center(
+          child: CircularProgressIndicator(
+            color: SkedColors.blaze,
+            strokeWidth: 2,
+          ),
         ),
-        child: NavigationBar(
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-          backgroundColor: SkedColors.slab,
-          surfaceTintColor: Colors.transparent,
-          indicatorColor: SkedColors.rule,
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.today_outlined),
-              selectedIcon: Icon(Icons.today_rounded),
-              label: 'TODAY',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.calendar_view_week_outlined),
-              selectedIcon: Icon(Icons.calendar_view_week_rounded),
-              label: 'WEEK',
-            ),
-          ],
-          animationDuration: const Duration(milliseconds: 200),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.small(
-        onPressed: () => Navigator.pushNamed(context, '/settings'),
-        backgroundColor: SkedColors.slab,
-        foregroundColor: SkedColors.slate,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(4),
-          side: const BorderSide(color: SkedColors.rule),
-        ),
-        tooltip: 'Settings',
-        child: const Icon(Icons.settings_outlined, size: 18),
-      ),
+      );
+    }
+
+    if (_showBridge) {
+      return UmsAuthBridgeSheet(
+        userId: _pendingUserId,
+        password: _pendingPassword,
+        onDismiss: () => setState(() => _showBridge = false),
+        onSuccess: (syncedUserId) async {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('sked_user_id', syncedUserId);
+          await prefs.setString('saved_ums_pwd', _pendingPassword);
+          if (mounted) {
+            setState(() {
+              _currentUserId = syncedUserId;
+              _showBridge = false;
+            });
+          }
+        },
+      );
+    }
+
+    if (_currentUserId.isEmpty) {
+      return LoginScreen(
+        onStartLogin: (uid, pwd) async {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('saved_ums_pwd', pwd);
+          setState(() {
+            _pendingUserId = uid;
+            _pendingPassword = pwd;
+            _showBridge = true;
+          });
+        },
+      );
+    }
+
+    return DashboardScreen(
+      userId: _currentUserId,
+      onLogout: () {
+        setState(() {
+          _currentUserId = '';
+          _pendingUserId = '';
+          _pendingPassword = '';
+        });
+      },
     );
   }
 }
