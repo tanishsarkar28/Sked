@@ -7,6 +7,7 @@ class SkedColors {
 
   static const ink   = Color(0xFF0A0A0A); // True near-black — logo canvas
   static const slab  = Color(0xFF141414); // Card/surface — barely visible lift
+  static const slabElevated = Color(0xFF1A1A1A); // Slightly raised card surface
   static const rule  = Color(0xFF252525); // Dividers, borders — mechanical hairline
   static const chalk = Color(0xFFE8E6E3); // Primary text — warm off-white
   static const slate = Color(0xFF7A7774); // Secondary/metadata — warm mid-grey
