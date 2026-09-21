@@ -20,6 +20,9 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.sked.sked_app.MainActivity
 import com.sked.sked_app.R
+import com.sked.sked_app.exam.ExamItem
+import com.sked.sked_app.exam.ExamParser
+import com.sked.sked_app.exam.ExamStatus
 import org.json.JSONArray
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -55,6 +58,14 @@ class TimetableWidget : GlanceAppWidget() {
 
         val isSunday = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY
 
+        val exams = try {
+            ExamParser.loadExamsFromPrefs(context)
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val todayExam = exams.firstOrNull { it.getStatus() == ExamStatus.TODAY }
+        val tomorrowExam = exams.firstOrNull { it.getStatus() == ExamStatus.TOMORROW }
+
         val mondayEntries = if (isSunday) {
             val allEntries = com.sked.sked_app.TimetableParser.loadFromPrefs(context)
             val monList = com.sked.sked_app.TimetableParser.filterByDay(allEntries, "Monday")
@@ -78,7 +89,9 @@ class TimetableWidget : GlanceAppWidget() {
                 entries = entries,
                 isLoggedIn = !userId.isNullOrBlank(),
                 isSunday = isSunday,
-                mondayEntries = mondayEntries
+                mondayEntries = mondayEntries,
+                todayExam = todayExam,
+                tomorrowExam = tomorrowExam
             )
         }
     }
@@ -89,7 +102,9 @@ class TimetableWidget : GlanceAppWidget() {
         entries: List<ClassData>,
         isLoggedIn: Boolean,
         isSunday: Boolean = false,
-        mondayEntries: List<ClassData> = emptyList()
+        mondayEntries: List<ClassData> = emptyList(),
+        todayExam: ExamItem? = null,
+        tomorrowExam: ExamItem? = null
     ) {
         val launchApp = actionStartActivity<MainActivity>()
 
@@ -148,15 +163,16 @@ class TimetableWidget : GlanceAppWidget() {
                 Spacer(GlanceModifier.defaultWeight())
 
                 // Date + Class count or Sunday subtitle
-                val headerSubtitle = if (isSunday) {
-                    todayStr
-                } else {
-                    if (entries.isNotEmpty()) "$todayStr · ${entries.size} classes" else todayStr
+                val headerSubtitle = when {
+                    todayExam != null -> "$todayStr · ${todayExam.examType} EXAM"
+                    isSunday -> todayStr
+                    entries.isNotEmpty() -> "$todayStr · ${entries.size} classes"
+                    else -> todayStr
                 }
                 Text(
                     text = headerSubtitle,
                     style = TextStyle(
-                        color = ColorProvider(Slate),
+                        color = ColorProvider(if (todayExam != null) Blaze else Slate),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -210,36 +226,114 @@ class TimetableWidget : GlanceAppWidget() {
                         )
                     }
                 }
-            } else if (isSunday) {
+            } else if (isSunday && todayExam == null) {
                 SundayRelaxCard(modifier = GlanceModifier.defaultWeight(), onClick = launchApp)
+            } else if (todayExam != null) {
+                LazyColumn(modifier = GlanceModifier.fillMaxWidth().defaultWeight()) {
+                    item {
+                        ExamSpotlightCard(
+                            exam = todayExam,
+                            isToday = true,
+                            onClick = launchApp
+                        )
+                        Spacer(GlanceModifier.height(10.dp))
+                    }
+
+                    if (entries.isNotEmpty()) {
+                        item {
+                            Row(
+                                modifier = GlanceModifier
+                                    .fillMaxWidth()
+                                    .clickable(launchApp)
+                                    .padding(top = 4.dp, bottom = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "CLASSES",
+                                    style = TextStyle(
+                                        color = ColorProvider(Slate),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                )
+                            }
+                        }
+
+                        items(
+                            entries,
+                            itemId = { entry -> (entry.start + "_" + entry.courseCode).hashCode().toLong() }
+                        ) { entry ->
+                            val startM = parseMinutes(entry.start)
+                            val endM = parseMinutes(entry.end.ifEmpty { entry.start })
+                            val isDone = endM > 0 && nowMinutes > endM
+                            val isLive = startM > 0 && endM > 0 && nowMinutes in startM..endM
+                            val isNext = entry == nextClass
+
+                            DepartureRow(
+                                entry = entry,
+                                isDone = isDone,
+                                isLive = isLive,
+                                isNext = isNext,
+                                onClick = launchApp
+                            )
+                            Spacer(GlanceModifier.height(6.dp))
+                        }
+                    } else {
+                        item {
+                            ExamPreparationCard(
+                                exam = todayExam,
+                                onClick = launchApp
+                            )
+                        }
+                    }
+                }
             } else if (entries.isEmpty()) {
-                Column(
-                    modifier = GlanceModifier
-                        .fillMaxWidth()
-                        .defaultWeight()
-                        .background(ColorProvider(Slab))
-                        .cornerRadius(8.dp)
-                        .clickable(launchApp)
-                        .padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Nothing today.",
-                        style = TextStyle(
-                            color = ColorProvider(Chalk),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
+                if (tomorrowExam != null) {
+                    LazyColumn(modifier = GlanceModifier.fillMaxWidth().defaultWeight()) {
+                        item {
+                            ExamSpotlightCard(
+                                exam = tomorrowExam,
+                                isToday = false,
+                                onClick = launchApp
+                            )
+                            Spacer(GlanceModifier.height(10.dp))
+                        }
+                        item {
+                            ExamPreparationCard(
+                                exam = tomorrowExam,
+                                onClick = launchApp
+                            )
+                        }
+                    }
+                } else {
+                    Column(
+                        modifier = GlanceModifier
+                            .fillMaxWidth()
+                            .defaultWeight()
+                            .background(ColorProvider(Slab))
+                            .cornerRadius(8.dp)
+                            .clickable(launchApp)
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Nothing today.",
+                            style = TextStyle(
+                                color = ColorProvider(Chalk),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         )
-                    )
-                    Spacer(GlanceModifier.height(4.dp))
-                    Text(
-                        text = "You're clear.",
-                        style = TextStyle(
-                            color = ColorProvider(Slate),
-                            fontSize = 12.sp
+                        Spacer(GlanceModifier.height(4.dp))
+                        Text(
+                            text = "You're clear.",
+                            style = TextStyle(
+                                color = ColorProvider(Slate),
+                                fontSize = 12.sp
+                            )
                         )
-                    )
+                    }
                 }
             } else {
                 LazyColumn(modifier = GlanceModifier.fillMaxWidth().defaultWeight()) {
@@ -314,6 +408,250 @@ class TimetableWidget : GlanceAppWidget() {
                     }
                 }
             }
+        }
+    }
+
+    // ── Exam Spotlight Hero Card (Exam Day Focus) ─────────────────────────────
+
+    @Composable
+    private fun ExamSpotlightCard(
+        exam: ExamItem,
+        isToday: Boolean,
+        onClick: androidx.glance.action.Action
+    ) {
+        val statusText = if (isToday) "EXAM TODAY." else "EXAM TOMORROW."
+        val dotColor = Blaze
+
+        Row(
+            modifier = GlanceModifier
+                .fillMaxWidth()
+                .background(ColorProvider(SlabElevated))
+                .cornerRadius(8.dp)
+                .clickable(onClick)
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left Accent Bar — 3.5dp wide Blaze bar
+            Box(
+                modifier = GlanceModifier
+                    .width(3.5.dp)
+                    .height(56.dp)
+                    .background(ColorProvider(Blaze))
+                    .cornerRadius(2.dp)
+            ) {}
+
+            Spacer(GlanceModifier.width(10.dp))
+
+            Column(modifier = GlanceModifier.defaultWeight()) {
+                // Top Row: Dot + Status + Exam Type & Session + Room Badge
+                Row(
+                    modifier = GlanceModifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = GlanceModifier
+                            .size(6.dp)
+                            .cornerRadius(3.dp)
+                            .background(ColorProvider(dotColor))
+                    ) {}
+
+                    Spacer(GlanceModifier.width(6.dp))
+
+                    Text(
+                        text = statusText,
+                        style = TextStyle(
+                            color = ColorProvider(Blaze),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+
+                    Spacer(GlanceModifier.width(6.dp))
+
+                    Text(
+                        text = "${exam.examType} · ${exam.session.uppercase()}",
+                        style = TextStyle(
+                            color = ColorProvider(Slate),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        modifier = GlanceModifier.defaultWeight()
+                    )
+
+                    if (exam.room.isNotBlank() && exam.room != "Seating Awaited") {
+                        Row(
+                            modifier = GlanceModifier
+                                .background(ColorProvider(Rule))
+                                .cornerRadius(4.dp)
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = exam.room,
+                                style = TextStyle(
+                                    color = ColorProvider(Chalk),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+                    }
+                }
+
+                Spacer(GlanceModifier.height(4.dp))
+
+                // Middle Row: Course Code + Time Slot
+                Row(
+                    modifier = GlanceModifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = exam.courseCode,
+                        style = TextStyle(
+                            color = ColorProvider(Chalk),
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        modifier = GlanceModifier.defaultWeight()
+                    )
+
+                    Text(
+                        text = exam.timeSlot,
+                        style = TextStyle(
+                            color = ColorProvider(Blaze),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    )
+                }
+
+                // Course title
+                if (exam.courseTitle.isNotBlank()) {
+                    Spacer(GlanceModifier.height(2.dp))
+                    Text(
+                        text = exam.courseTitle,
+                        style = TextStyle(
+                            color = ColorProvider(Slate),
+                            fontSize = 11.sp
+                        )
+                    )
+                }
+
+                // Bottom Row: Reporting Time and/or Seat No
+                val seatDisplay = if (exam.seatNo.isNotBlank() && exam.seatNo != "Awaited") "Seat: ${exam.seatNo}" else null
+                val reportDisplay = if (exam.reportingTime.isNotBlank()) {
+                    if (exam.reportingTime.startsWith("Report", ignoreCase = true)) exam.reportingTime
+                    else "Report ${exam.reportingTime}"
+                } else null
+
+                if (seatDisplay != null || reportDisplay != null) {
+                    Spacer(GlanceModifier.height(4.dp))
+                    Row(
+                        modifier = GlanceModifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (reportDisplay != null) {
+                            Text(
+                                text = reportDisplay,
+                                style = TextStyle(
+                                    color = ColorProvider(PresentGreen),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            )
+                        }
+                        if (reportDisplay != null && seatDisplay != null) {
+                            Spacer(GlanceModifier.width(6.dp))
+                            Text(
+                                text = "·",
+                                style = TextStyle(
+                                    color = ColorProvider(Slate),
+                                    fontSize = 11.sp
+                                )
+                            )
+                            Spacer(GlanceModifier.width(6.dp))
+                        }
+                        if (seatDisplay != null) {
+                            Text(
+                                text = seatDisplay,
+                                style = TextStyle(
+                                    color = ColorProvider(Chalk),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Exam Preparation Checklist Card ───────────────────────────────────────
+
+    @Composable
+    private fun ExamPreparationCard(
+        exam: ExamItem,
+        onClick: androidx.glance.action.Action
+    ) {
+        Column(
+            modifier = GlanceModifier
+                .fillMaxWidth()
+                .background(ColorProvider(Slab))
+                .cornerRadius(8.dp)
+                .clickable(onClick)
+                .padding(12.dp)
+        ) {
+            Row(
+                modifier = GlanceModifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "EXAM PROTOCOL",
+                    style = TextStyle(
+                        color = ColorProvider(Slate),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
+                    modifier = GlanceModifier.defaultWeight()
+                )
+
+                Text(
+                    text = "DATESHEET →",
+                    style = TextStyle(
+                        color = ColorProvider(Blaze),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+            }
+
+            Spacer(GlanceModifier.height(6.dp))
+
+            Text(
+                text = "Carry Student ID Card & Physical Admit Card.",
+                style = TextStyle(
+                    color = ColorProvider(Chalk),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            )
+
+            Spacer(GlanceModifier.height(3.dp))
+
+            val locationText = if (exam.room.isNotBlank() && exam.room != "Seating Awaited") {
+                "Report to Room ${exam.room} 15 mins before time."
+            } else {
+                "Check desk seating & room in UMS before leaving."
+            }
+
+            Text(
+                text = locationText,
+                style = TextStyle(
+                    color = ColorProvider(TextDim),
+                    fontSize = 10.sp
+                )
+            )
         }
     }
 
