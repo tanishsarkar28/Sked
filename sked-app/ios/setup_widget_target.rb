@@ -69,9 +69,20 @@ app_target.add_dependency(widget_target)
 
 embed_phase = app_target.copy_files_build_phases.find { |p| p.name == 'Embed Foundation Extensions' || p.dst_subfolder_spec.to_s == '13' }
 unless embed_phase
-  embed_phase = app_target.new_copy_files_build_phase('Embed Foundation Extensions')
+  embed_phase = project.new(Xcodeproj::Project::Object::PBXCopyFilesBuildPhase)
+  embed_phase.name = 'Embed Foundation Extensions'
   embed_phase.dst_subfolder_spec = '13'
   embed_phase.dst_path = ''
+  app_target.build_phases << embed_phase
+end
+
+# Ensure embed_phase is positioned before all shell script phases (e.g., [CP] Embed Pods Frameworks, Thin Binary)
+first_script_index = app_target.build_phases.index { |p| p.is_a?(Xcodeproj::Project::Object::PBXShellScriptBuildPhase) }
+current_embed_index = app_target.build_phases.index(embed_phase)
+if first_script_index && current_embed_index && current_embed_index > first_script_index
+  app_target.build_phases.delete(embed_phase)
+  app_target.build_phases.insert(first_script_index, embed_phase)
+  puts "Reordered Embed Foundation Extensions phase before shell script phases."
 end
 
 file_ref = widget_target.product_reference
