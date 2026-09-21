@@ -33,7 +33,7 @@ jobs:
       - name: Setup iOS Project Scaffolding
         run: |
           cd sked-app
-          if [ ! -d "ios" ]; then
+          if [ ! -d "ios/Runner.xcodeproj" ]; then
             echo "Generating iOS platform project files with project-name sked_app..."
             flutter create --project-name sked_app --platforms=ios --org com.sked .
           fi
@@ -60,12 +60,8 @@ jobs:
             sed -i '' 's/DevelopmentTeam = "";/DevelopmentTeam = "0000000000";/g' ios/Runner.xcodeproj/project.pbxproj || true
           fi
 
-          # Inject native WidgetKit extension target if present
-          if [ -f "ios/setup_widget_target.rb" ]; then
-            echo "Configuring TimetableWidgetExtension target..."
-            gem install xcodeproj --no-document 2>/dev/null || true
-            ruby ios/setup_widget_target.rb || echo "Warning: Widget target configuration had warnings"
-          fi
+          # Pre-install xcodeproj gem
+          sudo gem install xcodeproj --no-document 2>/dev/null || gem install xcodeproj --no-document 2>/dev/null || true
 
       - name: Install Flutter Dependencies
         run: |
@@ -77,6 +73,12 @@ jobs:
           cd sked-app
           # Prepare Flutter framework and CocoaPods dependencies
           flutter build ios --config-only --release --no-codesign
+
+          # Inject native WidgetKit extension target into Runner.xcodeproj
+          if [ -f "ios/setup_widget_target.rb" ]; then
+            echo "Configuring TimetableWidgetExtension target..."
+            ruby ios/setup_widget_target.rb || echo "Warning: Widget target configuration had warnings"
+          fi
 
           # Archive with Xcode without code signing
           xcodebuild -workspace ios/Runner.xcworkspace \

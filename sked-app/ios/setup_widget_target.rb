@@ -29,6 +29,7 @@ widget_target = project.new_target(
 )
 
 group = project.main_group.find_subpath('TimetableWidget', true)
+group.set_path('TimetableWidget')
 source_files = [
   'ios/TimetableWidget/TimetableWidget.swift',
   'ios/TimetableWidget/TimetableWidgetBundle.swift'
@@ -37,7 +38,7 @@ source_files = [
 source_files.each do |file_path|
   if File.exist?(file_path)
     file_ref = group.new_file(File.basename(file_path))
-    widget_target.add_file_references([file_ref])
+    widget_target.source_build_phase.add_file_reference(file_ref, true)
   end
 end
 
@@ -57,7 +58,13 @@ widget_target.build_configurations.each do |config|
   config.build_settings['MARKETING_VERSION'] = '1.2.0'
 end
 
-widget_target.add_system_frameworks(['WidgetKit', 'SwiftUI'])
+['WidgetKit', 'SwiftUI'].each do |framework|
+  begin
+    widget_target.add_system_framework(framework)
+  rescue => e
+    puts "Framework notice (#{framework}): #{e.message}"
+  end
+end
 app_target.add_dependency(widget_target)
 
 embed_phase = app_target.copy_files_build_phases.find { |p| p.name == 'Embed Foundation Extensions' || p.dst_subfolder_spec == 13 }
