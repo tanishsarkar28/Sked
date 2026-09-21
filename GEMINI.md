@@ -1,10 +1,9 @@
 # AI Agent Rules for Sked
 
-## 1. Strict Git Push Policy (No Direct/Autonomous Pushes)
-- **NEVER** run `git push` autonomously or directly to GitHub without explicit, direct permission from the user in that conversation.
-- Local commits (`git commit`) are permitted to save and organize progress locally.
-- When ready to push changes to remote, **always stop and ask the user**: *"May I push commit <hash> to GitHub now?"*
-- Wait for the user to explicitly approve before running `git push`.
+## 1. Strict Git Policy (Always Keep Local — Never Push to GitHub)
+- **ALWAYS keep all commits local.**
+- **NEVER** run `git push` to GitHub. The agent is strictly forbidden from pushing to remote. All commits stay on the local machine.
+- Only create local commits (`git commit`) to save progress locally.
 
 ## 2. Automatic Version Bumping Rule
 Whenever an APK and/or IPA build is uploaded/released to `https://sked-gold.vercel.app/`:
