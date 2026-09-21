@@ -19,63 +19,6 @@ class ExamParser {
     }
   }
 
-  /// Official examination schedule for current term as published on studentums.lpu.in.
-  static List<ExamItem> getVerifiedSchedule() {
-    final list = [
-      const ExamItem(
-        courseCode: 'PEA306',
-        courseTitle: 'Analytical Skills-II',
-        dateStr: '01 Oct 2026',
-        dayName: 'Thursday',
-        timeSlot: '12:30 PM – 01:30 PM',
-        session: 'Evening',
-        examType: 'MTE',
-        room: 'Seating Awaited',
-        seatNo: 'Awaited',
-        reportingTime: 'Report 12:00 PM',
-      ),
-      const ExamItem(
-        courseCode: 'CSE408',
-        courseTitle: 'Design and Analysis of Algorithms',
-        dateStr: '06 Oct 2026',
-        dayName: 'Tuesday',
-        timeSlot: '12:30 PM – 02:00 PM',
-        session: 'Evening',
-        examType: 'MTE',
-        room: 'Seating Awaited',
-        seatNo: 'Awaited',
-        reportingTime: 'Report 12:00 PM',
-      ),
-      const ExamItem(
-        courseCode: 'CSE408',
-        courseTitle: 'Design and Analysis of Algorithms',
-        dateStr: '15 Dec 2026',
-        dayName: 'Tuesday',
-        timeSlot: '01:30 PM – 04:30 PM',
-        session: 'Evening',
-        examType: 'ETE',
-        room: 'Seating Awaited',
-        seatNo: 'Awaited',
-        reportingTime: 'Report 01:00 PM',
-      ),
-      const ExamItem(
-        courseCode: 'PEA306',
-        courseTitle: 'Analytical Skills-II',
-        dateStr: '21 Dec 2026',
-        dayName: 'Monday',
-        timeSlot: '01:30 PM – 03:30 PM',
-        session: 'Evening',
-        examType: 'ETE',
-        room: 'Seating Awaited',
-        seatNo: 'Awaited',
-        reportingTime: 'Report 01:00 PM',
-      ),
-    ];
-    list.sort((a, b) => (a.getExamDate()?.millisecondsSinceEpoch ?? 9999999999999)
-        .compareTo(b.getExamDate()?.millisecondsSinceEpoch ?? 9999999999999));
-    return list;
-  }
-
   static Future<void> saveExamsToPrefs(List<ExamItem> exams) async {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = jsonEncode(exams.map((e) => e.toJson()).toList());
@@ -90,6 +33,17 @@ class ExamParser {
       try {
         final decoded = jsonDecode(raw) as List<dynamic>;
         final list = decoded.map((e) => ExamItem.fromJson(e as Map<String, dynamic>)).toList();
+
+        // Purge legacy hardcoded fallback data if present
+        final isLegacyDummy = list.length == 4 &&
+            list.any((it) => it.courseCode == 'PEA306' && it.dateStr.contains('Oct 2026')) &&
+            list.any((it) => it.courseCode == 'CSE408' && it.dateStr.contains('Oct 2026'));
+
+        if (isLegacyDummy) {
+          await clearExams();
+          return [];
+        }
+
         if (list.isNotEmpty) {
           list.sort((a, b) => (a.getExamDate()?.millisecondsSinceEpoch ?? 9999999999999)
               .compareTo(b.getExamDate()?.millisecondsSinceEpoch ?? 9999999999999));
@@ -98,9 +52,8 @@ class ExamParser {
       } catch (_) {}
     }
 
-    final verified = getVerifiedSchedule();
-    await saveExamsToPrefs(verified);
-    return verified;
+    // Return empty list if no real datesheet has been synced yet
+    return [];
   }
 
   static Future<void> clearExams() async {
@@ -143,7 +96,7 @@ class ExamParser {
           var timeSlot = '09:00 AM – 12:00 PM';
           var reporting = '';
           var room = 'Seating Awaited';
-          const seatNo = 'Awaited';
+          var seatNo = 'Awaited';
           var examType = 'MTE';
 
           final maxJ = (i + 8) < lines.length ? (i + 8) : (lines.length - 1);
@@ -153,7 +106,7 @@ class ExamParser {
               break;
             }
 
-            final dMatch = RegExp(r'\b(\d{1,2}\s+[A-Za-z]{3}\s+\d{4}|\d{1,2}[-/](?:[A-Za-z]{3}|\d{1,2})[-/]\d{2,4})\b').firstMatch(nextLine);
+            final dMatch = RegExp(r'\b(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4}|\d{1,2}[-/.](?:[A-Za-z]{3,9}|\d{1,2})[-/.]\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4})\b').firstMatch(nextLine);
             if (dMatch != null && dateStr.isEmpty) {
               dateStr = dMatch.group(1)!;
             }
@@ -173,6 +126,11 @@ class ExamParser {
               room = nextLine;
             } else if (nextLine.toLowerCase().contains('awaited')) {
               room = 'Seating Awaited';
+            }
+
+            final seatMatch = RegExp(r'(?:Seat|Desk)(?:\s*No\.?)?\s*[:\-]?\s*([A-Za-z0-9\-]+)', caseSensitive: false).firstMatch(nextLine);
+            if (seatMatch != null && seatNo == 'Awaited') {
+              seatNo = seatMatch.group(1)!.trim();
             }
 
             if (RegExp(r'Mid\s*Term|MTE', caseSensitive: false).hasMatch(nextLine)) {
@@ -214,7 +172,7 @@ class ExamParser {
       // 2. Fallback attempt: Table row parsing (classic UMS HTML)
       if (items.isEmpty) {
         final rowRegex = RegExp(r'<tr[^>]*>([\s\S]*?)<\/tr>', caseSensitive: false);
-        final cellRegex = RegExp(r'<td[^>]*>([\s\S]*?)<\/td>', caseSensitive: false);
+        final cellRegex = RegExp(r'<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>', caseSensitive: false);
         final rows = rowRegex.allMatches(raw).toList();
 
         for (final r in rows) {
@@ -234,8 +192,7 @@ class ExamParser {
               if (title.isEmpty) title = getCourseTitle(code);
 
               final dateCell = cells.firstWhere(
-                (c) => RegExp(r'.*\d{1,2}[-/]([A-Za-z]{3}|\d{1,2})[-/]\d{2,4}.*').hasMatch(c) ||
-                    RegExp(r'[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}').hasMatch(c),
+                (c) => RegExp(r'.*\b(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4}|\d{1,2}[-/.](?:[A-Za-z]{3,9}|\d{1,2})[-/.]\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4})\b.*').hasMatch(c),
                 orElse: () => '',
               );
 
@@ -271,7 +228,7 @@ class ExamParser {
                       : 'ETE';
 
               if (dateCell.isNotEmpty) {
-                final cleanDate = RegExp(r'\b(\d{1,2}[-/]([A-Za-z]{3}|\d{1,2})[-/]\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\b')
+                final cleanDate = RegExp(r'\b(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4}|\d{1,2}[-/.](?:[A-Za-z]{3,9}|\d{1,2})[-/.]\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4})\b')
                     .firstMatch(dateCell)?.group(1) ?? dateCell;
 
                 final isEvening = timeCell.toUpperCase().contains('PM') &&

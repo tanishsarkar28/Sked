@@ -51,64 +51,8 @@ object ExamParser {
     }
 
     /**
-     * Official examination schedule for current term as published on studentums.lpu.in.
-     */
-    fun getVerifiedSchedule(): List<ExamItem> {
-        return listOf(
-            ExamItem(
-                courseCode = "PEA306",
-                courseTitle = "Analytical Skills-II",
-                dateStr = "01 Oct 2026",
-                dayName = "Thursday",
-                timeSlot = "12:30 PM – 01:30 PM",
-                session = "Evening",
-                examType = "MTE",
-                room = "Seating Awaited",
-                seatNo = "Awaited",
-                reportingTime = "Report 12:00 PM"
-            ),
-            ExamItem(
-                courseCode = "CSE408",
-                courseTitle = "Design and Analysis of Algorithms",
-                dateStr = "06 Oct 2026",
-                dayName = "Tuesday",
-                timeSlot = "12:30 PM – 02:00 PM",
-                session = "Evening",
-                examType = "MTE",
-                room = "Seating Awaited",
-                seatNo = "Awaited",
-                reportingTime = "Report 12:00 PM"
-            ),
-            ExamItem(
-                courseCode = "CSE408",
-                courseTitle = "Design and Analysis of Algorithms",
-                dateStr = "15 Dec 2026",
-                dayName = "Tuesday",
-                timeSlot = "01:30 PM – 04:30 PM",
-                session = "Evening",
-                examType = "ETE",
-                room = "Seating Awaited",
-                seatNo = "Awaited",
-                reportingTime = "Report 01:00 PM"
-            ),
-            ExamItem(
-                courseCode = "PEA306",
-                courseTitle = "Analytical Skills-II",
-                dateStr = "21 Dec 2026",
-                dayName = "Monday",
-                timeSlot = "01:30 PM – 03:30 PM",
-                session = "Evening",
-                examType = "ETE",
-                room = "Seating Awaited",
-                seatNo = "Awaited",
-                reportingTime = "Report 01:00 PM"
-            )
-        ).sortedBy { it.getExamDate()?.time ?: Long.MAX_VALUE }
-    }
-
-    /**
      * Reads saved exam list from SharedPreferences.
-     * Falls back to verified studentums datesheet if not yet synced.
+     * Purges any legacy hardcoded dummy exams (PEA306 Oct 2026).
      */
     fun loadExamsFromPrefs(context: Context): List<ExamItem> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -131,16 +75,25 @@ object ExamParser {
                         reportingTime = obj.optString("reportingTime")
                     )
                 }
+
+                // Check if this was the legacy hardcoded fallback data
+                val isLegacyDummy = list.size == 4 &&
+                    list.any { it.courseCode == "PEA306" && it.dateStr.contains("Oct 2026") } &&
+                    list.any { it.courseCode == "CSE408" && it.dateStr.contains("Oct 2026") }
+
+                if (isLegacyDummy) {
+                    clearExams(context)
+                    return emptyList()
+                }
+
                 if (list.isNotEmpty()) return list.sortedBy { it.getExamDate()?.time ?: Long.MAX_VALUE }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load exams from prefs", e)
             }
         }
 
-        // Fallback to verified official 4-exam datesheet
-        val verified = getVerifiedSchedule()
-        saveExamsToPrefs(context, verified)
-        return verified
+        // Return empty list if no real datesheet has been synced yet
+        return emptyList()
     }
 
     /**
@@ -180,7 +133,7 @@ object ExamParser {
                     var timeSlot = "09:00 AM – 12:00 PM"
                     var reporting = ""
                     var room = "Seating Awaited"
-                    val seatNo = "Awaited"
+                    var seatNo = "Awaited"
                     var examType = "MTE"
 
                     // Look ahead in subsequent lines for details of this exam
@@ -189,8 +142,7 @@ object ExamParser {
                         if (j > i + 1 && Regex("""^[A-Z]{2,5}\d{3,4}\b""").containsMatchIn(nextLine)) {
                             break
                         }
-
-                        val dMatch = Regex("""\b(\d{1,2}\s+[A-Za-z]{3}\s+\d{4}|\d{1,2}[-/](?:[A-Za-z]{3}|\d{1,2})[-/]\d{2,4})\b""").find(nextLine)
+                        val dMatch = Regex("""\b(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4}|\d{1,2}[-/.](?:[A-Za-z]{3,9}|\d{1,2})[-/.]\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4})\b""").find(nextLine)
                         if (dMatch != null && dateStr.isBlank()) {
                             dateStr = dMatch.groupValues[1]
                         }
@@ -209,6 +161,11 @@ object ExamParser {
                             room = nextLine
                         } else if (nextLine.contains("Awaited", ignoreCase = true)) {
                             room = "Seating Awaited"
+                        }
+
+                        val seatMatch = Regex("""(?:Seat|Desk)(?:\s*No\.?)?\s*[:\-]?\s*([A-Za-z0-9\-]+)""", RegexOption.IGNORE_CASE).find(nextLine)
+                        if (seatMatch != null && seatNo == "Awaited") {
+                            seatNo = seatMatch.groupValues[1].trim()
                         }
 
                         if (Regex("""Mid\s*Term|MTE""", RegexOption.IGNORE_CASE).containsMatchIn(nextLine)) {
@@ -245,7 +202,7 @@ object ExamParser {
             // 2. Fallback attempt: Table row parsing (classic UMS HTML)
             if (items.isEmpty()) {
                 val rowRegex = Regex("""<tr[^>]*>([\s\S]*?)<\/tr>""", RegexOption.IGNORE_CASE)
-                val cellRegex = Regex("""<td[^>]*>([\s\S]*?)<\/td>""", RegexOption.IGNORE_CASE)
+                val cellRegex = Regex("""<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>""", RegexOption.IGNORE_CASE)
                 val rows = rowRegex.findAll(raw).toList()
                 for (r in rows) {
                     val rowContent = r.groupValues[1]
@@ -261,8 +218,7 @@ object ExamParser {
                             val title = cells.getOrNull(codeIdx + 1)?.takeIf { !it.matches(Regex(""".*\d{1,2}[-/].*""")) } ?: ""
 
                             val dateCell = cells.find {
-                                it.matches(Regex(""".*\d{1,2}[-/]([A-Za-z]{3}|\d{1,2})[-/]\d{2,4}.*""")) ||
-                                it.matches(Regex("""[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}"""))
+                                it.matches(Regex(""".*\b(\d{1,2}[-/.](?:[A-Za-z]{3,9}|\d{1,2})[-/.]\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4})\b.*"""))
                             } ?: ""
 
                             val timeCell = cells.find {
@@ -289,7 +245,7 @@ object ExamParser {
                             }
 
                             if (dateCell.isNotBlank()) {
-                                val cleanDate = Regex("""\b(\d{1,2}[-/]([A-Za-z]{3}|\d{1,2})[-/]\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\b""")
+                                val cleanDate = Regex("""\b(\d{1,2}[-/.](?:[A-Za-z]{3,9}|\d{1,2})[-/.]\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4})\b""")
                                     .find(dateCell)?.value ?: dateCell
 
                                 items.add(

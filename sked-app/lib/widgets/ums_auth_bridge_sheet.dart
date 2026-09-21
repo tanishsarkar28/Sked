@@ -178,27 +178,53 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet> {
                         window._skedError = 'Failed to fetch timetable: ' + e.toString();
                     });
 
-                var dsPromise = safeFetch('/lpuums/frmStudentDateSheet.aspx', 'datesheet')
-                    .then(function(res) {
-                        if (res.html && res.html.length > 200 && !res.html.includes('LoginNew')) {
-                            window._skedDatesheetResult = res.html;
-                        } else {
-                            return safeFetch('/lpuums/frmDateSheet.aspx', 'datesheet2')
-                                .then(function(res2) {
-                                    if (res2.html && res2.html.length > 200 && !res2.html.includes('LoginNew')) {
-                                        window._skedDatesheetResult = res2.html;
-                                    } else {
-                                        return safeFetch('/lpuums/frmSeatingPlan.aspx', 'seating')
-                                            .then(function(res3) {
-                                                window._skedDatesheetResult = (res3.html && res3.html.length > 200 && !res3.html.includes('LoginNew')) ? res3.html : '';
-                                            });
-                                    }
-                                });
+                var dsUrls = [
+                    '/lpuums/frmStudentDateSheet.aspx',
+                    '/frmStudentDateSheet.aspx',
+                    '/lpuums/frmDateSheet.aspx',
+                    '/frmDateSheet.aspx',
+                    '/lpuums/frmStudentExamSchedule.aspx',
+                    '/frmStudentExamSchedule.aspx',
+                    '/lpuums/frmSeatingPlan.aspx',
+                    '/frmSeatingPlan.aspx',
+                    '/lpuums/frmStudentSeatingPlan.aspx',
+                    '/frmStudentSeatingPlan.aspx',
+                    '/lpuums/frmExamSeatingPlan.aspx'
+                ];
+                try {
+                    var regex = /href=["']([^"']*(?:datesheet|seating|exam|schedule)[^"']*)["']/gi;
+                    var match;
+                    while ((match = regex.exec(loginHtml)) !== null) {
+                        var u = match[1];
+                        if (u && !u.startsWith('javascript:') && !u.startsWith('#') && dsUrls.indexOf(u) === -1) {
+                            dsUrls.push(u);
                         }
+                    }
+                    var links = document.querySelectorAll('a[href]');
+                    for (var li = 0; li < links.length; li++) {
+                        var href = links[li].getAttribute('href') || '';
+                        if (href && /(?:datesheet|seating|exam)/i.test(href) && !href.startsWith('javascript:') && !href.startsWith('#') && dsUrls.indexOf(href) === -1) {
+                            dsUrls.push(href);
+                        }
+                    }
+                } catch(e) {}
+
+                var dsPromise = Promise.all(
+                    dsUrls.map(function(u) {
+                        return safeFetch(u, u);
                     })
-                    .catch(function() {
-                        window._skedDatesheetResult = '';
-                    });
+                ).then(function(results) {
+                    var combinedHtml = '';
+                    for (var i = 0; i < results.length; i++) {
+                        var h = results[i].html || '';
+                        if (h && (/[A-Z]{2,5}\d{3,4}/.test(h) || /datesheet|seating|exam/i.test(h))) {
+                            combinedHtml += '\n<!-- PAGE: ' + results[i].name + ' -->\n' + h;
+                        }
+                    }
+                    window._skedDatesheetResult = combinedHtml;
+                }).catch(function() {
+                    window._skedDatesheetResult = '';
+                });
 
                 return Promise.all([ttPromise, dsPromise]);
             }
@@ -332,8 +358,8 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet> {
       }
 
       final parsedExams = ExamParser.parseDatesheetHtml(dsRaw);
-      final exams = parsedExams.isNotEmpty ? parsedExams : await ExamParser.loadExamsFromPrefs();
-      await ExamParser.saveExamsToPrefs(exams);
+      await ExamParser.saveExamsToPrefs(parsedExams);
+      final exams = parsedExams;
 
       if (mounted) {
         if (entries.isNotEmpty) {
