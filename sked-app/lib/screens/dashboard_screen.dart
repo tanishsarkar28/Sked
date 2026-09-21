@@ -114,7 +114,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDlgState) => AlertDialog(
           backgroundColor: SkedColors.slab,
-          shape: RoundedCornerShape(12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           title: Row(
             children: [
               const Icon(Icons.sync, color: SkedColors.blaze, size: 20),
@@ -190,7 +190,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: SkedColors.slab,
-        shape: RoundedCornerShape(12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: Text(
           'Log Out from Sked?',
           style: GoogleFonts.barlowCondensed(
@@ -365,7 +365,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                     OutlinedButton.icon(
                       onPressed: _triggerReSync,
                       style: OutlinedButton.styleFrom(
-                        shape: RoundedCornerShape(4),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                         side: const BorderSide(color: SkedColors.rule),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       ),

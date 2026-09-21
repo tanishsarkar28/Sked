@@ -25,7 +25,7 @@ class AboutDeveloperDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: SkedColors.slab,
-      shape: RoundedCornerShape(12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Container(
         padding: const EdgeInsets.all(20),
         constraints: const BoxConstraints(maxWidth: 400),
@@ -80,7 +80,7 @@ class AboutDeveloperDialog extends StatelessWidget {
                     borderRadius: BorderRadius.circular(24),
                     border: Border.all(color: SkedColors.blaze.withOpacity(0.5), width: 1.5),
                   ),
-                  alignment: Alignment.Center,
+                  alignment: Alignment.center,
                   child: Text(
                     'TS',
                     style: GoogleFonts.barlowCondensed(
