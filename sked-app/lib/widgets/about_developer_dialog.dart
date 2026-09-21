@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/update_service.dart';
 import '../theme/app_theme.dart';
 
 class AboutDeveloperDialog extends StatelessWidget {
@@ -175,17 +176,63 @@ class AboutDeveloperDialog extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            // Version info
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                'SKED v1.1.0 • iOS Edition',
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 10,
-                  color: SkedColors.textMuted,
+            // Update & Version row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                InkWell(
+                  onTap: () async {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Checking for updates...'),
+                        duration: Duration(seconds: 1),
+                        backgroundColor: SkedColors.slabElevated,
+                      ),
+                    );
+                    final update = await UpdateService.checkForUpdate();
+                    if (context.mounted) {
+                      if (update != null) {
+                        UpdateService.showUpdateDialog(context, update);
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('You are on the latest version of Sked.'),
+                            duration: Duration(seconds: 2),
+                            backgroundColor: SkedColors.slabElevated,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.sync, size: 12, color: SkedColors.blaze),
+                        const SizedBox(width: 4),
+                        Text(
+                          'CHECK FOR UPDATES',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: SkedColors.blaze,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+                Text(
+                  'SKED v1.1.0 • iOS',
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    color: SkedColors.textMuted,
+                  ),
+                ),
+              ],
             ),
           ],
         ),

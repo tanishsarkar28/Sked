@@ -3,8 +3,11 @@
   "versionName": "1.1.0",
   "minSupportedVersion": 1,
   "releaseNotes": "• Exam Timetable & Live Countdown Radar (MTE & ETE)\n• Support for modern studentums.lpu.in examination portal\n• Zero LPU Touch session conflict & 100% offline cache\n• Live home screen timetable widget",
-  "apkUrl": "https://raw.githubusercontent.com/tanishsarkar28/Sked/main/sked-web/public/downloads/sked-android.apk",
+  "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
+  "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
+  "directIpaDownloadUrl": "/downloads/sked-ios.ipa",
   "fileSize": "20.4 MB",
-  "updatedAt": "2026-09-20"
+  "ipaFileSize": "7.1 MB",
+  "updatedAt": "2026-09-21"
 }

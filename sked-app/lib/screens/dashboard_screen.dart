@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import '../widgets/class_card.dart';
 import '../widgets/about_developer_dialog.dart';
 import '../widgets/ums_auth_bridge_sheet.dart';
+import '../services/update_service.dart';
 import 'exam_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -55,6 +56,18 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     );
 
     _loadLocalData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAppUpdate();
+    });
+  }
+
+  Future<void> _checkAppUpdate() async {
+    try {
+      final update = await UpdateService.checkForUpdate();
+      if (update != null && mounted) {
+        UpdateService.showUpdateDialog(context, update);
+      }
+    } catch (_) {}
   }
 
   @override
