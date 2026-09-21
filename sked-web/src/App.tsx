@@ -7,6 +7,7 @@ import { LiveMockup } from '@/components/LiveMockup';
 import { WidgetPreview } from '@/components/WidgetPreview';
 import { DeveloperCard } from '@/components/DeveloperCard';
 import { Footer } from '@/components/Footer';
+import { Analytics } from '@vercel/analytics/react';
 
 export default function App() {
   const [platform, setPlatform] = useState<'android' | 'ios'>('android');
@@ -80,6 +81,9 @@ export default function App() {
 
       {/* Footer */}
       <Footer />
+
+      {/* Vercel Analytics */}
+      <Analytics />
     </div>
   );
 }
