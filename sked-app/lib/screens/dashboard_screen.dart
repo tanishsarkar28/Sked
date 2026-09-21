@@ -11,6 +11,7 @@ import '../widgets/class_card.dart';
 import '../widgets/about_developer_dialog.dart';
 import '../widgets/ums_auth_bridge_sheet.dart';
 import '../services/update_service.dart';
+import '../services/widget_service.dart';
 import 'exam_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -96,6 +97,15 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
             _selectedDay = _days.contains(_todayName) ? _todayName : 'Monday';
           }
         });
+
+        final todayExam = realExams.where((e) => e.getStatus() == ExamStatus.today).firstOrNull;
+        final tomorrowExam = realExams.where((e) => e.getStatus() == ExamStatus.tomorrow).firstOrNull;
+        WidgetService.updateWidgetData(
+          todayEntries: todayEntries,
+          isSunday: _todayName == 'Sunday',
+          todayExam: todayExam,
+          tomorrowExam: tomorrowExam,
+        );
       }
     } catch (_) {
     } finally {

@@ -60,6 +60,13 @@ jobs:
             sed -i '' 's/DevelopmentTeam = "";/DevelopmentTeam = "0000000000";/g' ios/Runner.xcodeproj/project.pbxproj || true
           fi
 
+          # Inject native WidgetKit extension target if present
+          if [ -f "ios/setup_widget_target.rb" ]; then
+            echo "Configuring TimetableWidgetExtension target..."
+            gem install xcodeproj --no-document 2>/dev/null || true
+            ruby ios/setup_widget_target.rb || echo "Warning: Widget target configuration had warnings"
+          fi
+
       - name: Install Flutter Dependencies
         run: |
           cd sked-app

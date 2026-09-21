@@ -1,13 +1,13 @@
 {
-  "versionCode": 2,
-  "versionName": "1.1.0",
+  "versionCode": 3,
+  "versionName": "1.2.0",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Exam Timetable & Live Countdown Radar (MTE & ETE)\n• Support for modern studentums.lpu.in examination portal\n• Zero LPU Touch session conflict & 100% offline cache\n• Live home screen timetable widget",
+  "releaseNotes": "• Native iOS Home Screen Widget (WidgetKit) with Departure Board & Exam Spotlight\n• Real-time class status tracking and Sunday Relax Mode on iPhone\n• In-app OTA update checker connected to sked-gold.vercel.app\n• 100% On-device privacy with zero external proxies",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
   "directIpaDownloadUrl": "/downloads/sked-ios.ipa",
   "fileSize": "20.4 MB",
-  "ipaFileSize": "7.1 MB",
+  "ipaFileSize": "7.5 MB",
   "updatedAt": "2026-09-21"
 }
