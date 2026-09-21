@@ -67,10 +67,10 @@ end
 end
 app_target.add_dependency(widget_target)
 
-embed_phase = app_target.copy_files_build_phases.find { |p| p.name == 'Embed Foundation Extensions' || p.dst_subfolder_spec == 13 }
+embed_phase = app_target.copy_files_build_phases.find { |p| p.name == 'Embed Foundation Extensions' || p.dst_subfolder_spec.to_s == '13' }
 unless embed_phase
   embed_phase = app_target.new_copy_files_build_phase('Embed Foundation Extensions')
-  embed_phase.dst_subfolder_spec = 13
+  embed_phase.dst_subfolder_spec = '13'
   embed_phase.dst_path = ''
 end
 

@@ -77,7 +77,7 @@ jobs:
           # Inject native WidgetKit extension target into Runner.xcodeproj
           if [ -f "ios/setup_widget_target.rb" ]; then
             echo "Configuring TimetableWidgetExtension target..."
-            ruby ios/setup_widget_target.rb || echo "Warning: Widget target configuration had warnings"
+            ruby ios/setup_widget_target.rb
           fi
 
           # Archive with Xcode without code signing
@@ -123,6 +123,8 @@ jobs:
               exit 1
             fi
           fi
+          # Check PlugIns in Runner.app
+          ls -la Payload/Runner.app/PlugIns || echo "No PlugIns found"
           zip -r -y sked-ios.ipa Payload
           ls -lh sked-ios.ipa
 
