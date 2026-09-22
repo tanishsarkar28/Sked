@@ -72,10 +72,15 @@ import com.sked.sked_app.widget.TimetableRefreshWorker.Companion.KEY_USER_ID
 import com.sked.sked_app.widget.TimetableWidgetReceiver
 import com.sked.sked_app.update.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -1852,23 +1857,109 @@ fun UmsAuthBridgeDialog(
                                             wv.evaluateJavascript("window._skedDatesheetResult || ''") { dsRaw ->
                                                 coroutineScope.launch(Dispatchers.IO) {
                                                     try {
-                                                        val entries = if (!ttRaw.isNullOrBlank()) TimetableParser.parse(ttRaw) else emptyList()
+                                                        val entries: List<ClassItem> = if (!ttRaw.isNullOrBlank()) TimetableParser.parse(ttRaw) else emptyList()
                                                         if (entries.isNotEmpty()) {
                                                             TimetableParser.saveToPrefs(context, entries, userId)
                                                         }
+                                                        val titleMap = entries.filter { it.courseCode.isNotBlank() && it.description.isNotBlank() }
+                                                            .associate { it.courseCode.uppercase() to it.description }
 
-                                                        // Parse real datesheet from UMS HTML
-                                                        val cleanDsHtml = if (!dsRaw.isNullOrBlank() && dsRaw != "\"\"" && dsRaw != "null") {
-                                                            try {
-                                                                if (dsRaw.startsWith("\"") && dsRaw.endsWith("\"")) {
-                                                                    JSONObject("{\"v\":$dsRaw}").getString("v")
-                                                                } else dsRaw
-                                                            } catch (_: Exception) { dsRaw }
-                                                        } else ""
+                                                        withContext(Dispatchers.Main) {
+                                                            statusText = "Syncing Examination Seating Plan..."
+                                                        }
 
-                                                        val parsedExams = ExamParser.parseDatesheetHtml(cleanDsHtml)
-                                                        ExamParser.saveExamsToPrefs(context, parsedExams)
-                                                        val exams = parsedExams
+                                                        // Fetch SSO token from LPU msapi for studentums.lpu.in
+                                                        var ssoToken = ""
+                                                        try {
+                                                            val client = OkHttpClient.Builder()
+                                                                .connectTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+                                                                .readTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+                                                                .build()
+                                                            val jsonBody = JSONObject().apply {
+                                                                put("UserName", userId)
+                                                                put("Password", password)
+                                                            }.toString()
+                                                            val mediaType = "application/json; charset=utf-8".toMediaType()
+                                                            val req = Request.Builder()
+                                                                .url("https://msapi.lpu.in/baseapi/api/security/createToken")
+                                                                .post(jsonBody.toRequestBody(mediaType))
+                                                                .build()
+                                                            val resp = client.newCall(req).execute()
+                                                            val respStr = resp.body?.string() ?: ""
+                                                            val m = Regex("""[A-Fa-f0-9]{64,}""").find(respStr)
+                                                            if (m != null) ssoToken = m.value
+                                                            android.util.Log.d("SkedSync", "SSO token obtained: ${ssoToken.take(8)}... (len: ${ssoToken.length})")
+                                                        } catch (e: Exception) {
+                                                            android.util.Log.w("SkedSync", "createToken notice: ${e.message}")
+                                                        }
+
+                                                        // Navigate WebView to modern seating plan portal
+                                                        withContext(Dispatchers.Main) {
+                                                            val seatingUrl = if (ssoToken.isNotBlank()) {
+                                                                "https://studentums.lpu.in/dashboard/examination/conduct/seatingplan?token=$ssoToken"
+                                                            } else {
+                                                                "https://studentums.lpu.in/dashboard/examination/conduct/seatingplan"
+                                                            }
+                                                            wv.loadUrl(seatingUrl)
+                                                        }
+
+                                                        // Poll WebView DOM for modern examination cards
+                                                        var examsFound: List<ExamItem> = emptyList()
+                                                        var attempts = 0
+                                                        while (attempts < 20) {
+                                                            delay(500)
+                                                            attempts++
+                                                            val textRaw = withContext(Dispatchers.Main) {
+                                                                suspendCancellableCoroutine<String> { cont ->
+                                                                    wv.evaluateJavascript("document.body ? document.body.innerText : ''") { res ->
+                                                                        cont.resume(res ?: "")
+                                                                    }
+                                                                }
+                                                            }
+                                                            val cleanText = if (textRaw.startsWith("\"") && textRaw.endsWith("\"")) {
+                                                                try {
+                                                                    JSONObject("{\"v\":$textRaw}").getString("v")
+                                                                } catch (_: Exception) { textRaw }
+                                                            } else textRaw
+
+                                                            if (cleanText.contains("Total Exam", ignoreCase = true) ||
+                                                                cleanText.contains("Upcoming Exam", ignoreCase = true) ||
+                                                                cleanText.contains("Admit Card", ignoreCase = true) ||
+                                                                cleanText.contains("Exam not scheduled", ignoreCase = true) ||
+                                                                cleanText.contains("No record found", ignoreCase = true) ||
+                                                                Regex("""\b[A-Z]{2,5}\d{3,4}\b""").containsMatchIn(cleanText)) {
+
+                                                                val parsed = ExamParser.parseDatesheetHtml(cleanText, titleMap)
+                                                                if (parsed.isNotEmpty()) {
+                                                                    examsFound = parsed
+                                                                    android.util.Log.d("SkedSync", "Successfully parsed ${parsed.size} exams from studentums")
+                                                                    break
+                                                                } else if (cleanText.contains("Exam not scheduled", ignoreCase = true) ||
+                                                                           cleanText.contains("No record found", ignoreCase = true) ||
+                                                                           cleanText.contains("Total Exam 0", ignoreCase = true)) {
+                                                                    android.util.Log.d("SkedSync", "Verified 0 exams currently scheduled on portal")
+                                                                    break
+                                                                }
+                                                            }
+                                                        }
+
+                                                        // Fallback check on legacy HTML if modern was empty
+                                                        if (examsFound.isEmpty()) {
+                                                            val cleanDsHtml = if (!dsRaw.isNullOrBlank() && dsRaw != "\"\"" && dsRaw != "null") {
+                                                                try {
+                                                                    if (dsRaw.startsWith("\"") && dsRaw.endsWith("\"")) {
+                                                                        JSONObject("{\"v\":$dsRaw}").getString("v")
+                                                                    } else dsRaw
+                                                                } catch (_: Exception) { dsRaw }
+                                                            } else ""
+                                                            val fallback = ExamParser.parseDatesheetHtml(cleanDsHtml, titleMap)
+                                                            if (fallback.isNotEmpty()) examsFound = fallback
+                                                        }
+
+                                                        if (examsFound.isNotEmpty()) {
+                                                            ExamParser.saveExamsToPrefs(context, examsFound)
+                                                        }
+                                                        val exams = examsFound
 
                                                         try {
                                                             val manager = GlanceAppWidgetManager(context)

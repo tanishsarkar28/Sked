@@ -225,7 +225,7 @@ class AboutDeveloperDialog extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  'SKED v1.2.0 • iOS',
+                  'SKED v1.2.1 • iOS',
                   style: const TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 10,

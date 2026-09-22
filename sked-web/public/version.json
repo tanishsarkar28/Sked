@@ -1,13 +1,13 @@
 {
-  "versionCode": 3,
-  "versionName": "1.2.0",
+  "versionCode": 4,
+  "versionName": "1.2.1",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Native iOS Home Screen Widget (WidgetKit) with Departure Board & Exam Spotlight\n• Real-time class status tracking and Sunday Relax Mode on iPhone\n• In-app OTA update checker connected to sked-gold.vercel.app\n• 100% On-device privacy with zero external proxies",
+  "releaseNotes": "• Real-time synchronization with modern studentums.lpu.in examination portal\n• Automatic seating plan, exam hall & desk allocation tracking\n• Native iOS Home Screen Widget (WidgetKit) with Departure Board & Exam Spotlight\n• 100% On-device privacy with zero external proxies",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
   "directIpaDownloadUrl": "/downloads/sked-ios.ipa",
   "fileSize": "20.4 MB",
   "ipaFileSize": "7.6 MB",
-  "updatedAt": "2026-09-21"
+  "updatedAt": "2026-09-22"
 }

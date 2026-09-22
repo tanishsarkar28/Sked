@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 import '../services/timetable_parser.dart';
 import '../services/exam_parser.dart';
@@ -356,10 +357,70 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet> {
       if (entries.isNotEmpty) {
         await TimetableParser.saveToPrefs(entries, widget.userId);
       }
+      final titleMap = {
+        for (final e in entries)
+          if (e.courseCode.isNotEmpty && e.description.isNotEmpty)
+            e.courseCode.toUpperCase(): e.description
+      };
 
-      final parsedExams = ExamParser.parseDatesheetHtml(dsRaw);
-      await ExamParser.saveExamsToPrefs(parsedExams);
-      final exams = parsedExams;
+      if (mounted) {
+        setState(() => _statusText = 'Syncing Examination Seating Plan...');
+      }
+
+      String ssoToken = '';
+      try {
+        final resp = await http.post(
+          Uri.parse('https://msapi.lpu.in/baseapi/api/security/createToken'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'UserName': widget.userId, 'Password': widget.password}),
+        ).timeout(const Duration(seconds: 6));
+        final m = RegExp(r'[A-Fa-f0-9]{64,}').firstMatch(resp.body);
+        if (m != null) ssoToken = m.group(0)!;
+      } catch (_) {}
+
+      final seatingUrl = ssoToken.isNotEmpty
+          ? 'https://studentums.lpu.in/dashboard/examination/conduct/seatingplan?token=$ssoToken'
+          : 'https://studentums.lpu.in/dashboard/examination/conduct/seatingplan';
+
+      await _controller.loadRequest(Uri.parse(seatingUrl));
+
+      List<ExamItem> examsFound = [];
+      for (var attempt = 0; attempt < 20; attempt++) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        try {
+          final resObj = await _controller.runJavaScriptReturningResult('document.body ? document.body.innerText : ""');
+          var textRaw = resObj.toString();
+          if (textRaw.startsWith('"') && textRaw.endsWith('"')) {
+            try {
+              final dec = jsonDecode('{"v":$textRaw}') as Map<String, dynamic>;
+              textRaw = dec['v'] as String? ?? '';
+            } catch (_) {}
+          }
+
+          if (textRaw.contains(RegExp('Total Exam|Upcoming Exam|Admit Card|Exam not scheduled|No record found', caseSensitive: false)) ||
+              RegExp(r'\b[A-Z]{2,5}\d{3,4}\b').hasMatch(textRaw)) {
+            final parsed = ExamParser.parseDatesheetHtml(textRaw, titleMap);
+            if (parsed.isNotEmpty) {
+              examsFound = parsed;
+              break;
+            } else if (textRaw.toLowerCase().contains('exam not scheduled') ||
+                       textRaw.toLowerCase().contains('no record found') ||
+                       textRaw.contains('Total Exam 0')) {
+              break;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (examsFound.isEmpty && dsRaw.isNotEmpty) {
+        final fallback = ExamParser.parseDatesheetHtml(dsRaw, titleMap);
+        if (fallback.isNotEmpty) examsFound = fallback;
+      }
+
+      if (examsFound.isNotEmpty) {
+        await ExamParser.saveExamsToPrefs(examsFound);
+      }
+      final exams = examsFound;
 
       if (mounted) {
         if (entries.isNotEmpty) {

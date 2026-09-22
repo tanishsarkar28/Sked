@@ -50,6 +50,25 @@ object ExamParser {
         }
     }
 
+    fun formatTimeSlot(raw: String): String {
+        val m = Regex("""(\d{1,2}):(\d{2})\s*[–\-]\s*(\d{1,2}):(\d{2})""").find(raw) ?: return raw
+        val h1 = m.groupValues[1].toIntOrNull() ?: return raw
+        val m1 = m.groupValues[2]
+        val h2 = m.groupValues[3].toIntOrNull() ?: return raw
+        val m2 = m.groupValues[4]
+
+        fun to12(h: Int, min: String): String {
+            val ampm = if (h >= 12) "PM" else "AM"
+            val h12 = when {
+                h == 0 -> 12
+                h > 12 -> h - 12
+                else -> h
+            }
+            return String.format(java.util.Locale.US, "%02d:%s %s", h12, min, ampm)
+        }
+        return "${to12(h1, m1)} – ${to12(h2, m2)}"
+    }
+
     /**
      * Reads saved exam list from SharedPreferences.
      * Purges any legacy hardcoded dummy exams (PEA306 Oct 2026).
@@ -97,7 +116,7 @@ object ExamParser {
     /**
      * Parses datesheet from either modern studentums.lpu.in card text or classic UMS HTML tables.
      */
-    fun parseDatesheetHtml(raw: String): List<ExamItem> {
+    fun parseDatesheetHtml(raw: String, courseTitleMap: Map<String, String> = emptyMap()): List<ExamItem> {
         val items = mutableListOf<ExamItem>()
         if (raw.isBlank()) return items
 
@@ -118,7 +137,9 @@ object ExamParser {
                 if (codeMatch != null && !line.contains("Term", ignoreCase = true) && !line.contains("Total", ignoreCase = true)) {
                     val code = codeMatch.groupValues[1]
                     var title = line.substringAfter(code).trim().removePrefix("-").removePrefix("–").trim()
-                    if (title.isBlank()) title = getCourseTitle(code)
+                    if (title.isBlank()) {
+                        title = courseTitleMap[code.uppercase()] ?: getCourseTitle(code)
+                    }
                     var dateStr = ""
                     var timeSlot = "09:00 AM – 12:00 PM"
                     var reporting = ""
@@ -139,7 +160,7 @@ object ExamParser {
 
                         val tMatch = Regex("""\b(\d{1,2}:\d{2}\s*[–\-]\s*\d{1,2}:\d{2}(?:\s*(?:AM|PM))?|\d{1,2}:\d{2}\s*(?:AM|PM))\b""", RegexOption.IGNORE_CASE).find(nextLine)
                         if (tMatch != null && (timeSlot == "09:00 AM – 12:00 PM" || timeSlot.isBlank())) {
-                            timeSlot = tMatch.groupValues[1]
+                            timeSlot = formatTimeSlot(tMatch.groupValues[1])
                         }
 
                         val rMatch = Regex("""Report\s+([^\]]+)""", RegexOption.IGNORE_CASE).find(nextLine)

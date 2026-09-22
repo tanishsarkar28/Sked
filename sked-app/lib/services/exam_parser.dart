@@ -51,8 +51,26 @@ class ExamParser {
     await prefs.remove(keyExamsJson);
   }
 
+  static String formatTimeSlot(String raw) {
+    final m = RegExp(r'(\d{1,2}):(\d{2})\s*[–\-]\s*(\d{1,2}):(\d{2})').firstMatch(raw);
+    if (m == null) return raw;
+    final h1 = int.tryParse(m.group(1)!);
+    final m1 = m.group(2)!;
+    final h2 = int.tryParse(m.group(3)!);
+    final m2 = m.group(4)!;
+    if (h1 == null || h2 == null) return raw;
+
+    String to12(int h, String min) {
+      final ampm = h >= 12 ? 'PM' : 'AM';
+      final h12 = h == 0 ? 12 : (h > 12 ? h - 12 : h);
+      final hStr = h12 < 10 ? '0$h12' : '$h12';
+      return '$hStr:$min $ampm';
+    }
+    return '${to12(h1, m1)} – ${to12(h2, m2)}';
+  }
+
   /// Parses datesheet from either modern studentums.lpu.in card text or classic UMS HTML tables.
-  static List<ExamItem> parseDatesheetHtml(String raw) {
+  static List<ExamItem> parseDatesheetHtml(String raw, [Map<String, String>? courseTitleMap]) {
     final items = <ExamItem>[];
     if (raw.trim().isEmpty) return items;
 
@@ -80,7 +98,9 @@ class ExamParser {
           if (title.startsWith('-') || title.startsWith('–')) {
             title = title.substring(1).trim();
           }
-          if (title.isEmpty) title = getCourseTitle(code);
+          if (title.isEmpty) {
+            title = (courseTitleMap != null ? courseTitleMap[code.toUpperCase()] : null) ?? getCourseTitle(code);
+          }
 
           var dateStr = '';
           var timeSlot = '09:00 AM – 12:00 PM';
@@ -103,7 +123,7 @@ class ExamParser {
 
             final tMatch = RegExp(r'\b(\d{1,2}:\d{2}\s*[–\-]\s*\d{1,2}:\d{2}(?:\s*(?:AM|PM))?|\d{1,2}:\d{2}\s*(?:AM|PM))\b', caseSensitive: false).firstMatch(nextLine);
             if (tMatch != null && (timeSlot == '09:00 AM – 12:00 PM' || timeSlot.isEmpty)) {
-              timeSlot = tMatch.group(1)!;
+              timeSlot = formatTimeSlot(tMatch.group(1)!);
             }
 
             final rMatch = RegExp(r'Report\s+([^\]]+)', caseSensitive: false).firstMatch(nextLine);
