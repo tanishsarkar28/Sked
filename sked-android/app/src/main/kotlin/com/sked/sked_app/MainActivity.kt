@@ -1872,8 +1872,8 @@ fun UmsAuthBridgeDialog(
                                                         var ssoToken = ""
                                                         try {
                                                             val client = OkHttpClient.Builder()
-                                                                .connectTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
-                                                                .readTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+                                                                .connectTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
+                                                                .readTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
                                                                 .build()
                                                             val jsonBody = JSONObject().apply {
                                                                 put("UserName", userId)
@@ -1888,7 +1888,7 @@ fun UmsAuthBridgeDialog(
                                                             val respStr = resp.body?.string() ?: ""
                                                             val m = Regex("""[A-Fa-f0-9]{64,}""").find(respStr)
                                                             if (m != null) ssoToken = m.value
-                                                            android.util.Log.d("SkedSync", "SSO token obtained: ${ssoToken.take(8)}... (len: ${ssoToken.length})")
+                                                            android.util.Log.i("SkedSync", "SSO token: ${if (ssoToken.isNotEmpty()) ssoToken.take(8) + "... (len: ${ssoToken.length})" else "NONE (resp: " + respStr.take(60) + ")"}")
                                                         } catch (e: Exception) {
                                                             android.util.Log.w("SkedSync", "createToken notice: ${e.message}")
                                                         }
@@ -1906,7 +1906,7 @@ fun UmsAuthBridgeDialog(
                                                         // Poll WebView DOM for modern examination cards
                                                         var examsFound: List<ExamItem> = emptyList()
                                                         var attempts = 0
-                                                        while (attempts < 20) {
+                                                        while (attempts < 30) {
                                                             delay(500)
                                                             attempts++
                                                             val textRaw = withContext(Dispatchers.Main) {
@@ -1922,6 +1922,10 @@ fun UmsAuthBridgeDialog(
                                                                 } catch (_: Exception) { textRaw }
                                                             } else textRaw
 
+                                                            if (attempts % 4 == 0) {
+                                                                android.util.Log.i("SkedSync", "DOM attempt #$attempts snippet: ${cleanText.replace(Regex("""\s+"""), " ").take(150)}")
+                                                            }
+
                                                             if (cleanText.contains("Total Exam", ignoreCase = true) ||
                                                                 cleanText.contains("Upcoming Exam", ignoreCase = true) ||
                                                                 cleanText.contains("Admit Card", ignoreCase = true) ||
@@ -1932,12 +1936,12 @@ fun UmsAuthBridgeDialog(
                                                                 val parsed = ExamParser.parseDatesheetHtml(cleanText, titleMap)
                                                                 if (parsed.isNotEmpty()) {
                                                                     examsFound = parsed
-                                                                    android.util.Log.d("SkedSync", "Successfully parsed ${parsed.size} exams from studentums")
+                                                                    android.util.Log.i("SkedSync", "Successfully parsed ${parsed.size} exams from studentums")
                                                                     break
                                                                 } else if (cleanText.contains("Exam not scheduled", ignoreCase = true) ||
                                                                            cleanText.contains("No record found", ignoreCase = true) ||
                                                                            cleanText.contains("Total Exam 0", ignoreCase = true)) {
-                                                                    android.util.Log.d("SkedSync", "Verified 0 exams currently scheduled on portal")
+                                                                    android.util.Log.i("SkedSync", "Verified 0 exams currently scheduled on portal")
                                                                     break
                                                                 }
                                                             }
