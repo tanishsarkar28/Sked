@@ -39,13 +39,36 @@ object ExamParser {
     }
 
     fun getCourseTitle(code: String): String {
-        return when (code.uppercase()) {
+        return when (code.uppercase().trim()) {
             "PEA306" -> "Analytical Skills-II"
+            "PEA305" -> "Analytical Skills-I"
+            "PEA307" -> "Analytical Skills-III"
+            "PEA308" -> "Analytical Skills-IV"
             "CSE408" -> "Design and Analysis of Algorithms"
             "INT257" -> "Software Project Management"
             "INT252" -> "Web App Development with ReactJS"
+            "INT219" -> "Front End Web Development"
+            "INT222" -> "Advanced Web Development"
+            "INT306" -> "Database Management Systems"
+            "CSE316" -> "Operating Systems"
+            "CSE325" -> "Operating Systems Laboratory"
+            "CSE205" -> "Data Structures and Algorithms"
+            "CSE202" -> "Object Oriented Programming"
+            "CSE306" -> "Computer Networks"
+            "CSE307" -> "Computer Networks Laboratory"
+            "CSE320" -> "Software Engineering"
+            "CSE310" -> "Programming in Java"
+            "CSE311" -> "Java Laboratory"
+            "CSE101" -> "Computer Programming"
             "PES390" -> "Soft Skills"
+            "PES318" -> "Soft Skills-II"
             "MKT311" -> "Marketing"
+            "MTH401" -> "Discrete Mathematics"
+            "MTH166" -> "Differential Equations"
+            "PHY110" -> "Engineering Physics"
+            "CHE110" -> "Engineering Chemistry"
+            "PEL121" -> "Communication Skills-I"
+            "PEL131" -> "Communication Skills-II"
             else -> ""
         }
     }
@@ -71,7 +94,7 @@ object ExamParser {
 
     /**
      * Reads saved exam list from SharedPreferences.
-     * Purges any legacy hardcoded dummy exams (PEA306 Oct 2026).
+     * Sanitizes any legacy or timetable artifact titles (e.g., "Lecture / G:All C:PEA306...").
      */
     fun loadExamsFromPrefs(context: Context): List<ExamItem> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -81,14 +104,38 @@ object ExamParser {
                 val arr = JSONArray(raw)
                 val list = (0 until arr.length()).map { i ->
                     val obj = arr.getJSONObject(i)
+                    val code = obj.optString("courseCode")
+                    val rawTitle = obj.optString("courseTitle")
+                    val cleanTitle = if (rawTitle.contains("Lecture", true) ||
+                        rawTitle.contains("Practical", true) ||
+                        rawTitle.contains("Teacher:", true) ||
+                        rawTitle.contains("G:All", true) ||
+                        rawTitle.contains("R:", true) ||
+                        rawTitle.contains("S:", true) ||
+                        rawTitle.contains("C:", true) ||
+                        rawTitle.startsWith("/") ||
+                        rawTitle.startsWith(":")
+                    ) {
+                        getCourseTitle(code)
+                    } else rawTitle.ifBlank { getCourseTitle(code) }
+
+                    val rawType = obj.optString("examType", "MTE")
+                    val cleanType = when (rawType.uppercase().trim()) {
+                        "PRAC", "PRACTICAL", "LAB" -> "ETP"
+                        "MTP" -> "MTP"
+                        "MTE", "MID", "MID TERM" -> "MTE"
+                        "ETE", "END", "END TERM" -> "ETE"
+                        else -> rawType.ifBlank { "MTE" }
+                    }
+
                     ExamItem(
-                        courseCode = obj.optString("courseCode"),
-                        courseTitle = obj.optString("courseTitle"),
+                        courseCode = code,
+                        courseTitle = cleanTitle,
                         dateStr = obj.optString("dateStr"),
                         dayName = obj.optString("dayName"),
                         timeSlot = obj.optString("timeSlot", "09:00 AM – 12:00 PM"),
                         session = obj.optString("session", "Morning"),
-                        examType = obj.optString("examType", "MTE"),
+                        examType = cleanType,
                         room = obj.optString("room"),
                         seatNo = obj.optString("seatNo"),
                         reportingTime = obj.optString("reportingTime")
@@ -171,13 +218,28 @@ object ExamParser {
 
             for (i in lines.indices) {
                 val line = lines[i]
+                if (line.contains("Lecture", ignoreCase = true) || line.contains("Teacher:", ignoreCase = true) || line.contains("G:All", ignoreCase = true)) {
+                    continue
+                }
                 val codeMatch = Regex("""\b([A-Z]{2,5}\d{3,4})\b""").find(line)
                 if (codeMatch != null && !line.contains("Term", ignoreCase = true) && !line.contains("Total", ignoreCase = true)) {
                     val code = codeMatch.groupValues[1]
-                    var title = line.substringAfter(code).trim().removePrefix("-").removePrefix("–").trim()
-                    if (title.isBlank()) {
-                        title = courseTitleMap[code.uppercase()] ?: getCourseTitle(code)
-                    }
+                    var rawTitle = line.substringAfter(code).trim().removePrefix("-").removePrefix("–").trim()
+                    var title = if (rawTitle.isBlank() ||
+                        rawTitle.contains("Lecture", true) ||
+                        rawTitle.contains("Practical", true) ||
+                        rawTitle.contains("Teacher:", true) ||
+                        rawTitle.contains("G:All", true) ||
+                        rawTitle.contains("G:", true) ||
+                        rawTitle.contains("R:", true) ||
+                        rawTitle.contains("S:", true) ||
+                        rawTitle.contains("C:", true) ||
+                        rawTitle.startsWith("/") ||
+                        rawTitle.startsWith(":")
+                    ) {
+                        getCourseTitle(code)
+                    } else rawTitle.ifBlank { getCourseTitle(code) }
+
                     var dateStr = ""
                     var timeSlot = "09:00 AM – 12:00 PM"
                     var reporting = ""
@@ -221,8 +283,8 @@ object ExamParser {
                             examType = "MTE"
                         } else if (Regex("""End\s*Term|ETE""", RegexOption.IGNORE_CASE).containsMatchIn(nextLine)) {
                             examType = "ETE"
-                        } else if (Regex("""Practical|Lab|PRAC""", RegexOption.IGNORE_CASE).containsMatchIn(nextLine)) {
-                            examType = "PRAC"
+                        } else if (Regex("""Practical|Lab|PRAC|ETP""", RegexOption.IGNORE_CASE).containsMatchIn(nextLine)) {
+                            examType = "ETP"
                         }
                     }
 
@@ -264,7 +326,10 @@ object ExamParser {
                         val codeIdx = cells.indexOfFirst { it.matches(Regex("""^[A-Z]{2,5}[0-9]{3,4}$""")) }
                         if (codeIdx != -1) {
                             val code = cells[codeIdx]
-                            val title = cells.getOrNull(codeIdx + 1)?.takeIf { !it.matches(Regex(""".*\d{1,2}[-/].*""")) } ?: ""
+                            var title = cells.getOrNull(codeIdx + 1)?.takeIf { !it.matches(Regex(""".*\d{1,2}[-/].*""")) } ?: ""
+                            if (title.isBlank() || title.contains("Lecture") || title.contains("Teacher:") || title.contains("G:All") || title.startsWith("/")) {
+                                title = getCourseTitle(code)
+                            }
 
                             val dateCell = cells.find {
                                 it.matches(Regex(""".*\b(\d{1,2}[-/.](?:[A-Za-z]{3,9}|\d{1,2})[-/.]\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4})\b.*"""))
@@ -288,7 +353,7 @@ object ExamParser {
                             } ?: ""
 
                             val examType = when {
-                                code.endsWith("P", ignoreCase = true) || title.contains("Practical", ignoreCase = true) || title.contains("Lab", ignoreCase = true) -> "PRAC"
+                                code.endsWith("P", ignoreCase = true) || title.contains("Practical", ignoreCase = true) || title.contains("Lab", ignoreCase = true) -> "ETP"
                                 raw.contains("Mid Term", ignoreCase = true) || title.contains("Mid Term", ignoreCase = true) -> "MTE"
                                 else -> "ETE"
                             }

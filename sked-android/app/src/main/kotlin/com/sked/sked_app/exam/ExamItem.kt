@@ -26,6 +26,40 @@ data class ExamItem(
     val reportingTime: String = ""// e.g. "08:30 AM"
 ) {
     /**
+     * Returns the human-readable subject name, stripping any timetable popup artifacts.
+     */
+    fun cleanSubjectTitle(): String {
+        val t = courseTitle.trim()
+        if (t.isNotBlank() &&
+            !t.contains("Lecture", ignoreCase = true) &&
+            !t.contains("Practical", ignoreCase = true) &&
+            !t.contains("Teacher:", ignoreCase = true) &&
+            !t.contains("G:All", ignoreCase = true) &&
+            !t.contains("G:", ignoreCase = true) &&
+            !t.contains("R:", ignoreCase = true) &&
+            !t.contains("S:", ignoreCase = true) &&
+            !t.contains("C:", ignoreCase = true) &&
+            !t.startsWith("/") &&
+            !t.startsWith(":")
+        ) {
+            return t
+        }
+        return ExamParser.getCourseTitle(courseCode)
+    }
+
+    /**
+     * Normalizes exam type to MTE, ETE, or ETP (End Term Practical).
+     */
+    fun displayExamType(): String {
+        return when (examType.uppercase().trim()) {
+            "PRAC", "PRACTICAL", "LAB" -> "ETP"
+            "MTP" -> "MTP"
+            "MTE", "MID", "MID TERM" -> "MTE"
+            "ETE", "END", "END TERM" -> "ETE"
+            else -> examType.ifBlank { "MTE" }
+        }
+    }
+    /**
      * Parses the date string and returns the calendar instance at midnight.
      */
     fun getExamDate(): Date? {

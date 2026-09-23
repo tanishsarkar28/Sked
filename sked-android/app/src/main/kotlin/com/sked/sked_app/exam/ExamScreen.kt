@@ -142,19 +142,35 @@ fun ExamScreen(
                             }
 
                             if (nextExam != null) {
-                                Surface(
-                                    shape = RoundedCornerShape(3.dp),
-                                    color = Blaze.copy(alpha = 0.15f),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Blaze)
-                                ) {
-                                    Text(
-                                        text = nextExam.statusLabel(),
-                                        fontSize = 10.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Blaze,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Surface(
+                                        shape = RoundedCornerShape(3.dp),
+                                        color = Color.Transparent,
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Rule)
+                                    ) {
+                                        Text(
+                                            text = nextExam.displayExamType(),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Slate,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(3.dp),
+                                        color = Blaze.copy(alpha = 0.15f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Blaze)
+                                    ) {
+                                        Text(
+                                            text = nextExam.statusLabel(),
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Blaze,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -169,11 +185,13 @@ fun ExamScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = Chalk
                             )
-                            if (nextExam.courseTitle.isNotEmpty()) {
+                            val cleanHeroTitle = nextExam.cleanSubjectTitle()
+                            if (cleanHeroTitle.isNotEmpty()) {
                                 Text(
-                                    text = nextExam.courseTitle,
-                                    fontSize = 13.sp,
-                                    color = Slate,
+                                    text = cleanHeroTitle,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Chalk.copy(alpha = 0.85f),
                                     maxLines = 1
                                 )
                             }
@@ -196,18 +214,17 @@ fun ExamScreen(
                                 }
                             }
 
-                            if (nextExam.room.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = Slate, modifier = Modifier.size(14.dp))
-                                    val seatText = if (nextExam.seatNo.isNotEmpty() && nextExam.seatNo != "Awaited") " · ${nextExam.seatNo}" else ""
-                                    Text(
-                                        text = "${nextExam.room}$seatText",
-                                        fontSize = 11.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = Slate
-                                    )
-                                }
+                            val heroVenue = if (nextExam.room.isNotBlank()) nextExam.room else "Seating Awaited"
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Icons.Default.LocationOn, contentDescription = null, tint = Slate, modifier = Modifier.size(14.dp))
+                                val seatText = if (nextExam.seatNo.isNotEmpty() && nextExam.seatNo != "Awaited") " · ${nextExam.seatNo}" else ""
+                                Text(
+                                    text = "$heroVenue$seatText",
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Slate
+                                )
                             }
                         }
                     }
@@ -395,14 +412,14 @@ fun ExamCard(exam: ExamItem) {
                     )
 
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        // Exam Type tag (ETE / MTE / PRAC)
+                        // Exam Type tag (ETE / MTE / ETP)
                         Surface(
                             shape = RoundedCornerShape(3.dp),
                             color = Color.Transparent,
                             border = androidx.compose.foundation.BorderStroke(1.dp, Rule)
                         ) {
                             Text(
-                                text = exam.examType,
+                                text = exam.displayExamType(),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Slate,
@@ -428,13 +445,15 @@ fun ExamCard(exam: ExamItem) {
                     }
                 }
 
-                // Course title
-                if (exam.courseTitle.isNotEmpty()) {
+                // Course title / Subject name
+                val cleanCardTitle = exam.cleanSubjectTitle()
+                if (cleanCardTitle.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = exam.courseTitle,
-                        fontSize = 12.sp,
-                        color = Slate,
+                        text = cleanCardTitle,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Chalk.copy(alpha = 0.85f),
                         maxLines = 1
                     )
                 }
@@ -467,44 +486,43 @@ fun ExamCard(exam: ExamItem) {
                 }
 
                 // Venue & Seating
-                if (exam.room.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                val cardVenue = if (exam.room.isNotBlank()) exam.room else "Seating Awaited"
+                Spacer(modifier = Modifier.height(3.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = cardVenue,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        color = Slate
+                    )
+
+                    if (exam.seatNo.isNotEmpty() && exam.seatNo != "Awaited") {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(text = "·", color = Slate)
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = exam.room,
+                            text = exam.seatNo,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Blaze
+                        )
+                    }
+
+                    if (exam.reportingTime.isNotEmpty()) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(text = "·", color = Slate)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        val rep = if (exam.reportingTime.startsWith("Report", ignoreCase = true)) exam.reportingTime else "Report ${exam.reportingTime}"
+                        Text(
+                            text = rep,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
                             color = Slate
                         )
-
-                        if (exam.seatNo.isNotEmpty() && exam.seatNo != "Awaited") {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = "·", color = Slate)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = exam.seatNo,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Blaze
-                            )
-                        }
-
-                        if (exam.reportingTime.isNotEmpty()) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = "·", color = Slate)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            val rep = if (exam.reportingTime.startsWith("Report", ignoreCase = true)) exam.reportingTime else "Report ${exam.reportingTime}"
-                            Text(
-                                text = rep,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 10.sp,
-                                color = Slate
-                            )
-                        }
                     }
                 }
             }

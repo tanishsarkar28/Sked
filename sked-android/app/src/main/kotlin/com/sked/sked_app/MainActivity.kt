@@ -1886,8 +1886,7 @@ fun UmsAuthBridgeDialog(
                                                             if (entries.isNotEmpty()) {
                                                                 TimetableParser.saveToPrefs(context, entries, userId)
                                                             }
-                                                            val titleMap = entries.filter { it.courseCode.isNotBlank() && it.description.isNotBlank() }
-                                                                .associate { it.courseCode.uppercase() to it.description }
+                                                            val titleMap = emptyMap<String, String>()
 
                                                             android.util.Log.i("SkedSync", "Classic UMS debug: $dsDbg")
 
