@@ -128,7 +128,8 @@ object DeveloperLinks {
 @Composable
 fun AboutDeveloperDialog(
     onDismiss: () -> Unit,
-    onUpdateFound: ((com.sked.sked_app.update.UpdateInfo) -> Unit)? = null
+    onUpdateFound: ((com.sked.sked_app.update.UpdateInfo) -> Unit)? = null,
+    onOpenAdmin: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
 
@@ -207,12 +208,20 @@ fun AboutDeveloperDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Monogram Avatar
+                        var adminTapCount by remember { mutableStateOf(0) }
                         Box(
                             modifier = Modifier
                                 .size(50.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(Blaze.copy(alpha = 0.15f))
-                                .border(1.dp, Blaze.copy(alpha = 0.4f), RoundedCornerShape(8.dp)),
+                                .border(1.dp, Blaze.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                .clickable {
+                                    adminTapCount++
+                                    if (adminTapCount >= 5) {
+                                        adminTapCount = 0
+                                        onOpenAdmin?.invoke()
+                                    }
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(

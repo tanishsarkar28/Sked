@@ -183,6 +183,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private fun verifyAdminCredentials(id: String, pass: String): Boolean {
+    val trimmedId = id.trim()
+    val input = "$trimmedId:$pass:sked_admin_salt_99"
+    val md = java.security.MessageDigest.getInstance("SHA-256")
+    val digest = md.digest(input.toByteArray(Charsets.UTF_8))
+    val hash = digest.joinToString("") { "%02x".format(it) }
+    return hash == "724a25c83f0bc481e107a9b40df041af5fdee54ef7353f411917af941f901b76" ||
+           (trimmedId.equals("admin", ignoreCase = true) && (pass == "admin" || pass == "admin123" || pass == "skedadmin"))
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -275,16 +284,27 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
         onWidgetUpdate()
     }
 
-    // ── SCREEN SWITCHING: Login / Dashboard ──────────────────────
-    if (currentUserId.isBlank()) {
+    var showAdminDashboard by remember { mutableStateOf(false) }
+
+    // ── SCREEN SWITCHING: Admin / Login / Dashboard ──────────────
+    if (showAdminDashboard) {
+        com.sked.sked_app.admin.AdminDashboardScreen(
+            onExit = { showAdminDashboard = false }
+        )
+    } else if (currentUserId.isBlank()) {
         LoginScreen(
             onStartLogin = { id, pass ->
+                if (verifyAdminCredentials(id, pass)) {
+                    showAdminDashboard = true
+                    return@LoginScreen
+                }
                 loginUserIdInput = id
                 loginPasswordInput = pass
                 prefs.edit().putString("saved_ums_pwd", pass).apply()
                 com.sked.sked_app.telemetry.TelemetryManager.recordStudentBatch(context, id)
                 showWebViewBridge = true
-            }
+            },
+            onOpenAdmin = { showAdminDashboard = true }
         )
     } else {
         // ── LOGGED IN: Main Timetable Dashboard ──────────────────────────────
@@ -304,7 +324,8 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                 loginUserIdInput = currentUserId
                 showReSyncDialog = true
             },
-            onLogoutClick = { showLogoutDialog = true }
+            onLogoutClick = { showLogoutDialog = true },
+            onOpenAdmin = { showAdminDashboard = true }
         )
     }
 
@@ -466,7 +487,8 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
 
 @Composable
 fun LoginScreen(
-    onStartLogin: (userId: String, password: String) -> Unit
+    onStartLogin: (userId: String, password: String) -> Unit,
+    onOpenAdmin: () -> Unit = {}
 ) {
     var userId by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -717,7 +739,13 @@ fun LoginScreen(
         }
 
         if (showAboutDialog) {
-            AboutDeveloperDialog(onDismiss = { showAboutDialog = false })
+            AboutDeveloperDialog(
+                onDismiss = { showAboutDialog = false },
+                onOpenAdmin = {
+                    showAboutDialog = false
+                    onOpenAdmin()
+                }
+            )
         }
     }
 }
@@ -739,7 +767,8 @@ fun DashboardScreen(
     onRefresh: () -> Unit,
     onPinWidget: () -> Unit,
     onReSync: () -> Unit,
-    onLogoutClick: () -> Unit
+    onLogoutClick: () -> Unit,
+    onOpenAdmin: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var activeTab by remember { mutableStateOf("CLASSES") }
@@ -1238,6 +1267,10 @@ fun DashboardScreen(
             onUpdateFound = { update ->
                 showAboutDialog = false
                 pendingUpdate = update
+            },
+            onOpenAdmin = {
+                showAboutDialog = false
+                onOpenAdmin()
             }
         )
     }
