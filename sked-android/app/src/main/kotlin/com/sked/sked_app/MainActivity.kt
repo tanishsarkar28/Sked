@@ -1872,141 +1872,146 @@ fun UmsAuthBridgeDialog(
 
                                                             android.util.Log.i("SkedSync", "Classic UMS debug: $dsDbg")
 
-                                                            withContext(Dispatchers.Main) {
-                                                                statusText = "Syncing Examination Seating Plan..."
-                                                            }
-
-                                                            // Fetch SSO token from LPU msapi for studentums.lpu.in
-                                                            var ssoToken = ""
-                                                            try {
-                                                                val client = OkHttpClient.Builder()
-                                                                    .connectTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
-                                                                    .readTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
-                                                                    .build()
-                                                                val jsonBody = JSONObject().apply {
-                                                                    put("UserName", userId)
-                                                                    put("Password", password)
-                                                                }.toString()
-                                                                val mediaType = "application/json; charset=utf-8".toMediaType()
-                                                                val req = Request.Builder()
-                                                                    .url("https://msapi.lpu.in/baseapi/api/security/createToken")
-                                                                    .post(jsonBody.toRequestBody(mediaType))
-                                                                    .build()
-                                                                val resp = client.newCall(req).execute()
-                                                                val respStr = resp.body?.string() ?: ""
-                                                                val m = Regex("""[A-Fa-f0-9]{64,}""").find(respStr)
-                                                                if (m != null) ssoToken = m.value
-                                                                android.util.Log.i("SkedSync", "SSO token: ${if (ssoToken.isNotEmpty()) ssoToken.take(8) + "... (len: ${ssoToken.length})" else "NONE (resp: " + respStr.take(60) + ")"}")
-                                                            } catch (e: Exception) {
-                                                                android.util.Log.w("SkedSync", "createToken notice: ${e.message}")
-                                                            }
-
-                                                            // Navigate WebView to modern seating plan portal
-                                                            withContext(Dispatchers.Main) {
-                                                                val seatingUrl = if (ssoToken.isNotBlank()) {
-                                                                    "https://studentums.lpu.in/dashboard/examination/conduct/seatingplan?token=$ssoToken"
-                                                                } else {
-                                                                    "https://studentums.lpu.in/dashboard/examination/conduct/seatingplan"
-                                                                }
-                                                                wv.loadUrl(seatingUrl)
-                                                            }
-
-                                                            // Poll WebView DOM for modern examination cards
+                                                            // 1. FAST PATH (Classic UMS - 3rd Year): Check classic UMS HTML already fetched in parallel
                                                             var examsFound: List<ExamItem> = emptyList()
-                                                            var attempts = 0
-                                                            val maxAttempts = 140 // 70 seconds total for slow LPU server hydration
-                                                            while (attempts < maxAttempts) {
-                                                                delay(500)
-                                                                attempts++
-                                                                val elapsedSec = attempts / 2
+                                                            val cleanDsHtml = if (!dsRaw.isNullOrBlank() && dsRaw != "\"\"" && dsRaw != "null") {
+                                                                try {
+                                                                    if (dsRaw.startsWith("\"") && dsRaw.endsWith("\"")) {
+                                                                        JSONObject("{\"v\":$dsRaw}").getString("v")
+                                                                    } else dsRaw
+                                                                } catch (_: Exception) { dsRaw }
+                                                            } else ""
+
+                                                            val classicExams = ExamParser.parseDatesheetHtml(cleanDsHtml, titleMap)
+                                                            if (classicExams.isNotEmpty()) {
+                                                                android.util.Log.i("SkedSync", "Instant sync: Found ${classicExams.size} exams from classic UMS in 1s!")
+                                                                examsFound = classicExams
+                                                            } else {
+                                                                // 2. MODERN PORTAL PATH (1st & 2nd Year): Sync from studentums.lpu.in via SSO
                                                                 withContext(Dispatchers.Main) {
-                                                                    statusText = "Syncing Examination Schedule (${elapsedSec}s)..."
+                                                                    statusText = "Syncing 1st/2nd Year Datesheet..."
                                                                 }
 
-                                                                // Fast-track: Check if Next.js already logged the decrypted exams to console
-                                                                if (!consoleParsedExams.isNullOrBlank()) {
-                                                                    val parsed = ExamParser.parseDatesheetHtml(consoleParsedExams!!, titleMap)
-                                                                    if (parsed.isNotEmpty()) {
-                                                                        examsFound = parsed
-                                                                        android.util.Log.i("SkedSync", "Successfully parsed ${parsed.size} exams directly from Next.js console payload!")
-                                                                        break
+                                                                // Fetch SSO token from LPU msapi with UserType: Student
+                                                                var ssoToken = ""
+                                                                try {
+                                                                    val client = OkHttpClient.Builder()
+                                                                        .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                                                                        .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                                                                        .build()
+                                                                    val jsonBody = JSONObject().apply {
+                                                                        put("UserName", userId)
+                                                                        put("Password", password)
+                                                                        put("UserType", "Student")
+                                                                    }.toString()
+                                                                    val mediaType = "application/json; charset=utf-8".toMediaType()
+                                                                    val req = Request.Builder()
+                                                                        .url("https://msapi.lpu.in/baseapi/api/security/createToken")
+                                                                        .post(jsonBody.toRequestBody(mediaType))
+                                                                        .build()
+                                                                    val resp = client.newCall(req).execute()
+                                                                    val respStr = resp.body?.string() ?: ""
+                                                                    val tokenObj = try { JSONObject(respStr).optString("token") } catch (_: Exception) { "" }
+                                                                    if (tokenObj.isNotBlank()) {
+                                                                        ssoToken = tokenObj
+                                                                    } else {
+                                                                        val m = Regex("""[A-Fa-f0-9]{64,}""").find(respStr)
+                                                                        if (m != null) ssoToken = m.value
                                                                     }
+                                                                    android.util.Log.i("SkedSync", "SSO token: ${if (ssoToken.isNotEmpty()) ssoToken.take(8) + "... (len: ${ssoToken.length})" else "NONE (resp: " + respStr.take(60) + ")"}")
+                                                                } catch (e: Exception) {
+                                                                    android.util.Log.w("SkedSync", "createToken notice: ${e.message}")
                                                                 }
 
-                                                                val infoJson = withContext(Dispatchers.Main) {
-                                                                    suspendCancellableCoroutine<String> { cont ->
-                                                                        val pollJs = """
-                                                                            (function() {
-                                                                                try {
-                                                                                    var href = window.location.href;
-                                                                                    if (href.indexOf('studentdashboard') !== -1 && href.indexOf('seatingplan') === -1) {
-                                                                                        window.location.href = 'https://studentums.lpu.in/dashboard/examination/conduct/seatingplan';
-                                                                                    }
-                                                                                    var txt = document.body ? document.body.innerText : '';
-                                                                                    return JSON.stringify({
-                                                                                        url: href,
-                                                                                        len: txt.length,
-                                                                                        txt: txt
-                                                                                    });
-                                                                                } catch(e) {
-                                                                                    return JSON.stringify({ error: e.toString(), url: window.location.href, len: 0, txt: '' });
+                                                                if (ssoToken.isNotBlank()) {
+                                                                    // Navigate WebView to modern seating plan portal with valid SSO token
+                                                                    withContext(Dispatchers.Main) {
+                                                                        val seatingUrl = "https://studentums.lpu.in/dashboard/examination/conduct/seatingplan?token=$ssoToken"
+                                                                        wv.loadUrl(seatingUrl)
+                                                                    }
+
+                                                                    var attempts = 0
+                                                                    val maxAttempts = 50 // 25 seconds max for 1st/2nd year portal
+                                                                    while (attempts < maxAttempts) {
+                                                                        delay(500)
+                                                                        attempts++
+                                                                        val elapsedSec = attempts / 2
+                                                                        withContext(Dispatchers.Main) {
+                                                                            statusText = "Syncing Examination Schedule (${elapsedSec}s)..."
+                                                                        }
+
+                                                                        // Fast-track: Check if Next.js already logged decrypted exams to console
+                                                                        if (!consoleParsedExams.isNullOrBlank()) {
+                                                                            val parsed = ExamParser.parseDatesheetHtml(consoleParsedExams!!, titleMap)
+                                                                            if (parsed.isNotEmpty()) {
+                                                                                examsFound = parsed
+                                                                                android.util.Log.i("SkedSync", "Successfully parsed ${parsed.size} exams directly from Next.js console payload!")
+                                                                                break
+                                                                            }
+                                                                        }
+
+                                                                        val infoJson = withContext(Dispatchers.Main) {
+                                                                            suspendCancellableCoroutine<String> { cont ->
+                                                                                val pollJs = """
+                                                                                    (function() {
+                                                                                        try {
+                                                                                            var href = window.location.href;
+                                                                                            if (href.indexOf('studentdashboard') !== -1 && href.indexOf('seatingplan') === -1) {
+                                                                                                window.location.href = 'https://studentums.lpu.in/dashboard/examination/conduct/seatingplan';
+                                                                                            }
+                                                                                            var txt = document.body ? document.body.innerText : '';
+                                                                                            return JSON.stringify({
+                                                                                                url: href,
+                                                                                                len: txt.length,
+                                                                                                txt: txt
+                                                                                            });
+                                                                                        } catch(e) {
+                                                                                            return JSON.stringify({ error: e.toString(), url: window.location.href, len: 0, txt: '' });
+                                                                                        }
+                                                                                    })()
+                                                                                """.trimIndent()
+                                                                                wv.evaluateJavascript(pollJs) { res ->
+                                                                                    cont.resume(res ?: "{}")
                                                                                 }
-                                                                            })()
-                                                                        """.trimIndent()
-                                                                        wv.evaluateJavascript(pollJs) { res ->
-                                                                            cont.resume(res ?: "{}")
+                                                                            }
+                                                                        }
+
+                                                                        val cleanInfo = if (infoJson.startsWith("\"") && infoJson.endsWith("\"")) {
+                                                                            try {
+                                                                                JSONObject("{\"v\":$infoJson}").getString("v")
+                                                                            } catch (_: Exception) { infoJson }
+                                                                        } else infoJson
+
+                                                                        val infoObj = try { JSONObject(cleanInfo) } catch (_: Exception) { JSONObject() }
+                                                                        val curUrl = infoObj.optString("url")
+                                                                        val cleanText = infoObj.optString("txt")
+                                                                        val textLen = infoObj.optInt("len")
+
+                                                                        if (attempts % 4 == 0 || attempts == 1) {
+                                                                            android.util.Log.i("SkedSync", "DOM attempt #$attempts [len=$textLen, url=$curUrl] snippet: ${cleanText.replace(Regex("""\s+"""), " ").take(120)}")
+                                                                        }
+
+                                                                        if (cleanText.contains("Total Exam", ignoreCase = true) ||
+                                                                            cleanText.contains("Upcoming Exam", ignoreCase = true) ||
+                                                                            cleanText.contains("Admit Card", ignoreCase = true) ||
+                                                                            cleanText.contains("Exam not scheduled", ignoreCase = true) ||
+                                                                            cleanText.contains("No record found", ignoreCase = true) ||
+                                                                            Regex("""\b[A-Z]{2,5}\d{3,4}\b""").containsMatchIn(cleanText)) {
+
+                                                                            val parsed = ExamParser.parseDatesheetHtml(cleanText, titleMap)
+                                                                            if (parsed.isNotEmpty()) {
+                                                                                examsFound = parsed
+                                                                                android.util.Log.i("SkedSync", "Successfully parsed ${parsed.size} exams from studentums")
+                                                                                break
+                                                                            } else if (cleanText.contains("Exam not scheduled", ignoreCase = true) ||
+                                                                                       cleanText.contains("No record found", ignoreCase = true) ||
+                                                                                       cleanText.contains("Total Exam 0", ignoreCase = true)) {
+                                                                                android.util.Log.i("SkedSync", "Verified 0 exams currently scheduled on portal")
+                                                                                break
+                                                                            }
                                                                         }
                                                                     }
                                                                 }
-
-                                                                val cleanInfo = if (infoJson.startsWith("\"") && infoJson.endsWith("\"")) {
-                                                                    try {
-                                                                        JSONObject("{\"v\":$infoJson}").getString("v")
-                                                                    } catch (_: Exception) { infoJson }
-                                                                } else infoJson
-
-                                                                val infoObj = try { JSONObject(cleanInfo) } catch (_: Exception) { JSONObject() }
-                                                                val curUrl = infoObj.optString("url")
-                                                                val cleanText = infoObj.optString("txt")
-                                                                val textLen = infoObj.optInt("len")
-
-                                                                if (attempts % 4 == 0 || attempts == 1) {
-                                                                    android.util.Log.i("SkedSync", "DOM attempt #$attempts [len=$textLen, url=$curUrl] snippet: ${cleanText.replace(Regex("""\s+"""), " ").take(120)}")
-                                                                }
-
-                                                                if (cleanText.contains("Total Exam", ignoreCase = true) ||
-                                                                    cleanText.contains("Upcoming Exam", ignoreCase = true) ||
-                                                                    cleanText.contains("Admit Card", ignoreCase = true) ||
-                                                                    cleanText.contains("Exam not scheduled", ignoreCase = true) ||
-                                                                    cleanText.contains("No record found", ignoreCase = true) ||
-                                                                    Regex("""\b[A-Z]{2,5}\d{3,4}\b""").containsMatchIn(cleanText)) {
-
-                                                                    val parsed = ExamParser.parseDatesheetHtml(cleanText, titleMap)
-                                                                    if (parsed.isNotEmpty()) {
-                                                                        examsFound = parsed
-                                                                        android.util.Log.i("SkedSync", "Successfully parsed ${parsed.size} exams from studentums")
-                                                                        break
-                                                                    } else if (cleanText.contains("Exam not scheduled", ignoreCase = true) ||
-                                                                               cleanText.contains("No record found", ignoreCase = true) ||
-                                                                               cleanText.contains("Total Exam 0", ignoreCase = true)) {
-                                                                        android.util.Log.i("SkedSync", "Verified 0 exams currently scheduled on portal")
-                                                                        break
-                                                                    }
-                                                                }
-                                                            }
-
-                                                            // Fallback check on legacy HTML if modern was empty
-                                                            if (examsFound.isEmpty()) {
-                                                                val cleanDsHtml = if (!dsRaw.isNullOrBlank() && dsRaw != "\"\"" && dsRaw != "null") {
-                                                                    try {
-                                                                        if (dsRaw.startsWith("\"") && dsRaw.endsWith("\"")) {
-                                                                            JSONObject("{\"v\":$dsRaw}").getString("v")
-                                                                        } else dsRaw
-                                                                    } catch (_: Exception) { dsRaw }
-                                                                } else ""
-                                                                val fallback = ExamParser.parseDatesheetHtml(cleanDsHtml, titleMap)
-                                                                android.util.Log.i("SkedSync", "Classic UMS fallback parsed ${fallback.size} exams (html len: ${cleanDsHtml.length})")
-                                                                if (fallback.isNotEmpty()) examsFound = fallback
                                                             }
 
                                                             if (examsFound.isNotEmpty()) {
