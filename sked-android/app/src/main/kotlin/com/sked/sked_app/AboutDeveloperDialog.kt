@@ -132,6 +132,7 @@ fun AboutDeveloperDialog(
     onUpdateFound: ((com.sked.sked_app.update.UpdateInfo) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val (_, currentVer) = remember { com.sked.sked_app.update.AppUpdateManager.getCurrentVersionInfo(context) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -452,7 +453,7 @@ fun AboutDeveloperDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "SKED FOR LPU • V1.0",
+                            text = "SKED FOR LPU • V$currentVer",
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace,
                             color = Slate
