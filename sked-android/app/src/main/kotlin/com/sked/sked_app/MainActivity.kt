@@ -303,8 +303,7 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                 prefs.edit().putString("saved_ums_pwd", pass).apply()
                 com.sked.sked_app.telemetry.TelemetryManager.recordStudentBatch(context, id)
                 showWebViewBridge = true
-            },
-            onOpenAdmin = { showAdminDashboard = true }
+            }
         )
     } else {
         // ── LOGGED IN: Main Timetable Dashboard ──────────────────────────────
@@ -324,8 +323,7 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                 loginUserIdInput = currentUserId
                 showReSyncDialog = true
             },
-            onLogoutClick = { showLogoutDialog = true },
-            onOpenAdmin = { showAdminDashboard = true }
+            onLogoutClick = { showLogoutDialog = true }
         )
     }
 
@@ -487,8 +485,7 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
 
 @Composable
 fun LoginScreen(
-    onStartLogin: (userId: String, password: String) -> Unit,
-    onOpenAdmin: () -> Unit = {}
+    onStartLogin: (userId: String, password: String) -> Unit
 ) {
     var userId by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -739,13 +736,7 @@ fun LoginScreen(
         }
 
         if (showAboutDialog) {
-            AboutDeveloperDialog(
-                onDismiss = { showAboutDialog = false },
-                onOpenAdmin = {
-                    showAboutDialog = false
-                    onOpenAdmin()
-                }
-            )
+            AboutDeveloperDialog(onDismiss = { showAboutDialog = false })
         }
     }
 }
@@ -767,8 +758,7 @@ fun DashboardScreen(
     onRefresh: () -> Unit,
     onPinWidget: () -> Unit,
     onReSync: () -> Unit,
-    onLogoutClick: () -> Unit,
-    onOpenAdmin: () -> Unit = {}
+    onLogoutClick: () -> Unit
 ) {
     val context = LocalContext.current
     var activeTab by remember { mutableStateOf("CLASSES") }
@@ -1267,10 +1257,6 @@ fun DashboardScreen(
             onUpdateFound = { update ->
                 showAboutDialog = false
                 pendingUpdate = update
-            },
-            onOpenAdmin = {
-                showAboutDialog = false
-                onOpenAdmin()
             }
         )
     }
