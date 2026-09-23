@@ -1537,6 +1537,7 @@ fun UmsAuthBridgeDialog(
     var statusText by remember { mutableStateOf("Connecting to LPU UMS...") }
     var isSyncing by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var consoleParsedExams by remember { mutableStateOf<String?>(null) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -1913,9 +1914,25 @@ fun UmsAuthBridgeDialog(
                                                             // Poll WebView DOM for modern examination cards
                                                             var examsFound: List<ExamItem> = emptyList()
                                                             var attempts = 0
-                                                            while (attempts < 45) {
+                                                            val maxAttempts = 140 // 70 seconds total for slow LPU server hydration
+                                                            while (attempts < maxAttempts) {
                                                                 delay(500)
                                                                 attempts++
+                                                                val elapsedSec = attempts / 2
+                                                                withContext(Dispatchers.Main) {
+                                                                    statusText = "Syncing Examination Schedule (${elapsedSec}s)..."
+                                                                }
+
+                                                                // Fast-track: Check if Next.js already logged the decrypted exams to console
+                                                                if (!consoleParsedExams.isNullOrBlank()) {
+                                                                    val parsed = ExamParser.parseDatesheetHtml(consoleParsedExams!!, titleMap)
+                                                                    if (parsed.isNotEmpty()) {
+                                                                        examsFound = parsed
+                                                                        android.util.Log.i("SkedSync", "Successfully parsed ${parsed.size} exams directly from Next.js console payload!")
+                                                                        break
+                                                                    }
+                                                                }
+
                                                                 val infoJson = withContext(Dispatchers.Main) {
                                                                     suspendCancellableCoroutine<String> { cont ->
                                                                         val pollJs = """
@@ -2079,7 +2096,15 @@ fun UmsAuthBridgeDialog(
 
                                     override fun onConsoleMessage(cm: android.webkit.ConsoleMessage?): Boolean {
                                         if (cm != null) {
-                                            android.util.Log.d("SkedSyncWeb", "[${cm.messageLevel()}] ${cm.message()}")
+                                            val msg = cm.message()
+                                            android.util.Log.d("SkedSyncWeb", "[${cm.messageLevel()}] $msg")
+                                            if (msg.contains("Parsed Data:") || msg.contains("Response seatingPlan")) {
+                                                val jsonPart = msg.substringAfter("Parsed Data:").substringAfter("Response seatingPlan").trim()
+                                                if (jsonPart.startsWith("[") || jsonPart.startsWith("{")) {
+                                                    consoleParsedExams = jsonPart
+                                                    android.util.Log.i("SkedSync", "Captured raw seating plan JSON from Next.js console: ${jsonPart.take(80)}...")
+                                                }
+                                            }
                                         }
                                         return super.onConsoleMessage(cm)
                                     }
@@ -2090,6 +2115,10 @@ fun UmsAuthBridgeDialog(
                                 webViewClient = object : WebViewClient() {
                                     override fun shouldInterceptRequest(view: WebView?, request: android.webkit.WebResourceRequest?): android.webkit.WebResourceResponse? {
                                         val url = request?.url?.toString() ?: return null
+                                        // Fast-path: Block wasteful background prefetch RSC requests from Next.js that choke network bandwidth
+                                        if (url.contains("_rsc=") && (url.contains("change-password") || url.contains("user-profile") || url.contains("feedback") || url.contains("downloadFTP") || url.contains("dashboard?_rsc="))) {
+                                            return android.webkit.WebResourceResponse("text/plain", "utf-8", java.io.ByteArrayInputStream("".toByteArray()))
+                                        }
                                         if (url.contains("LoginNew.aspx", ignoreCase = true) && request.method.equals("GET", ignoreCase = true)) {
                                             try {
                                                 val okHttp = OkHttpClient.Builder().build()

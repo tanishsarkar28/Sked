@@ -121,6 +121,44 @@ object ExamParser {
         if (raw.isBlank()) return items
 
         try {
+            // 0. Pre-check: Direct JSON parsing if raw contains JSON array with CourseCode
+            val jsonStart = raw.indexOf("[{\"")
+            if (jsonStart != -1) {
+                val jsonEnd = raw.lastIndexOf("}]")
+                if (jsonEnd != -1 && jsonEnd > jsonStart) {
+                    try {
+                        val jsonSub = raw.substring(jsonStart, jsonEnd + 2)
+                        val arr = JSONArray(jsonSub)
+                        for (k in 0 until arr.length()) {
+                            val obj = arr.getJSONObject(k)
+                            val code = obj.optString("CourseCode").trim()
+                            if (code.isNotBlank()) {
+                                val title = obj.optString("CourseName").ifBlank { courseTitleMap[code.uppercase()] ?: getCourseTitle(code) }
+                                val dStr = obj.optString("ExamDate")
+                                val tSlot = obj.optString("ExamTime", "09:00 AM – 12:00 PM")
+                                val roomNo = obj.optString("RoomNo").ifBlank { "Seating Awaited" }
+                                val repTime = obj.optString("ReportingTime")
+                                val typeDesc = obj.optString("ExamTypeDesc", "MTE")
+                                items.add(
+                                    ExamItem(
+                                        courseCode = code,
+                                        courseTitle = title,
+                                        dateStr = dStr,
+                                        timeSlot = formatTimeSlot(tSlot),
+                                        session = if (tSlot.contains("PM", ignoreCase = true) && !tSlot.contains("09:") && !tSlot.contains("10:") && !tSlot.contains("11:")) "Evening" else "Morning",
+                                        examType = if (typeDesc.contains("End", true) || typeDesc.contains("ETE", true)) "ETE" else "MTE",
+                                        room = roomNo,
+                                        seatNo = "Awaited",
+                                        reportingTime = if (repTime.isNotBlank()) "Report $repTime" else ""
+                                    )
+                                )
+                            }
+                        }
+                        if (items.isNotEmpty()) return items.sortedBy { it.getExamDate()?.time ?: Long.MAX_VALUE }
+                    } catch (_: Exception) {}
+                }
+            }
+
             val tagStrip = Regex("""<[^>]+>|&nbsp;|\t""")
 
             // 1. First attempt: Line-by-line card format (from studentums.lpu.in)
