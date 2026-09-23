@@ -1,13 +1,13 @@
 {
-  "versionCode": 4,
-  "versionName": "1.2.1",
+  "versionCode": 5,
+  "versionName": "1.2.2",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Real-time synchronization with modern studentums.lpu.in examination portal\n• Automatic seating plan, exam hall & desk allocation tracking\n• Native iOS Home Screen Widget (WidgetKit) with Departure Board & Exam Spotlight\n• 100% On-device privacy with zero external proxies",
+  "releaseNotes": "• Live datesheet & seating plan sync with modern UMS\n• Exam spotlight on home screen widgets with desk tracking\n• Background verification with live UMS server health\n• Added quick share button for website link\n• 100% On-device privacy",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
   "directIpaDownloadUrl": "/downloads/sked-ios.ipa",
   "fileSize": "20.4 MB",
   "ipaFileSize": "7.6 MB",
-  "updatedAt": "2026-09-22"
+  "updatedAt": "2026-09-23"
 }

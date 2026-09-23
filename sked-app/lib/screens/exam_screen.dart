@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/exam_item.dart';
+import '../services/exam_parser.dart';
 import '../theme/app_theme.dart';
 
 class ExamScreen extends StatefulWidget {
@@ -145,6 +146,8 @@ class _ExamScreenState extends State<ExamScreen> {
   }
 
   Widget _buildHeroExamRadar(ExamItem? nextExam) {
+    final heroTitle = nextExam?.cleanSubjectTitle(ExamParser.getCourseTitle) ?? '';
+
     return Container(
       decoration: BoxDecoration(
         color: SkedColors.slab,
@@ -224,7 +227,7 @@ class _ExamScreenState extends State<ExamScreen> {
                     border: Border.all(color: SkedColors.rule),
                   ),
                   child: Text(
-                    nextExam.examType,
+                    nextExam.displayExamType(),
                     style: GoogleFonts.barlowCondensed(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -234,16 +237,19 @@ class _ExamScreenState extends State<ExamScreen> {
                 ),
               ],
             ),
-            if (nextExam.courseTitle.isNotEmpty) ...[
+            if (heroTitle.isNotEmpty) ...[
               const SizedBox(height: 2),
               Text(
-                nextExam.courseTitle,
+                heroTitle,
                 style: const TextStyle(
                   fontSize: 12,
                   color: SkedColors.slate,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
+
             const SizedBox(height: 10),
             Row(
               children: [
@@ -358,6 +364,9 @@ class _ExamScreenState extends State<ExamScreen> {
             ? SkedColors.overBar
             : SkedColors.upcomingOrange;
 
+    final cleanTitle = exam.cleanSubjectTitle(ExamParser.getCourseTitle);
+    final cardVenue = exam.room.isNotEmpty ? exam.room : 'Seating Awaited';
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 5),
       padding: const EdgeInsets.all(14),
@@ -409,7 +418,7 @@ class _ExamScreenState extends State<ExamScreen> {
                             border: Border.all(color: SkedColors.rule),
                           ),
                           child: Text(
-                            exam.examType,
+                            exam.displayExamType(),
                             style: GoogleFonts.barlowCondensed(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
@@ -439,14 +448,16 @@ class _ExamScreenState extends State<ExamScreen> {
                     ),
                   ],
                 ),
-                if (exam.courseTitle.isNotEmpty) ...[
+                if (cleanTitle.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(
-                    exam.courseTitle,
+                    cleanTitle,
                     style: const TextStyle(
                       fontSize: 11,
                       color: SkedColors.slate,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
                 const SizedBox(height: 6),
@@ -476,10 +487,35 @@ class _ExamScreenState extends State<ExamScreen> {
                 ),
                 const SizedBox(height: 4),
 
-                // Reporting, Room & Desk
+                // Seating, Room & Desk
                 Row(
                   children: [
+                    Text(
+                      cardVenue,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 10,
+                        color: SkedColors.textMuted,
+                      ),
+                    ),
+                    if (exam.seatNo.isNotEmpty && exam.seatNo != 'Awaited') ...[
+                      const SizedBox(width: 6),
+                      const Text('·', style: TextStyle(color: SkedColors.slate, fontSize: 10)),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Desk ${exam.seatNo}',
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: SkedColors.blaze,
+                        ),
+                      ),
+                    ],
                     if (exam.reportingTime.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      const Text('·', style: TextStyle(color: SkedColors.slate, fontSize: 10)),
+                      const SizedBox(width: 6),
                       Text(
                         exam.reportingTime,
                         style: const TextStyle(
@@ -489,23 +525,7 @@ class _ExamScreenState extends State<ExamScreen> {
                           color: SkedColors.blaze,
                         ),
                       ),
-                      const SizedBox(width: 8),
                     ],
-                    Text(
-                      'Room: ${exam.room.isNotEmpty ? exam.room : "Awaited"}',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: SkedColors.textMuted,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Seat: ${exam.seatNo.isNotEmpty ? exam.seatNo : "Awaited"}',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: SkedColors.textMuted,
-                      ),
-                    ),
                   ],
                 ),
               ],
@@ -516,3 +536,4 @@ class _ExamScreenState extends State<ExamScreen> {
     );
   }
 }
+

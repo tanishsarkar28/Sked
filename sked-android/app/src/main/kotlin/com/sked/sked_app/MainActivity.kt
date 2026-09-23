@@ -842,6 +842,21 @@ fun DashboardScreen(
                         )
                     }
 
+                    IconButton(onClick = {
+                        val sendIntent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            putExtra(Intent.EXTRA_TEXT, "Check out Sked — LPU Timetable & Exam Seating App: https://sked-gold.vercel.app/")
+                            type = "text/plain"
+                        }
+                        context.startActivity(Intent.createChooser(sendIntent, "Share Sked with friends"))
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Share Sked",
+                            tint = Slate
+                        )
+                    }
+
                     IconButton(onClick = onRefresh) {
                         Icon(
                             imageVector = Icons.Default.Refresh,

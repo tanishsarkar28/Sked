@@ -138,6 +138,49 @@ class ExamItem {
     return ExamStatus.upcoming;
   }
 
+  String displayExamType() {
+    switch (examType.toUpperCase().trim()) {
+      case 'PRAC':
+      case 'PRACTICAL':
+      case 'LAB':
+        return 'ETP';
+      case 'MTP':
+        return 'MTP';
+      case 'MTE':
+      case 'MID':
+      case 'MID TERM':
+        return 'MTE';
+      case 'ETE':
+      case 'END':
+      case 'END TERM':
+        return 'ETE';
+      default:
+        return examType.isEmpty ? 'MTE' : examType;
+    }
+  }
+
+  String cleanSubjectTitle([String Function(String)? fallbackLookup]) {
+    final t = courseTitle.trim();
+    if (t.isNotEmpty &&
+        !t.toLowerCase().contains('lecture') &&
+        !t.toLowerCase().contains('practical') &&
+        !t.toLowerCase().contains('teacher:') &&
+        !t.toLowerCase().contains('g:all') &&
+        !t.toLowerCase().contains('g:') &&
+        !t.toLowerCase().contains('r:') &&
+        !t.toLowerCase().contains('s:') &&
+        !t.toLowerCase().contains('c:') &&
+        !t.startsWith('/') &&
+        !t.startsWith(':')) {
+      return t;
+    }
+    if (fallbackLookup != null) {
+      final res = fallbackLookup(courseCode);
+      if (res.isNotEmpty) return res;
+    }
+    return '';
+  }
+
   String statusLabel() {
     final days = daysUntil();
     if (days < 0) return 'OVER';
@@ -146,3 +189,4 @@ class ExamItem {
     return 'IN $days DAYS';
   }
 }
+

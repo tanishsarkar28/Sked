@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/class_entry.dart';
 import '../models/exam_item.dart';
 import '../services/timetable_parser.dart';
@@ -208,6 +210,152 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     );
   }
 
+  void _showShareSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: SkedColors.slab,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'SHARE SKED.',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: SkedColors.chalk,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: SkedColors.slate, size: 20),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Share the official download link with your classmates & friends:',
+                  style: TextStyle(fontSize: 12, color: SkedColors.slate),
+                ),
+                const SizedBox(height: 16),
+                // URL display & Copy Button
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: SkedColors.ink,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: SkedColors.rule),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.link, size: 18, color: SkedColors.blaze),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'https://sked-gold.vercel.app/',
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                            color: SkedColors.chalk,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () {
+                          Clipboard.setData(
+                            const ClipboardData(text: 'https://sked-gold.vercel.app/'),
+                          );
+                          Navigator.of(ctx).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Website link copied to clipboard!'),
+                              backgroundColor: SkedColors.slabElevated,
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(4),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: SkedColors.blaze,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'COPY',
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: SkedColors.ink,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                // Quick Share options: WhatsApp
+                InkWell(
+                  onTap: () async {
+                    Navigator.of(ctx).pop();
+                    final url = Uri.parse(
+                      'https://api.whatsapp.com/send?text=${Uri.encodeComponent('Track your LPU timetable, exams & seating plan with Sked: https://sked-gold.vercel.app/')}',
+                    );
+                    try {
+                      if (await canLaunchUrl(url)) {
+                        await launchUrl(url, mode: LaunchMode.externalApplication);
+                      }
+                    } catch (_) {}
+                  },
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: SkedColors.ink,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: SkedColors.rule),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.chat_bubble_outline, color: SkedColors.onGoingGreen, size: 20),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Share via WhatsApp',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: SkedColors.chalk,
+                          ),
+                        ),
+                        const Spacer(),
+                        const Icon(Icons.arrow_forward_ios, color: SkedColors.slate, size: 12),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _showLogoutDialog() {
     showDialog(
       context: context,
@@ -275,6 +423,15 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         userId: widget.userId,
         password: _resyncPassword,
         onDismiss: () => setState(() => _showWebViewBridge = false),
+        onError: (errMsg) {
+          setState(() => _showWebViewBridge = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errMsg),
+              backgroundColor: SkedColors.dangerRed,
+            ),
+          );
+        },
         onSuccess: (_) {
           setState(() => _showWebViewBridge = false);
           _loadLocalData();
@@ -306,6 +463,11 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           ),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Share Sked',
+            icon: const Icon(Icons.share_outlined, color: SkedColors.slate, size: 20),
+            onPressed: () => _showShareSheet(context),
+          ),
           IconButton(
             tooltip: 'About Developer',
             icon: const Icon(Icons.info_outline, color: SkedColors.slate, size: 20),

@@ -6,10 +6,14 @@ import '../widgets/about_developer_dialog.dart';
 
 class LoginScreen extends StatefulWidget {
   final void Function(String userId, String password) onStartLogin;
+  final String? initialUserId;
+  final String? initialErrorMessage;
 
   const LoginScreen({
     super.key,
     required this.onStartLogin,
+    this.initialUserId,
+    this.initialErrorMessage,
   });
 
   @override
@@ -21,6 +25,30 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordCtrl = TextEditingController();
   bool _passwordVisible = false;
   String _errorMessage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialUserId != null && widget.initialUserId!.isNotEmpty) {
+      _userIdCtrl.text = widget.initialUserId!;
+    }
+    if (widget.initialErrorMessage != null && widget.initialErrorMessage!.isNotEmpty) {
+      _errorMessage = widget.initialErrorMessage!;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant LoginScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialErrorMessage != null && widget.initialErrorMessage != oldWidget.initialErrorMessage) {
+      setState(() {
+        _errorMessage = widget.initialErrorMessage!;
+      });
+    }
+    if (widget.initialUserId != null && widget.initialUserId != oldWidget.initialUserId && _userIdCtrl.text.isEmpty) {
+      _userIdCtrl.text = widget.initialUserId!;
+    }
+  }
 
   @override
   void dispose() {
@@ -45,6 +73,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _errorMessage = '');
     widget.onStartLogin(uid, pwd);
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -163,20 +192,21 @@ class _LoginScreenState extends State<LoginScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
-                            color: SkedColors.blaze.withOpacity(0.12),
+                            color: SkedColors.dangerRed.withOpacity(0.12),
                             borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: SkedColors.blaze.withOpacity(0.3)),
+                            border: Border.all(color: SkedColors.dangerRed.withOpacity(0.35)),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.error_outline, color: SkedColors.blaze, size: 16),
+                              const Icon(Icons.error_outline, color: SkedColors.dangerRed, size: 16),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   _errorMessage,
                                   style: const TextStyle(
                                     fontSize: 12,
-                                    color: SkedColors.blaze,
+                                    color: SkedColors.dangerRed,
+                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
                               ),

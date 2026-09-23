@@ -52,6 +52,7 @@ class _SkedAuthGateState extends State<SkedAuthGate> {
   bool _showBridge = false;
   String _pendingUserId = '';
   String _pendingPassword = '';
+  String _loginErrorMessage = '';
 
   @override
   void initState() {
@@ -89,6 +90,12 @@ class _SkedAuthGateState extends State<SkedAuthGate> {
         userId: _pendingUserId,
         password: _pendingPassword,
         onDismiss: () => setState(() => _showBridge = false),
+        onError: (errMsg) {
+          setState(() {
+            _showBridge = false;
+            _loginErrorMessage = errMsg;
+          });
+        },
         onSuccess: (syncedUserId) async {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('sked_user_id', syncedUserId);
@@ -96,6 +103,7 @@ class _SkedAuthGateState extends State<SkedAuthGate> {
           if (mounted) {
             setState(() {
               _currentUserId = syncedUserId;
+              _loginErrorMessage = '';
               _showBridge = false;
             });
           }
@@ -105,12 +113,15 @@ class _SkedAuthGateState extends State<SkedAuthGate> {
 
     if (_currentUserId.isEmpty) {
       return LoginScreen(
+        initialUserId: _pendingUserId,
+        initialErrorMessage: _loginErrorMessage,
         onStartLogin: (uid, pwd) async {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('saved_ums_pwd', pwd);
           setState(() {
             _pendingUserId = uid;
             _pendingPassword = pwd;
+            _loginErrorMessage = '';
             _showBridge = true;
           });
         },
@@ -124,6 +135,7 @@ class _SkedAuthGateState extends State<SkedAuthGate> {
           _currentUserId = '';
           _pendingUserId = '';
           _pendingPassword = '';
+          _loginErrorMessage = '';
         });
       },
     );

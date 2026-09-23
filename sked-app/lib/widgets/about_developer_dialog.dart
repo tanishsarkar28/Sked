@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/update_service.dart';
@@ -176,6 +177,46 @@ class AboutDeveloperDialog extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
+            // Share button
+            InkWell(
+              onTap: () {
+                Clipboard.setData(const ClipboardData(text: 'https://sked-gold.vercel.app/'));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Website link copied to clipboard! Share with friends.'),
+                    backgroundColor: SkedColors.slabElevated,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              borderRadius: BorderRadius.circular(6),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: SkedColors.ink,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: SkedColors.blaze.withOpacity(0.4)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.share_outlined, size: 16, color: SkedColors.blaze),
+                    const SizedBox(width: 8),
+                    Text(
+                      'SHARE SKED WEBSITE LINK',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: SkedColors.blaze,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
             // Update & Version row
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -225,7 +266,7 @@ class AboutDeveloperDialog extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  'SKED v1.2.1 • iOS',
+                  'SKED v1.2.2 • iOS',
                   style: const TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 10,

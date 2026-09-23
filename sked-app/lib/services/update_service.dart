@@ -24,8 +24,8 @@ class AppUpdateInfo {
 }
 
 class UpdateService {
-  static const int currentVersionCode = 4;
-  static const String currentVersionName = '1.2.1';
+  static const int currentVersionCode = 5;
+  static const String currentVersionName = '1.2.2';
 
   static const List<String> versionUrls = [
     'https://sked-gold.vercel.app/version.json',
