@@ -40,6 +40,21 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
 
   const [copiedAdb, setCopiedAdb] = useState(false);
   const [copiedIpa, setCopiedIpa] = useState(false);
+  const [downloadToast, setDownloadToast] = useState<string | null>(null);
+
+  const [versionData, setVersionData] = useState<{
+    versionName: string;
+    versionCode: number;
+    fileSize: string;
+    ipaFileSize: string;
+  } | null>(null);
+
+  React.useEffect(() => {
+    fetch('/version.json')
+      .then(res => res.json())
+      .then(data => setVersionData(data))
+      .catch(() => {});
+  }, []);
 
   const adbCommand = 'adb install -r sked-android.apk';
   const ipaDownloadUrl = typeof window !== 'undefined' 
@@ -58,9 +73,47 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
     setTimeout(() => setCopiedIpa(false), 2000);
   };
 
+  const triggerDownload = (tab: 'android' | 'ios') => {
+    const link = document.createElement('a');
+    if (tab === 'android') {
+      link.href = '/downloads/sked-android.apk';
+      link.download = 'sked-android.apk';
+      setDownloadToast('Starting download: sked-android.apk');
+    } else {
+      link.href = '/downloads/sked-ios.ipa';
+      link.download = 'sked-ios.ipa';
+      setDownloadToast('Starting download: sked-ios.ipa');
+    }
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setTimeout(() => {
+      setDownloadToast(null);
+    }, 3500);
+  };
+
+  const handleTabClick = (tab: 'android' | 'ios') => {
+    if (activeTab === tab) {
+      // If user tapped the tab that is already active (very common on phones when they think it's the download button),
+      // directly trigger the download for them!
+      triggerDownload(tab);
+    } else {
+      setActiveTab(tab);
+    }
+  };
+
   return (
     <section id="install" className="py-24 px-6 relative max-w-7xl mx-auto">
-      <div className="text-center mb-16 space-y-4">
+      {/* Toast Notification when download is triggered */}
+      {downloadToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#141414] border border-emerald-500/40 text-emerald-400 px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-sm font-mono backdrop-blur-md">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{downloadToast}</span>
+        </div>
+      )}
+
+      <div className="text-center mb-12 space-y-4">
         <Badge variant="secondary" className="bg-[#FF6B1A]/10 text-[#FF6B1A] border-[#FF6B1A]/30 font-mono text-xs">
           INSTALLATION PORTAL
         </Badge>
@@ -73,30 +126,67 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
         </p>
 
         {/* Platform Switcher Tabs */}
-        <div className="flex justify-center pt-6">
-          <div className="inline-flex p-1.5 rounded-xl bg-[#141414] border border-[#252525]">
+        <div className="flex flex-col items-center pt-6">
+          <span className="text-[11px] font-mono tracking-widest uppercase text-[#7A7774] mb-2.5">
+            Step 1: Choose Your Platform
+          </span>
+          <div className="inline-flex p-1.5 rounded-2xl bg-[#141414] border border-[#252525] shadow-inner">
             <button
-              onClick={() => setActiveTab('android')}
-              className={`flex items-center gap-2.5 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
+              onClick={() => handleTabClick('android')}
+              className={`flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === 'android'
-                  ? 'bg-[#FF6B1A] text-[#0A0A0A] shadow-lg'
+                  ? 'bg-[#FF6B1A] text-[#0A0A0A] shadow-md font-bold'
                   : 'text-[#7A7774] hover:text-[#E8E6E3]'
               }`}
+              title="Click to select or download Android APK"
             >
               <AndroidIcon className="w-4 h-4" />
-              Android (Native APK)
+              <span>Android (APK)</span>
+              {activeTab === 'android' && (
+                <span className="text-[10px] bg-[#0A0A0A]/20 px-1.5 py-0.5 rounded font-mono uppercase tracking-wider font-bold">
+                  Active
+                </span>
+              )}
             </button>
             <button
-              onClick={() => setActiveTab('ios')}
-              className={`flex items-center gap-2.5 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
+              onClick={() => handleTabClick('ios')}
+              className={`flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === 'ios'
-                  ? 'bg-[#38BDF8] text-[#0A0A0A] shadow-lg'
+                  ? 'bg-[#38BDF8] text-[#0A0A0A] shadow-md font-bold'
                   : 'text-[#7A7774] hover:text-[#E8E6E3]'
               }`}
+              title="Click to select or download iOS IPA"
             >
               <AppleIcon className="w-4 h-4" />
-              iOS (iPhone / iPad)
+              <span>iOS (iPhone / iPad)</span>
+              {activeTab === 'ios' && (
+                <span className="text-[10px] bg-[#0A0A0A]/20 px-1.5 py-0.5 rounded font-mono uppercase tracking-wider font-bold">
+                  Active
+                </span>
+              )}
             </button>
+          </div>
+
+          {/* Dedicated Instant Mobile Download Button (Visible only on mobile screens) */}
+          <div className="mt-5 w-full max-w-sm mx-auto sm:hidden">
+            <button
+              onClick={() => triggerDownload(activeTab)}
+              className={`w-full py-4 px-6 rounded-xl font-['Barlow_Condensed'] font-bold text-lg tracking-wide shadow-2xl flex items-center justify-center gap-2.5 transition-all active:scale-95 ${
+                activeTab === 'android'
+                  ? 'bg-[#FF6B1A] text-[#0A0A0A] hover:bg-[#FF6B1A]/90'
+                  : 'bg-[#38BDF8] text-[#0A0A0A] hover:bg-[#38BDF8]/90'
+              }`}
+            >
+              <Download className="w-5 h-5 animate-bounce" />
+              <span>
+                {activeTab === 'android' ? 'DOWNLOAD ANDROID APK' : 'DOWNLOAD iOS .IPA'}
+              </span>
+            </button>
+            <p className="text-[11px] font-mono text-[#7A7774] text-center mt-2">
+              {activeTab === 'android'
+                ? `Direct APK • ${versionData?.fileSize || '19.4 MB'} • v${versionData?.versionName || '1.2.2'}`
+                : `Direct IPA • ${versionData?.ipaFileSize || '7.6 MB'} • v${versionData?.versionName || '1.2.2'}`}
+            </p>
           </div>
         </div>
       </div>
@@ -117,7 +207,9 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                     <h3 className="text-xl font-bold font-['Barlow_Condensed'] text-[#E8E6E3]">
                       SKED FOR ANDROID
                     </h3>
-                    <p className="text-xs font-mono text-[#7A7774]">v1.1.0 • Jetpack Compose + Glance</p>
+                    <p className="text-xs font-mono text-[#7A7774]">
+                      v{versionData?.versionName || '1.2.2'} • Jetpack Compose + Glance
+                    </p>
                   </div>
                 </div>
                 <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-xs">
@@ -125,7 +217,25 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                 </Badge>
               </div>
 
-              <div className="space-y-4 mb-8 text-sm text-[#7A7774]">
+              {/* Prominent Direct Download Button placed directly at TOP of card */}
+              <div className="mb-6">
+                <a
+                  href="/downloads/sked-android.apk"
+                  download="sked-android.apk"
+                  className="w-full block"
+                >
+                  <Button className="w-full bg-[#FF6B1A] text-[#0A0A0A] hover:bg-[#FF6B1A]/90 font-bold font-['Barlow_Condensed'] text-xl py-6 tracking-wide shadow-xl flex items-center justify-center gap-2 rounded-xl">
+                    <Download className="w-5 h-5" />
+                    DOWNLOAD APK (DIRECT)
+                  </Button>
+                </a>
+                <div className="flex items-center justify-between mt-2.5 px-1 text-xs text-[#7A7774] font-mono">
+                  <span>File: sked-android.apk</span>
+                  <span>{versionData?.fileSize || '19.4 MB'}</span>
+                </div>
+              </div>
+
+              <div className="space-y-4 mb-6 text-sm text-[#7A7774]">
                 <div className="flex items-center justify-between py-2 border-b border-[#252525]">
                   <span>Package Name</span>
                   <span className="font-mono text-[#E8E6E3]">com.sked.sked_app</span>
@@ -147,17 +257,6 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                   <span className="font-mono text-[#E8E6E3]">Periodic (WorkManager)</span>
                 </div>
               </div>
-
-              <a
-                href="/downloads/sked-android.apk"
-                download="sked-android.apk"
-                className="w-full block"
-              >
-                <Button className="w-full bg-[#FF6B1A] text-[#0A0A0A] hover:bg-[#FF6B1A]/90 font-bold font-['Barlow_Condensed'] text-lg py-6 tracking-wide shadow-xl flex items-center justify-center gap-2">
-                  <Download className="w-5 h-5" />
-                  DOWNLOAD APK (DIRECT)
-                </Button>
-              </a>
 
               {/* Security guarantee */}
               <div className="flex items-center justify-center gap-2 mt-4 text-xs text-[#7A7774]">
@@ -262,7 +361,9 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                     <h3 className="text-xl font-bold font-['Barlow_Condensed'] text-[#E8E6E3]">
                       SKED FOR iOS
                     </h3>
-                    <p className="text-xs font-mono text-[#7A7774]">Flutter Client • iPhone & iPad</p>
+                    <p className="text-xs font-mono text-[#7A7774]">
+                      v{versionData?.versionName || '1.2.2'} • Flutter Client (sked-app)
+                    </p>
                   </div>
                 </div>
                 <Badge className="bg-sky-500/10 text-sky-400 border-sky-500/30 text-xs">
@@ -270,7 +371,37 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                 </Badge>
               </div>
 
-              <div className="space-y-4 mb-8 text-sm text-[#7A7774]">
+              {/* Primary Action: Direct IPA Download placed at TOP */}
+              <div className="mb-6">
+                <a
+                  href="/downloads/sked-ios.ipa"
+                  download="sked-ios.ipa"
+                  className="w-full block"
+                >
+                  <Button className="w-full bg-[#38BDF8] text-[#0A0A0A] hover:bg-[#38BDF8]/90 font-bold font-['Barlow_Condensed'] text-xl py-6 tracking-wide shadow-xl flex items-center justify-center gap-2 rounded-xl">
+                    <Download className="w-5 h-5" />
+                    DOWNLOAD .IPA (DIRECT)
+                  </Button>
+                </a>
+                <div className="flex items-center justify-between mt-2.5 px-1 text-xs text-[#7A7774] font-mono">
+                  <span>File: sked-ios.ipa</span>
+                  <span>{versionData?.ipaFileSize || '7.6 MB'}</span>
+                </div>
+
+                {/* Secondary Action: Xcode Source Zip */}
+                <a
+                  href="/downloads/sked-ios-source.zip"
+                  download="sked-ios-source.zip"
+                  className="w-full block mt-3"
+                >
+                  <Button variant="outline" className="w-full border-[#252525] bg-[#0F0F0F] text-[#E8E6E3] hover:bg-[#1C1C1C] hover:border-sky-500/40 text-xs font-mono py-2.5 h-auto flex items-center justify-center gap-2 transition-all">
+                    <Download className="w-3.5 h-3.5 text-sky-400" />
+                    DOWNLOAD XCODE SOURCE (.ZIP)
+                  </Button>
+                </a>
+              </div>
+
+              <div className="space-y-4 mb-6 text-sm text-[#7A7774]">
                 <div className="flex items-center justify-between py-2 border-b border-[#252525]">
                   <span>Bundle Identifier</span>
                   <span className="font-mono text-[#E8E6E3]">com.sked.sked_app</span>
@@ -292,30 +423,6 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                   <span className="font-mono text-[#E8E6E3]">Fully Supported (7-day free cert)</span>
                 </div>
               </div>
-
-              {/* Primary Action: Direct IPA Download */}
-              <a
-                href="/downloads/sked-ios.ipa"
-                download="sked-ios.ipa"
-                className="w-full block"
-              >
-                <Button className="w-full bg-[#38BDF8] text-[#0A0A0A] hover:bg-[#38BDF8]/90 font-bold font-['Barlow_Condensed'] text-lg py-6 tracking-wide shadow-xl flex items-center justify-center gap-2">
-                  <Download className="w-5 h-5" />
-                  DOWNLOAD .IPA (DIRECT)
-                </Button>
-              </a>
-
-              {/* Secondary Action: Xcode Source Zip */}
-              <a
-                href="/downloads/sked-ios-source.zip"
-                download="sked-ios-source.zip"
-                className="w-full block mt-3"
-              >
-                <Button variant="outline" className="w-full border-[#252525] bg-[#0F0F0F] text-[#E8E6E3] hover:bg-[#1C1C1C] hover:border-sky-500/40 text-xs font-mono py-2.5 h-auto flex items-center justify-center gap-2 transition-all">
-                  <Download className="w-3.5 h-3.5 text-sky-400" />
-                  DOWNLOAD XCODE SOURCE (.ZIP)
-                </Button>
-              </a>
 
               <div className="flex items-center justify-center gap-2 mt-4 text-xs text-[#7A7774]">
                 <ShieldCheck className="w-4 h-4 text-sky-400" />
