@@ -306,7 +306,8 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                 com.sked.sked_app.telemetry.TelemetryManager.recordStudentBatch(context, id)
                 showWebViewBridge = true
             },
-            initialErrorMessage = loginErrorMessage
+            initialErrorMessage = loginErrorMessage,
+            initialUserId = loginUserIdInput
         )
     } else {
         // ── LOGGED IN: Main Timetable Dashboard ──────────────────────────────
@@ -351,6 +352,11 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
             },
             onError = { err ->
                 loginErrorMessage = err
+                showWebViewBridge = false
+                showReSyncDialog = false
+                if (currentUserId.isNotBlank()) {
+                    Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                }
             }
         )
     }
@@ -493,9 +499,10 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
 @Composable
 fun LoginScreen(
     onStartLogin: (userId: String, password: String) -> Unit,
-    initialErrorMessage: String = ""
+    initialErrorMessage: String = "",
+    initialUserId: String = ""
 ) {
-    var userId by remember { mutableStateOf("") }
+    var userId by remember { mutableStateOf(initialUserId) }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf(initialErrorMessage) }
@@ -504,6 +511,12 @@ fun LoginScreen(
     LaunchedEffect(initialErrorMessage) {
         if (initialErrorMessage.isNotBlank()) {
             errorMessage = initialErrorMessage
+        }
+    }
+
+    LaunchedEffect(initialUserId) {
+        if (initialUserId.isNotBlank() && userId.isBlank()) {
+            userId = initialUserId
         }
     }
 
@@ -1557,6 +1570,48 @@ fun UpdateAvailableDialog(
 
 // ── Fullscreen/Sheet WebView Dialog for Cloudflare Turnstile Authentication ──
 
+@Composable
+private fun UmsSyncStepRow(
+    title: String,
+    isDone: Boolean,
+    isActive: Boolean
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        if (isDone) {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = Blaze,
+                modifier = Modifier.size(16.dp)
+            )
+        } else if (isActive) {
+            CircularProgressIndicator(
+                strokeWidth = 2.dp,
+                color = Blaze,
+                modifier = Modifier.size(16.dp)
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .border(1.5.dp, Rule, CircleShape)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Text(
+            text = title,
+            fontSize = 13.sp,
+            color = if (isDone || isActive) Chalk else Slate,
+            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
+        )
+    }
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun UmsAuthBridgeDialog(
@@ -1572,71 +1627,24 @@ fun UmsAuthBridgeDialog(
     var isSyncing by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var consoleParsedExams by remember { mutableStateOf<String?>(null) }
+    var showRawWebView by remember { mutableStateOf(false) }
+    var elapsedSeconds by remember { mutableIntStateOf(0) }
 
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Surface(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(DeepBg)
-                .padding(top = 28.dp),
-            color = DeepBg
+                .background(Ink)
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Header bar
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(SurfaceCard)
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "LPU UMS Verification",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = TextPrimary
-                        )
-                        Text(
-                            text = statusText,
-                            fontSize = 12.sp,
-                            color = if (statusText.contains("Invalid", true) || statusText.contains("Error", true) || statusText.contains("Wrong", true) || statusText.contains("lock", true) || statusText.contains("Incorrect", true)) DangerRed else if (isSyncing) AccentTeal else TextSecondary
-                        )
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = {
-                            webViewRef?.evaluateJavascript("window.skedForceSubmit && window.skedForceSubmit()", null)
-                        }) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = "Sync Now", tint = AccentTeal)
-                        }
-                        IconButton(onClick = { webViewRef?.reload() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = TextSecondary)
-                        }
-                        IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
-                        }
-                    }
-                }
-
-                if (isSyncing) {
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = AccentTeal,
-                        trackColor = SurfaceElevated
-                    )
-                }
-
-                // Continuous Polling and Auto-Submit Engine
-                LaunchedEffect(webViewRef, userId, password) {
-                    val wv = webViewRef ?: return@LaunchedEffect
-                    var isDone = false
-                    val safeUser = JSONObject.quote(userId)
-                    val safePass = JSONObject.quote(password)
+            // Continuous Polling and Auto-Submit Engine
+            LaunchedEffect(webViewRef, userId, password) {
+                val wv = webViewRef ?: return@LaunchedEffect
+                var isDone = false
+                val safeUser = JSONObject.quote(userId)
+                val safePass = JSONObject.quote(password)
 
                     try {
                         val themeJs = context.assets.open("theme.js").bufferedReader().use { it.readText() }
@@ -1645,6 +1653,7 @@ fun UmsAuthBridgeDialog(
 
                     while (!isDone) {
                         kotlinx.coroutines.delay(800)
+                        elapsedSeconds += 1
                         val tickJs = """
                             (function() {
                                 try {
@@ -2114,123 +2123,362 @@ fun UmsAuthBridgeDialog(
                                     }
                                 }
                             } catch (_: Exception) {}
+                        }
+                    }
+                }
+            }
+
+            // 1. AndroidView WebView (Kept active in the background view hierarchy)
+            AndroidView(
+                factory = { ctx ->
+                    WebView(ctx).apply {
+                        webViewRef = this
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.loadWithOverviewMode = true
+                        settings.useWideViewPort = true
+                        settings.setSupportMultipleWindows(false)
+                        settings.javaScriptCanOpenWindowsAutomatically = true
+                        settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                        settings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+
+                        val isSupp = WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)
+                        if (isSupp) {
+                            WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
+                        }
+
+                        val cookieManager = CookieManager.getInstance()
+                        cookieManager.setAcceptCookie(true)
+                        cookieManager.setAcceptThirdPartyCookies(this, true)
+
+                        webChromeClient = object : android.webkit.WebChromeClient() {
+                            override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                super.onProgressChanged(view, newProgress)
+                                if (newProgress < 100 && !isSyncing) {
+                                    statusText = "Connecting to LPU portal ($newProgress%)..."
+                                } else if (newProgress == 100 && !isSyncing) {
+                                    statusText = "Verifying security check..."
+                                }
+                            }
+
+                            override fun onConsoleMessage(cm: android.webkit.ConsoleMessage?): Boolean {
+                                if (cm != null) {
+                                    val msg = cm.message()
+                                    android.util.Log.d("SkedSyncWeb", "[${cm.messageLevel()}] $msg")
+                                    if (msg.contains("Parsed Data:") || msg.contains("Response seatingPlan")) {
+                                        val jsonPart = msg.substringAfter("Parsed Data:").substringAfter("Response seatingPlan").trim()
+                                        if (jsonPart.startsWith("[") || jsonPart.startsWith("{")) {
+                                            consoleParsedExams = jsonPart
+                                            android.util.Log.i("SkedSync", "Captured raw seating plan JSON from Next.js console: ${jsonPart.take(80)}...")
+                                        }
+                                    }
+                                }
+                                return super.onConsoleMessage(cm)
+                            }
+                        }
+
+                        val cachedUa = settings.userAgentString
+
+                        webViewClient = object : WebViewClient() {
+                            override fun shouldInterceptRequest(view: WebView?, request: android.webkit.WebResourceRequest?): android.webkit.WebResourceResponse? {
+                                val url = request?.url?.toString() ?: return null
+                                // Fast-path: Block wasteful background prefetch RSC requests from Next.js that choke network bandwidth
+                                if (url.contains("_rsc=") && (url.contains("change-password") || url.contains("user-profile") || url.contains("feedback") || url.contains("downloadFTP") || url.contains("dashboard?_rsc="))) {
+                                    return android.webkit.WebResourceResponse("text/plain", "utf-8", java.io.ByteArrayInputStream("".toByteArray()))
+                                }
+                                if (url.contains("LoginNew.aspx", ignoreCase = true) && request.method.equals("GET", ignoreCase = true)) {
+                                    try {
+                                        val okHttp = OkHttpClient.Builder().build()
+                                        val cm = CookieManager.getInstance()
+                                        val cookies = cm.getCookie("https://ums.lpu.in") ?: ""
+
+                                        val builder = Request.Builder()
+                                            .url(url)
+                                            .get()
+                                            .header("User-Agent", cachedUa)
+
+                                        if (cookies.isNotBlank()) {
+                                            builder.header("Cookie", cookies)
+                                        }
+
+                                        val resp = okHttp.newCall(builder.build()).execute()
+                                        val setCookies = resp.headers("Set-Cookie")
+                                        for (sc in setCookies) {
+                                            cm.setCookie("https://ums.lpu.in", sc)
+                                        }
+                                        val mime = resp.header("Content-Type", "text/html")?.split(";")?.firstOrNull()?.trim() ?: "text/html"
+                                        val bodyStream = resp.body?.byteStream()
+                                        return android.webkit.WebResourceResponse(mime, "utf-8", bodyStream)
+                                    } catch (_: Exception) {}
+                                }
+                                return super.shouldInterceptRequest(view, request)
+                            }
+
+                            override fun onPageFinished(view: WebView?, url: String?) {
+                                super.onPageFinished(view, url)
+                                try {
+                                    val themeJs = ctx.assets.open("theme.js").bufferedReader().use { it.readText() }
+                                    view?.evaluateJavascript(themeJs, null)
+                                } catch (_: Exception) {}
+                                if ((url ?: "").contains("LoginNew.aspx", ignoreCase = true) && !isSyncing) {
+                                    statusText = "Verifying security check..."
+                                }
+                            }
+                        }
+
+                        loadUrl("https://ums.lpu.in/lpuums/LoginNew.aspx")
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (showRawWebView) Modifier.statusBarsPadding().padding(top = 56.dp) else Modifier
+                    )
+            )
+
+            // 2. Foreground UI: Portal Browser Inspection OR SKED Modern Loading Screen
+            if (showRawWebView) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding(),
+                    color = Slab,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Rule)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "LPU UMS BROWSER",
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 17.sp,
+                                color = Chalk
+                            )
+                            Text(
+                                text = statusText,
+                                fontSize = 12.sp,
+                                color = if (statusText.contains("Invalid", true) || statusText.contains("Error", true)) DangerRed else Slate,
+                                maxLines = 1
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { showRawWebView = false }) {
+                                Text("HIDE", color = Blaze, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                            IconButton(onClick = { webViewRef?.reload() }) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = Slate)
+                            }
+                            IconButton(onClick = onDismiss) {
+                                Icon(Icons.Default.Close, contentDescription = "Close", tint = Slate)
                             }
                         }
                     }
                 }
-
-                // WebView Container
-                Box(
+            } else {
+                Surface(
                     modifier = Modifier
                         .fillMaxSize()
-                        .weight(1f)
+                        .clickable(enabled = false) {}, // absorb touches so user cannot click hidden webview
+                    color = Ink
                 ) {
-                    AndroidView(
-                        factory = { ctx ->
-                            WebView(ctx).apply {
-                                webViewRef = this
-                                layoutParams = ViewGroup.LayoutParams(
-                                    ViewGroup.LayoutParams.MATCH_PARENT,
-                                    ViewGroup.LayoutParams.MATCH_PARENT
-                                )
-                                settings.javaScriptEnabled = true
-                                settings.domStorageEnabled = true
-                                settings.loadWithOverviewMode = true
-                                settings.useWideViewPort = true
-                                settings.setSupportMultipleWindows(false)
-                                settings.javaScriptCanOpenWindowsAutomatically = true
-                                settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                settings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
-
-                                val isSupp = WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)
-                                if (isSupp) {
-                                    WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
-                                }
-
-                                val cookieManager = CookieManager.getInstance()
-                                cookieManager.setAcceptCookie(true)
-                                cookieManager.setAcceptThirdPartyCookies(this, true)
-
-                                webChromeClient = object : android.webkit.WebChromeClient() {
-                                    override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                                        super.onProgressChanged(view, newProgress)
-                                        if (newProgress < 100 && !isSyncing) {
-                                            statusText = "Loading LPU portal ($newProgress%)..."
-                                        } else if (newProgress == 100 && !isSyncing) {
-                                            statusText = "Verifying Turnstile..."
-                                        }
-                                    }
-
-                                    override fun onConsoleMessage(cm: android.webkit.ConsoleMessage?): Boolean {
-                                        if (cm != null) {
-                                            val msg = cm.message()
-                                            android.util.Log.d("SkedSyncWeb", "[${cm.messageLevel()}] $msg")
-                                            if (msg.contains("Parsed Data:") || msg.contains("Response seatingPlan")) {
-                                                val jsonPart = msg.substringAfter("Parsed Data:").substringAfter("Response seatingPlan").trim()
-                                                if (jsonPart.startsWith("[") || jsonPart.startsWith("{")) {
-                                                    consoleParsedExams = jsonPart
-                                                    android.util.Log.i("SkedSync", "Captured raw seating plan JSON from Next.js console: ${jsonPart.take(80)}...")
-                                                }
-                                            }
-                                        }
-                                        return super.onConsoleMessage(cm)
-                                    }
-                                }
-
-                                val cachedUa = settings.userAgentString
-
-                                webViewClient = object : WebViewClient() {
-                                    override fun shouldInterceptRequest(view: WebView?, request: android.webkit.WebResourceRequest?): android.webkit.WebResourceResponse? {
-                                        val url = request?.url?.toString() ?: return null
-                                        // Fast-path: Block wasteful background prefetch RSC requests from Next.js that choke network bandwidth
-                                        if (url.contains("_rsc=") && (url.contains("change-password") || url.contains("user-profile") || url.contains("feedback") || url.contains("downloadFTP") || url.contains("dashboard?_rsc="))) {
-                                            return android.webkit.WebResourceResponse("text/plain", "utf-8", java.io.ByteArrayInputStream("".toByteArray()))
-                                        }
-                                        if (url.contains("LoginNew.aspx", ignoreCase = true) && request.method.equals("GET", ignoreCase = true)) {
-                                            try {
-                                                val okHttp = OkHttpClient.Builder().build()
-                                                val cm = CookieManager.getInstance()
-                                                val cookies = cm.getCookie("https://ums.lpu.in") ?: ""
-
-                                                val builder = Request.Builder()
-                                                    .url(url)
-                                                    .get()
-                                                    .header("User-Agent", cachedUa)
-
-                                                 if (cookies.isNotBlank()) {
-                                                    builder.header("Cookie", cookies)
-                                                }
-
-                                                val resp = okHttp.newCall(builder.build()).execute()
-                                                val setCookies = resp.headers("Set-Cookie")
-                                                for (sc in setCookies) {
-                                                    cm.setCookie("https://ums.lpu.in", sc)
-                                                }
-                                                val mime = resp.header("Content-Type", "text/html")?.split(";")?.firstOrNull()?.trim() ?: "text/html"
-                                                val bodyStream = resp.body?.byteStream()
-                                                return android.webkit.WebResourceResponse(mime, "utf-8", bodyStream)
-                                            } catch (_: Exception) {}
-                                        }
-                                        return super.shouldInterceptRequest(view, request)
-                                    }
-
-                                    override fun onPageFinished(view: WebView?, url: String?) {
-                                        super.onPageFinished(view, url)
-                                        try {
-                                            val themeJs = ctx.assets.open("theme.js").bufferedReader().use { it.readText() }
-                                            view?.evaluateJavascript(themeJs, null)
-                                        } catch (_: Exception) {}
-                                        if ((url ?: "").contains("LoginNew.aspx", ignoreCase = true) && !isSyncing) {
-                                            statusText = "Verifying Turnstile..."
-                                        }
-                                    }
-                                }
-
-                                loadUrl("https://ums.lpu.in/lpuums/LoginNew.aspx")
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .statusBarsPadding()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 28.dp, vertical = 20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Top bar
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "SKED.",
+                                fontSize = 28.sp,
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                color = Blaze,
+                                letterSpacing = 1.sp
+                            )
+                            IconButton(onClick = onDismiss) {
+                                Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Slate)
                             }
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
+                        }
+
+                        // Center content
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+                            val pulseScale by infiniteTransition.animateFloat(
+                                initialValue = 0.92f,
+                                targetValue = 1.08f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(1200, easing = FastOutSlowInEasing),
+                                    repeatMode = RepeatMode.Reverse
+                                ),
+                                label = "scale"
+                            )
+                            val pulseAlpha by infiniteTransition.animateFloat(
+                                initialValue = 0.08f,
+                                targetValue = 0.22f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(1200, easing = FastOutSlowInEasing),
+                                    repeatMode = RepeatMode.Reverse
+                                ),
+                                label = "alpha"
+                            )
+
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.size(110.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(110.dp)
+                                        .scale(pulseScale)
+                                        .background(Blaze.copy(alpha = pulseAlpha), CircleShape)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(80.dp)
+                                        .background(Slab, CircleShape)
+                                        .border(1.dp, Rule, CircleShape)
+                                )
+                                CircularProgressIndicator(
+                                    color = Blaze,
+                                    strokeWidth = 3.dp,
+                                    modifier = Modifier.size(56.dp)
+                                )
+                                Icon(
+                                    imageVector = if (isSyncing) Icons.Default.Sync else Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = Blaze,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(28.dp))
+
+                            val titleText = when {
+                                statusText.contains("Datesheet", true) || statusText.contains("schedule", true) || statusText.contains("classes", true) -> "SYNCING TIMETABLE"
+                                statusText.contains("Authenticating", true) || statusText.contains("Submitting", true) -> "LOGGING IN"
+                                statusText.contains("Turnstile", true) || statusText.contains("Verifying", true) || statusText.contains("security", true) -> "SECURITY CHECK"
+                                else -> "CONNECTING TO UMS"
+                            }
+
+                            Text(
+                                text = titleText,
+                                fontSize = 22.sp,
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                color = Chalk,
+                                letterSpacing = 1.sp
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = statusText,
+                                fontSize = 13.sp,
+                                color = Slate,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 20.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(28.dp))
+
+                            // Steps milestone checklist
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Slab,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp)
+                                ) {
+                                    val isStep1Done = true
+                                    val isStep2Active = !isSyncing && (statusText.contains("Turnstile", true) || statusText.contains("Loading", true) || statusText.contains("security", true) || statusText.contains("Connecting", true))
+                                    val isStep2Done = isSyncing || statusText.contains("verified", true) || statusText.contains("Authenticating", true) || statusText.contains("schedule", true)
+                                    val isStep3Active = isSyncing
+
+                                    UmsSyncStepRow(
+                                        title = "Connect to LPU Portal",
+                                        isDone = isStep1Done,
+                                        isActive = false
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    UmsSyncStepRow(
+                                        title = "Cloudflare Security Check",
+                                        isDone = isStep2Done,
+                                        isActive = isStep2Active
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    UmsSyncStepRow(
+                                        title = "Sync Schedule & Datesheet",
+                                        isDone = false,
+                                        isActive = isStep3Active
+                                    )
+                                }
+                            }
+                        }
+
+                        // Bottom actions
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (elapsedSeconds >= 10) {
+                                TextButton(onClick = { showRawWebView = true }) {
+                                    Text(
+                                        text = "Taking longer than usual? View Portal",
+                                        color = Blaze,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                            } else {
+                                TextButton(onClick = { showRawWebView = true }) {
+                                    Text(
+                                        text = "VIEW BROWSER DETAILS",
+                                        color = Slate.copy(alpha = 0.5f),
+                                        fontSize = 11.sp,
+                                        letterSpacing = 1.sp
+                                    )
+                                }
+                            }
+
+                            TextButton(onClick = onDismiss) {
+                                Text(
+                                    text = "CANCEL",
+                                    color = Slate,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
