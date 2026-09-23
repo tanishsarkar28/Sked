@@ -2440,14 +2440,52 @@ fun UmsAuthBridgeDialog(
                                     )
                                 }
                             }
+
+                            // Humorous & relatable UMS server speed indicator
+                            AnimatedVisibility(
+                                visible = elapsedSeconds >= 4,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically()
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(top = 16.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = Slab,
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Blaze.copy(alpha = 0.35f))
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = when {
+                                                    elapsedSeconds >= 14 -> "UMS is dying right now 😭 hang tight..."
+                                                    elapsedSeconds >= 9 -> "UMS is painfully slow today 😭"
+                                                    else -> "UMS is too slow 😭"
+                                                },
+                                                fontSize = 12.sp,
+                                                fontFamily = BarlowCondensed,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Blaze,
+                                                letterSpacing = 0.5.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         // Bottom actions
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 20.dp)
                         ) {
-                            if (elapsedSeconds >= 10) {
+                            if (elapsedSeconds >= 8) {
                                 TextButton(onClick = { showRawWebView = true }) {
                                     Text(
                                         text = "Taking longer than usual? View Portal",
