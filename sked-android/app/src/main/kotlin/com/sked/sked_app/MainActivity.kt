@@ -285,6 +285,7 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
     }
 
     var showAdminDashboard by remember { mutableStateOf(false) }
+    var loginErrorMessage by remember { mutableStateOf("") }
 
     // ── SCREEN SWITCHING: Admin / Login / Dashboard ──────────────
     if (showAdminDashboard) {
@@ -294,6 +295,7 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
     } else if (currentUserId.isBlank()) {
         LoginScreen(
             onStartLogin = { id, pass ->
+                loginErrorMessage = ""
                 if (verifyAdminCredentials(id, pass)) {
                     showAdminDashboard = true
                     return@LoginScreen
@@ -303,7 +305,8 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                 prefs.edit().putString("saved_ums_pwd", pass).apply()
                 com.sked.sked_app.telemetry.TelemetryManager.recordStudentBatch(context, id)
                 showWebViewBridge = true
-            }
+            },
+            initialErrorMessage = loginErrorMessage
         )
     } else {
         // ── LOGGED IN: Main Timetable Dashboard ──────────────────────────────
@@ -334,6 +337,7 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
             password = loginPasswordInput,
             onDismiss = { showWebViewBridge = false },
             onSuccess = { syncedUserId ->
+                loginErrorMessage = ""
                 currentUserId = syncedUserId
                 prefs.edit()
                     .putString(KEY_USER_ID, syncedUserId)
@@ -344,6 +348,9 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                 showReSyncDialog = false
                 loadLocalData()
                 onWidgetUpdate()
+            },
+            onError = { err ->
+                loginErrorMessage = err
             }
         )
     }
@@ -485,13 +492,20 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
 
 @Composable
 fun LoginScreen(
-    onStartLogin: (userId: String, password: String) -> Unit
+    onStartLogin: (userId: String, password: String) -> Unit,
+    initialErrorMessage: String = ""
 ) {
     var userId by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf(initialErrorMessage) }
     var showAboutDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(initialErrorMessage) {
+        if (initialErrorMessage.isNotBlank()) {
+            errorMessage = initialErrorMessage
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -1549,7 +1563,8 @@ fun UmsAuthBridgeDialog(
     userId: String,
     password: String,
     onDismiss: () -> Unit,
-    onSuccess: (String) -> Unit
+    onSuccess: (String) -> Unit,
+    onError: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -1589,7 +1604,7 @@ fun UmsAuthBridgeDialog(
                         Text(
                             text = statusText,
                             fontSize = 12.sp,
-                            color = if (isSyncing) AccentTeal else TextSecondary
+                            color = if (statusText.contains("Invalid", true) || statusText.contains("Error", true) || statusText.contains("Wrong", true) || statusText.contains("lock", true) || statusText.contains("Incorrect", true)) DangerRed else if (isSyncing) AccentTeal else TextSecondary
                         )
                     }
 
@@ -1799,14 +1814,26 @@ fun UmsAuthBridgeDialog(
                                         }).then(function(html) {
                                             if (html.includes('StudentDashboard') || html.includes('frmMyCurrentTimeTable') || html.includes('w-schedule') || html.includes('Default3')) {
                                                 return fetchAllData(html, curU.value, curP.value);
-                                            } else if (html.includes('This App is not trusted')) {
-                                                window._skedIsSyncing = false;
-                                                window._skedError = 'LPU server rejected request. Retrying...';
+                                            }
+
+                                            // If we did not reach student dashboard, it is an authentication failure
+                                            window._skedIsSyncing = false;
+                                            window._skedAuthFailed = true;
+
+                                            var errM = html.match(/id=["']lockerror["'][^>]*>([^<]+)<\/span>/i)
+                                                    || html.match(/id=["']lblError["'][^>]*>([^<]+)<\/span>/i)
+                                                    || html.match(/class=["'][^"']*error[^"']*["'][^>]*>([^<]+)<\//i);
+
+                                            var serverMsg = errM ? errM[1].replace(/<[^>]+>/g, '').trim() : '';
+
+                                            if (serverMsg) {
+                                                window._skedError = serverMsg;
+                                            } else if (/invalid\s*(?:user\s*name\s*\/?\s*)?password/i.test(html) || /wrong\s*password/i.test(html) || /incorrect/i.test(html)) {
+                                                window._skedError = 'Invalid Registration No or Password.';
+                                            } else if (/account\s*is\s*locked/i.test(html) || /locked/i.test(html)) {
+                                                window._skedError = 'Account locked. Please reset password on UMS.';
                                             } else {
-                                                window._skedIsSyncing = false;
-                                                var errM = html.match(/id=["']lockerror["'][^>]*>([^<]+)<\/span>/i)
-                                                        || html.match(/id=["']lblError["'][^>]*>([^<]+)<\/span>/i);
-                                                window._skedError = errM ? errM[1] : 'Invalid credentials. Please verify ID and password.';
+                                                window._skedError = 'Invalid Registration No or Password.';
                                             }
                                         }).catch(function(err) {
                                             window._skedIsSyncing = false;
@@ -1814,12 +1841,18 @@ fun UmsAuthBridgeDialog(
                                         });
                                     }
 
-                                    window.skedForceSubmit = triggerSubmit;
+                                    window.skedForceSubmit = function() {
+                                        window._skedAuthFailed = false;
+                                        window._skedError = '';
+                                        triggerSubmit();
+                                    };
 
                                     if (form && !form.__skedBound) {
                                         form.__skedBound = true;
                                         form.onsubmit = function(e) {
                                             if (e) { e.preventDefault(); e.stopPropagation(); }
+                                            window._skedAuthFailed = false;
+                                            window._skedError = '';
                                             triggerSubmit();
                                             return false;
                                         };
@@ -1827,13 +1860,15 @@ fun UmsAuthBridgeDialog(
                                         if (submitBtn) {
                                             submitBtn.onclick = function(e) {
                                                 if (e) { e.preventDefault(); e.stopPropagation(); }
+                                                window._skedAuthFailed = false;
+                                                window._skedError = '';
                                                 triggerSubmit();
                                                 return false;
                                             };
                                         }
                                     }
 
-                                    if (!window._skedIsSyncing && !window._skedTimetableResult) {
+                                    if (!window._skedIsSyncing && !window._skedTimetableResult && !window._skedAuthFailed) {
                                         if (window.location.href.includes('Default3') || window.location.href.includes('StudentDashboard') || window.location.href.includes('frmMyCurrentTimeTable')) {
                                             window._skedIsSyncing = true;
                                             fetchAllData(document.documentElement.outerHTML, $safeUser, $safePass);
@@ -1849,6 +1884,7 @@ fun UmsAuthBridgeDialog(
                                         status: window._skedError || st,
                                         error: window._skedError || '',
                                         syncing: !!window._skedIsSyncing,
+                                        authFailed: !!window._skedAuthFailed,
                                         hasResult: !!window._skedTimetableResult
                                     });
                                 } catch(e) {
@@ -1867,11 +1903,19 @@ fun UmsAuthBridgeDialog(
                                     val st = stateObj.optString("status")
                                     val err = stateObj.optString("error")
                                     val syncing = stateObj.optBoolean("syncing")
+                                    val authFailed = stateObj.optBoolean("authFailed")
                                     val hasRes = stateObj.optBoolean("hasResult")
 
                                     if (st.isNotBlank()) statusText = st
                                     isSyncing = syncing
                                     if (err.isNotBlank()) statusText = err
+
+                                    if (authFailed) {
+                                        val errText = err.ifBlank { "Invalid Registration No or Password." }
+                                        statusText = errText
+                                        isSyncing = false
+                                        onError(errText)
+                                    }
 
                                     if (hasRes && !isDone) {
                                         isDone = true
