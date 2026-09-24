@@ -1,13 +1,13 @@
 {
-  "versionCode": 5,
-  "versionName": "1.2.2",
+  "versionCode": 6,
+  "versionName": "1.2.3",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Live datesheet & seating plan sync with modern UMS\n• Exam spotlight on home screen widgets with desk tracking\n• Background verification with live UMS server health\n• Added quick share button for website link\n• 100% On-device privacy",
+  "releaseNotes": "• Enhanced seating plan and room number parser for all modern UMS formats",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
   "directIpaDownloadUrl": "/downloads/sked-ios.ipa",
-  "fileSize": "20.4 MB",
+  "fileSize": "12.8 MB",
   "ipaFileSize": "7.6 MB",
-  "updatedAt": "2026-09-23"
+  "updatedAt": "2026-09-24"
 }

@@ -184,8 +184,8 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
             </button>
             <p className="text-[11px] font-mono text-[#7A7774] text-center mt-2">
               {activeTab === 'android'
-                ? `Direct APK • ${versionData?.fileSize || '19.4 MB'} • v${versionData?.versionName || '1.2.2'}`
-                : `Direct IPA • ${versionData?.ipaFileSize || '7.6 MB'} • v${versionData?.versionName || '1.2.2'}`}
+                ? `Direct APK • ${versionData?.fileSize || '12.8 MB'} • v${versionData?.versionName || '1.2.3'}`
+                : `Direct IPA • ${versionData?.ipaFileSize || '7.6 MB'} • v${versionData?.versionName || '1.2.3'}`}
             </p>
           </div>
         </div>
@@ -208,7 +208,7 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                       SKED FOR ANDROID
                     </h3>
                     <p className="text-xs font-mono text-[#7A7774]">
-                      v{versionData?.versionName || '1.2.2'} • Jetpack Compose + Glance
+                      v{versionData?.versionName || '1.2.3'} • Jetpack Compose + Glance
                     </p>
                   </div>
                 </div>
@@ -362,7 +362,7 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                       SKED FOR iOS
                     </h3>
                     <p className="text-xs font-mono text-[#7A7774]">
-                      v{versionData?.versionName || '1.2.2'} • Flutter Client (sked-app)
+                      v{versionData?.versionName || '1.2.3'} • Flutter Client (sked-app)
                     </p>
                   </div>
                 </div>
