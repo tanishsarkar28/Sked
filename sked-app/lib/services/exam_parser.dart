@@ -75,6 +75,63 @@ class ExamParser {
     if (raw.trim().isEmpty) return items;
 
     try {
+      // 0. Pre-check: Direct JSON parsing if raw contains JSON array with CourseCode
+      final jsonStart = raw.indexOf('[{"');
+      if (jsonStart != -1) {
+        final jsonEnd = raw.lastIndexOf('}]');
+        if (jsonEnd != -1 && jsonEnd > jsonStart) {
+          try {
+            final jsonSub = raw.substring(jsonStart, jsonEnd + 2);
+            final arr = jsonDecode(jsonSub);
+            if (arr is List) {
+              for (final item in arr) {
+                if (item is Map) {
+                  final code = (item['CourseCode'] ?? '').toString().trim();
+                  if (code.isNotEmpty) {
+                    final rawName = (item['CourseName'] ?? '').toString().trim();
+                    final title = rawName.isNotEmpty ? rawName : ((courseTitleMap != null ? courseTitleMap[code.toUpperCase()] : null) ?? getCourseTitle(code));
+                    final dStr = (item['ExamDate'] ?? '').toString().trim();
+                    final tSlot = (item['ExamTime'] ?? '09:00 AM – 12:00 PM').toString().trim();
+                    final rawRoom = (item['RoomNo'] ?? item['roomNo'] ?? item['Room'] ?? item['room'] ?? item['Venue'] ?? item['venue'] ?? item['RoomNumber'] ?? item['Center'] ?? '').toString().trim();
+                    final roomNo = (rawRoom.isEmpty || rawRoom.toLowerCase() == 'null' || rawRoom.toLowerCase() == 'n/a' || rawRoom == '-' || rawRoom.toLowerCase().contains('awaited'))
+                        ? 'Seating Awaited'
+                        : rawRoom;
+                    final rawSeat = (item['SeatNo'] ?? item['seatNo'] ?? item['DeskNo'] ?? item['deskNo'] ?? item['Seat'] ?? item['Desk'] ?? '').toString().trim();
+                    final seatNo = (rawSeat.isEmpty || rawSeat.toLowerCase() == 'null' || rawSeat.toLowerCase() == 'n/a' || rawSeat == '-' || rawSeat.toLowerCase().contains('awaited'))
+                        ? 'Awaited'
+                        : rawSeat;
+                    final repTime = (item['ReportingTime'] ?? '').toString().trim();
+                    final typeDesc = (item['ExamTypeDesc'] ?? 'MTE').toString().trim();
+
+                    final isEvening = tSlot.toUpperCase().contains('PM') &&
+                        !tSlot.contains('09:') &&
+                        !tSlot.contains('10:') &&
+                        !tSlot.contains('11:');
+
+                    items.add(
+                      ExamItem(
+                        courseCode: code,
+                        courseTitle: title,
+                        dateStr: dStr,
+                        timeSlot: formatTimeSlot(tSlot),
+                        session: isEvening ? 'Evening' : 'Morning',
+                        examType: (typeDesc.toLowerCase().contains('end') || typeDesc.toLowerCase().contains('ete')) ? 'ETE' : 'MTE',
+                        room: roomNo,
+                        seatNo: seatNo,
+                        reportingTime: repTime.isNotEmpty ? 'Report $repTime' : '',
+                      ),
+                    );
+                  }
+                }
+              }
+              if (items.isNotEmpty) {
+                return items..sort((a, b) => (a.examDate?.millisecondsSinceEpoch ?? 9999999999999).compareTo(b.examDate?.millisecondsSinceEpoch ?? 9999999999999));
+              }
+            }
+          } catch (_) {}
+        }
+      }
+
       final tagStrip = RegExp(r'<[^>]+>|&nbsp;|\t');
 
       // 1. First attempt: Line-by-line card format (from studentums.lpu.in)
@@ -132,8 +189,8 @@ class ExamParser {
               if (reporting.length > 30) reporting = reporting.substring(0, 30);
             }
 
-            if (RegExp(r'Block\s+\d+|Room\s+\d+|\d{2}-\d{3}', caseSensitive: false).hasMatch(nextLine)) {
-              room = nextLine;
+            if (RegExp(r'(?:Block\s*[-–]?\s*\d+|Room\s*[-–]?\s*\d+|\b\d{1,2}[-–]\d{2,4}[A-Za-z]?\b|Uni[- ]Mall)', caseSensitive: false).hasMatch(nextLine)) {
+              room = nextLine.toLowerCase().contains('awaited') ? 'Seating Awaited' : nextLine.trim();
             } else if (nextLine.toLowerCase().contains('awaited')) {
               room = 'Seating Awaited';
             }
@@ -212,19 +269,21 @@ class ExamParser {
                 orElse: () => '09:00 AM – 12:00 PM',
               );
 
-              final roomCell = cells.firstWhere(
+              final roomCellRaw = cells.firstWhere(
                 (c) => c.toLowerCase().contains('block') ||
                     c.toLowerCase().contains('room') ||
-                    RegExp(r'\d{2}-\d{3}').hasMatch(c),
+                    RegExp(r'.*\b\d{1,2}[-–]\d{2,4}[A-Za-z]?\b.*').hasMatch(c),
                 orElse: () => 'Seating Awaited',
               );
+              final roomCell = roomCellRaw.toLowerCase().contains('awaited') ? 'Seating Awaited' : roomCellRaw.trim();
 
-              final seatCell = cells.firstWhere(
+              final seatCellRaw = cells.firstWhere(
                 (c) => c.toLowerCase().contains('desk') ||
                     c.toLowerCase().contains('seat') ||
-                    RegExp(r'[A-Z]-\d{1,3}').hasMatch(c),
+                    RegExp(r'[A-Za-z]-\d{1,3}').hasMatch(c),
                 orElse: () => 'Awaited',
               );
+              final seatCell = seatCellRaw.toLowerCase().contains('awaited') ? 'Awaited' : seatCellRaw.trim();
 
               final reportingCell = cells.firstWhere(
                 (c) => c.toLowerCase().contains('report'),

@@ -183,7 +183,34 @@ object ExamParser {
                                 val title = obj.optString("CourseName").ifBlank { courseTitleMap[code.uppercase()] ?: getCourseTitle(code) }
                                 val dStr = obj.optString("ExamDate")
                                 val tSlot = obj.optString("ExamTime", "09:00 AM – 12:00 PM")
-                                val roomNo = obj.optString("RoomNo").ifBlank { "Seating Awaited" }
+                                val rawRoom = obj.optString("RoomNo")
+                                    .ifBlank { obj.optString("roomNo") }
+                                    .ifBlank { obj.optString("Room") }
+                                    .ifBlank { obj.optString("room") }
+                                    .ifBlank { obj.optString("Venue") }
+                                    .ifBlank { obj.optString("venue") }
+                                    .ifBlank { obj.optString("RoomNumber") }
+                                    .ifBlank { obj.optString("roomNumber") }
+                                    .ifBlank { obj.optString("Center") }
+                                    .ifBlank { obj.optString("HallNo") }
+                                val roomNo = if (rawRoom.isBlank() || rawRoom.equals("null", true) || rawRoom.equals("n/a", true) || rawRoom == "-" || rawRoom.contains("Awaited", true)) {
+                                    "Seating Awaited"
+                                } else {
+                                    rawRoom.trim()
+                                }
+
+                                val rawSeat = obj.optString("SeatNo")
+                                    .ifBlank { obj.optString("seatNo") }
+                                    .ifBlank { obj.optString("DeskNo") }
+                                    .ifBlank { obj.optString("deskNo") }
+                                    .ifBlank { obj.optString("Seat") }
+                                    .ifBlank { obj.optString("Desk") }
+                                val seatNo = if (rawSeat.isBlank() || rawSeat.equals("null", true) || rawSeat.equals("n/a", true) || rawSeat == "-" || rawSeat.contains("Awaited", true)) {
+                                    "Awaited"
+                                } else {
+                                    rawSeat.trim()
+                                }
+
                                 val repTime = obj.optString("ReportingTime")
                                 val typeDesc = obj.optString("ExamTypeDesc", "MTE")
                                 items.add(
@@ -195,7 +222,7 @@ object ExamParser {
                                         session = if (tSlot.contains("PM", ignoreCase = true) && !tSlot.contains("09:") && !tSlot.contains("10:") && !tSlot.contains("11:")) "Evening" else "Morning",
                                         examType = if (typeDesc.contains("End", true) || typeDesc.contains("ETE", true)) "ETE" else "MTE",
                                         room = roomNo,
-                                        seatNo = "Awaited",
+                                        seatNo = seatNo,
                                         reportingTime = if (repTime.isNotBlank()) "Report $repTime" else ""
                                     )
                                 )
@@ -268,8 +295,8 @@ object ExamParser {
                             reporting = "Report " + rMatch.groupValues[1].take(30).trim()
                         }
 
-                        if (Regex("""Block\s+\d+|Room\s+\d+|\d{2}-\d{3}""", RegexOption.IGNORE_CASE).containsMatchIn(nextLine)) {
-                            room = nextLine
+                        if (Regex("""(?:Block\s*[-–]?\s*\d+|Room\s*[-–]?\s*\d+|\b\d{1,2}[-–]\d{2,4}[A-Za-z]?\b|Uni[- ]Mall)""", RegexOption.IGNORE_CASE).containsMatchIn(nextLine)) {
+                            room = if (nextLine.contains("Awaited", ignoreCase = true)) "Seating Awaited" else nextLine.trim()
                         } else if (nextLine.contains("Awaited", ignoreCase = true)) {
                             room = "Seating Awaited"
                         }
@@ -341,12 +368,16 @@ object ExamParser {
                             } ?: "09:00 AM – 12:00 PM"
 
                             val roomCell = cells.find {
-                                it.contains("Block", ignoreCase = true) || it.contains("Room", ignoreCase = true) || it.matches(Regex("""\d{2}-\d{3}"""))
-                            } ?: ""
+                                it.contains("Block", ignoreCase = true) || it.contains("Room", ignoreCase = true) || it.matches(Regex(""".*\b\d{1,2}[-–]\d{2,4}[A-Za-z]?\b.*"""))
+                            }?.let {
+                                if (it.contains("Awaited", ignoreCase = true)) "Seating Awaited" else it.trim()
+                            } ?: "Seating Awaited"
 
                             val seatCell = cells.find {
-                                it.contains("Desk", ignoreCase = true) || it.contains("Seat", ignoreCase = true) || it.matches(Regex("""[A-Z]-\d{1,3}"""))
-                            } ?: ""
+                                it.contains("Desk", ignoreCase = true) || it.contains("Seat", ignoreCase = true) || it.matches(Regex("""[A-Za-z]-\d{1,3}"""))
+                            }?.let {
+                                if (it.contains("Awaited", ignoreCase = true)) "Awaited" else it.trim()
+                            } ?: "Awaited"
 
                             val reportingCell = cells.find {
                                 it.contains("Report", ignoreCase = true)
