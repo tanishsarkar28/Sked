@@ -4,6 +4,7 @@
 - **ALWAYS keep all commits local.**
 - **NEVER** run `git push` to GitHub. The agent is strictly forbidden from pushing to remote. All commits stay on the local machine.
 - Only create local commits (`git commit`) to save progress locally.
+- **NEVER** track, commit, or push `ABOUT.md` to GitHub. It must always stay purely local and listed in `.gitignore`.
 
 ## 2. Automatic Version Bumping Rule
 Whenever an APK and/or IPA build is uploaded/released to `https://sked-gold.vercel.app/`:
