@@ -55,15 +55,15 @@ export default function LiquidMetalHero({
   };
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+    <section className="relative min-h-[calc(100vh-4rem)] flex flex-col justify-center pt-8 pb-16 sm:py-20 overflow-hidden">
       <LiquidMetal
         {...liquidMetalPresets[2]}
         style={{ position: "fixed", inset: 0, zIndex: -10 }}
       />
       
-      <div className="container mx-auto px-6 lg:px-8 max-w-7xl">
+      <div className="container mx-auto px-6 lg:px-8 max-w-7xl my-auto">
         <motion.div 
-          className="text-center space-y-10"
+          className="text-center space-y-6 sm:space-y-10"
           variants={containerVariants}
           initial="hidden"
           animate="visible"
@@ -76,7 +76,7 @@ export default function LiquidMetalHero({
             >
               <Badge 
                 variant="secondary" 
-                className="bg-foreground/10 text-foreground border-foreground/20 hover:bg-foreground/20 transition-colors duration-300 backdrop-blur-sm"
+                className="bg-foreground/10 text-foreground border-foreground/20 hover:bg-foreground/20 transition-colors duration-300 backdrop-blur-sm text-xs sm:text-sm py-1.5 px-3.5 tracking-wide"
               >
                 {badge}
               </Badge>
@@ -84,13 +84,13 @@ export default function LiquidMetalHero({
           )}
           
           <motion.div 
-            className="space-y-8"
+            className="space-y-6 sm:space-y-8"
             variants={itemVariants}
           >
             <motion.h1 
               role="heading" 
               aria-level={1}
-              className="text-5xl sm:text-6xl lg:text-7xl xl:text-8xl font-bold text-foreground leading-tight tracking-tight"
+              className="text-4xl sm:text-6xl lg:text-7xl xl:text-8xl font-bold text-foreground leading-tight tracking-tight"
               variants={itemVariants}
             >
               {title}
@@ -140,7 +140,7 @@ export default function LiquidMetalHero({
           
           {features.length > 0 && (
             <motion.div 
-              className="pt-16"
+              className="pt-8 sm:pt-16"
               variants={itemVariants}
             >
               <motion.div
