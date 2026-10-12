@@ -1970,8 +1970,9 @@ fun UmsAuthBridgeDialog(
                                                             } else ""
 
                                                             val classicExams = ExamParser.parseDatesheetHtml(cleanDsHtml, titleMap)
-                                                            if (classicExams.isNotEmpty()) {
-                                                                android.util.Log.i("SkedSync", "Instant sync: Found ${classicExams.size} exams from classic UMS in 1s!")
+                                                            val hasRealAllocations = classicExams.any { it.room.isNotBlank() && it.room != "Seating Awaited" }
+                                                            if (classicExams.isNotEmpty() && hasRealAllocations) {
+                                                                android.util.Log.i("SkedSync", "Instant sync: Found ${classicExams.size} exams with allocated rooms from classic UMS in 1s!")
                                                                 examsFound = classicExams
                                                             } else {
                                                                 // 2. MODERN PORTAL PATH (1st & 2nd Year): Sync from studentums.lpu.in via official UMS SSO
@@ -2044,14 +2045,30 @@ fun UmsAuthBridgeDialog(
                                                                                         if (href.indexOf('studentdashboard') !== -1 && href.indexOf('seatingplan') === -1) {
                                                                                             window.location.href = 'https://studentums.lpu.in/dashboard/examination/conduct/seatingplan';
                                                                                         }
+                                                                                        if (!window._skedConsoleHooked) {
+                                                                                            window._skedConsoleHooked = true;
+                                                                                            var origLog = console.log;
+                                                                                            console.log = function() {
+                                                                                                try {
+                                                                                                    for (var i = 0; i < arguments.length; i++) {
+                                                                                                        var a = arguments[i];
+                                                                                                        if (typeof a === 'string' && (a.indexOf('Parsed Data:') !== -1 || a.indexOf('Response seatingPlan') !== -1)) {
+                                                                                                            window._skedRawExamsJson = a;
+                                                                                                        }
+                                                                                                    }
+                                                                                                } catch(e) {}
+                                                                                                return origLog.apply(console, arguments);
+                                                                                            };
+                                                                                        }
                                                                                         var txt = document.body ? document.body.innerText : '';
                                                                                         return JSON.stringify({
                                                                                             url: href,
                                                                                             len: txt.length,
-                                                                                            txt: txt
+                                                                                            txt: txt,
+                                                                                            rawJson: window._skedRawExamsJson || ''
                                                                                         });
                                                                                     } catch(e) {
-                                                                                        return JSON.stringify({ error: e.toString(), url: window.location.href, len: 0, txt: '' });
+                                                                                        return JSON.stringify({ error: e.toString(), url: window.location.href, len: 0, txt: '', rawJson: '' });
                                                                                     }
                                                                                 })()
                                                                             """.trimIndent()
@@ -2071,6 +2088,15 @@ fun UmsAuthBridgeDialog(
                                                                     val curUrl = infoObj.optString("url")
                                                                     val cleanText = infoObj.optString("txt")
                                                                     val textLen = infoObj.optInt("len")
+                                                                    val rawHookJson = infoObj.optString("rawJson")
+
+                                                                    if (consoleParsedExams.isNullOrBlank() && rawHookJson.isNotBlank()) {
+                                                                        val cleanHook = rawHookJson.substringAfter("Parsed Data:").substringAfter("Response seatingPlan").trim()
+                                                                        if (cleanHook.startsWith("[") || cleanHook.startsWith("{")) {
+                                                                            consoleParsedExams = cleanHook
+                                                                            android.util.Log.i("SkedSync", "Captured raw seating plan JSON from JS console hook: ${cleanHook.take(80)}...")
+                                                                        }
+                                                                    }
 
                                                                     if (attempts % 4 == 0 || attempts == 1) {
                                                                         android.util.Log.i("SkedSync", "DOM attempt #$attempts [len=$textLen, url=$curUrl] snippet: ${cleanText.replace(Regex("""\s+"""), " ").take(120)}")
@@ -2088,6 +2114,11 @@ fun UmsAuthBridgeDialog(
                                                                         android.util.Log.i("SkedSync", "Verified 0 exams currently scheduled on portal after 10s wait")
                                                                         break
                                                                     }
+                                                                }
+
+                                                                if (examsFound.isEmpty() && classicExams.isNotEmpty()) {
+                                                                    android.util.Log.i("SkedSync", "Falling back to ${classicExams.size} datesheet exams from classic UMS")
+                                                                    examsFound = classicExams
                                                                 }
                                                             }
 

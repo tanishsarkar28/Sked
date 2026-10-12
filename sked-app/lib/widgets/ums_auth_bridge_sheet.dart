@@ -436,12 +436,14 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
             e.courseCode.toUpperCase(): e.description
       };
 
-      // 1. FAST PATH (Classic UMS): Check if classic UMS HTML already contains exams
+      // 1. FAST PATH (Classic UMS): Check if classic UMS HTML already contains exams with allocated rooms
       List<ExamItem> examsFound = [];
+      List<ExamItem> classicExams = [];
       if (dsRaw.isNotEmpty) {
-        final classic = ExamParser.parseDatesheetHtml(dsRaw, titleMap);
-        if (classic.isNotEmpty) {
-          examsFound = classic;
+        classicExams = ExamParser.parseDatesheetHtml(dsRaw, titleMap);
+        final hasRealAllocations = classicExams.any((e) => e.room.isNotEmpty && e.room != 'Seating Awaited');
+        if (classicExams.isNotEmpty && hasRealAllocations) {
+          examsFound = classicExams;
         }
       }
 
@@ -466,7 +468,7 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
           }
 
           try {
-            // Check if redirected to studentdashboard without seatingplan, redirect in JS
+            // Check if redirected to studentdashboard without seatingplan, redirect in JS & hook Next.js console
             final redirectCheckJs = '''
 (function() {
     try {
@@ -474,19 +476,63 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
         if (href.indexOf('studentdashboard') !== -1 && href.indexOf('seatingplan') === -1) {
             window.location.href = 'https://studentums.lpu.in/dashboard/examination/conduct/seatingplan';
         }
-        return document.body ? document.body.innerText : '';
+        if (!window._skedConsoleHooked) {
+            window._skedConsoleHooked = true;
+            var origLog = console.log;
+            console.log = function() {
+                try {
+                    for (var i = 0; i < arguments.length; i++) {
+                        var a = arguments[i];
+                        if (typeof a === 'string' && (a.indexOf('Parsed Data:') !== -1 || a.indexOf('Response seatingPlan') !== -1)) {
+                            window._skedRawExamsJson = a;
+                        }
+                    }
+                } catch(e) {}
+                return origLog.apply(console, arguments);
+            };
+        }
+        var txt = document.body ? document.body.innerText : '';
+        return JSON.stringify({
+            txt: txt,
+            rawJson: window._skedRawExamsJson || ''
+        });
     } catch(e) {
-        return '';
+        return JSON.stringify({ txt: '', rawJson: '' });
     }
 })()
 ''';
             final resObj = await _controller.runJavaScriptReturningResult(redirectCheckJs);
-            var textRaw = resObj.toString();
-            if (textRaw.startsWith('"') && textRaw.endsWith('"')) {
+            var resStr = resObj.toString();
+            if (resStr.startsWith('"') && resStr.endsWith('"')) {
               try {
-                final dec = jsonDecode('{"v":$textRaw}') as Map<String, dynamic>;
-                textRaw = dec['v'] as String? ?? '';
+                final dec = jsonDecode('{"v":$resStr}') as Map<String, dynamic>;
+                resStr = dec['v'] as String? ?? '';
               } catch (_) {}
+            }
+
+            var textRaw = '';
+            var rawJson = '';
+            try {
+              final payload = jsonDecode(resStr) as Map<String, dynamic>;
+              textRaw = payload['txt'] as String? ?? '';
+              rawJson = payload['rawJson'] as String? ?? '';
+            } catch (_) {
+              textRaw = resStr;
+            }
+
+            if (rawJson.isNotEmpty) {
+              final cleanHook = rawJson.contains('Parsed Data:')
+                  ? rawJson.substring(rawJson.indexOf('Parsed Data:') + 'Parsed Data:'.length).trim()
+                  : (rawJson.contains('Response seatingPlan')
+                      ? rawJson.substring(rawJson.indexOf('Response seatingPlan') + 'Response seatingPlan'.length).trim()
+                      : rawJson.trim());
+              if (cleanHook.startsWith('[') || cleanHook.startsWith('{')) {
+                final parsedJson = ExamParser.parseDatesheetHtml(cleanHook, titleMap);
+                if (parsedJson.isNotEmpty) {
+                  examsFound = parsedJson;
+                  break;
+                }
+              }
             }
 
             final parsed = ExamParser.parseDatesheetHtml(textRaw, titleMap);
@@ -501,6 +547,10 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
               break;
             }
           } catch (_) {}
+        }
+
+        if (examsFound.isEmpty && classicExams.isNotEmpty) {
+          examsFound = classicExams;
         }
       }
 

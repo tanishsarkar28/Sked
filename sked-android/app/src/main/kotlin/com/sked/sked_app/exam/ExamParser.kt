@@ -290,15 +290,26 @@ object ExamParser {
                             timeSlot = formatTimeSlot(tMatch.groupValues[1])
                         }
 
-                        val rMatch = Regex("""Report\s+([^\]]+)""", RegexOption.IGNORE_CASE).find(nextLine)
+                        val rMatch = Regex("""Report(?:ing)?(?:\s+Time)?\s*[:\-]?\s*(.+)""", RegexOption.IGNORE_CASE).find(nextLine)
                         if (rMatch != null && reporting.isBlank()) {
-                            reporting = "Report " + rMatch.groupValues[1].take(30).trim()
+                            val text = rMatch.groupValues[1].take(35).trim()
+                            reporting = if (text.startsWith("Report", ignoreCase = true)) text else "Report $text"
                         }
 
-                        if (Regex("""(?:Block\s*[-–]?\s*\d+|Room\s*[-–]?\s*\d+|\b\d{1,2}[-–]\d{2,4}[A-Za-z]?\b|Uni[- ]Mall)""", RegexOption.IGNORE_CASE).containsMatchIn(nextLine)) {
-                            room = if (nextLine.contains("Awaited", ignoreCase = true)) "Seating Awaited" else nextLine.trim()
-                        } else if (nextLine.contains("Awaited", ignoreCase = true)) {
-                            room = "Seating Awaited"
+                        val isTimeLine = Regex("""\b\d{1,2}:\d{2}""").containsMatchIn(nextLine) ||
+                            nextLine.contains("AM", ignoreCase = true) || nextLine.contains("PM", ignoreCase = true)
+
+                        if (!isTimeLine) {
+                            val roomRegex = Regex("""(?:Block\s*[-–]?\s*\d+(?:\s*(?:Room|Hall)\s*[-–]?\s*\d+)?|Room\s*[-–]?\s*\d+|(?<![:\d])\b\d{1,2}[-–][1-9]\d{1,3}[A-Za-z]?(?![:\d])|Uni[- ]Mall)""", RegexOption.IGNORE_CASE)
+                            if (roomRegex.containsMatchIn(nextLine)) {
+                                val extracted = roomRegex.find(nextLine)?.value?.trim() ?: nextLine.trim()
+                                val candidate = if (nextLine.contains("Awaited", ignoreCase = true)) "Seating Awaited" else extracted
+                                if (room == "Seating Awaited" || candidate != "Seating Awaited") {
+                                    room = candidate
+                                }
+                            } else if (nextLine.contains("Awaited", ignoreCase = true) && room == "Seating Awaited") {
+                                room = "Seating Awaited"
+                            }
                         }
 
                         val seatMatch = Regex("""(?:Seat|Desk)(?:\s*No\.?)?\s*[:\-]?\s*([A-Za-z0-9\-]+)""", RegexOption.IGNORE_CASE).find(nextLine)
@@ -368,7 +379,12 @@ object ExamParser {
                             } ?: "09:00 AM – 12:00 PM"
 
                             val roomCell = cells.find {
-                                it.contains("Block", ignoreCase = true) || it.contains("Room", ignoreCase = true) || it.matches(Regex(""".*\b\d{1,2}[-–]\d{2,4}[A-Za-z]?\b.*"""))
+                                !Regex("""\b\d{1,2}:\d{2}""").containsMatchIn(it) &&
+                                !it.contains("AM", ignoreCase = true) &&
+                                !it.contains("PM", ignoreCase = true) &&
+                                (it.contains("Block", ignoreCase = true) || it.contains("Room", ignoreCase = true) ||
+                                 Regex("""(?<![:\d])\b\d{1,2}[-–][1-9]\d{1,3}[A-Za-z]?(?![:\d])""").containsMatchIn(it) ||
+                                 it.contains("Uni-Mall", ignoreCase = true))
                             }?.let {
                                 if (it.contains("Awaited", ignoreCase = true)) "Seating Awaited" else it.trim()
                             } ?: "Seating Awaited"

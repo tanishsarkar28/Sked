@@ -1,13 +1,13 @@
 {
-  "versionCode": 6,
-  "versionName": "1.2.3",
+  "versionCode": 7,
+  "versionName": "1.2.4",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Enhanced seating plan and room number parser for all modern UMS formats",
+  "releaseNotes": "• Fixed room and seating plan parser to prevent exam time slots from masking room numbers",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
   "directIpaDownloadUrl": "/downloads/sked-ios.ipa",
   "fileSize": "12.8 MB",
   "ipaFileSize": "7.6 MB",
-  "updatedAt": "2026-09-24"
+  "updatedAt": "2026-10-12"
 }

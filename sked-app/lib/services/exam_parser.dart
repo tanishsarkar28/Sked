@@ -183,16 +183,29 @@ class ExamParser {
               timeSlot = formatTimeSlot(tMatch.group(1)!);
             }
 
-            final rMatch = RegExp(r'Report\s+([^\]]+)', caseSensitive: false).firstMatch(nextLine);
+            final rMatch = RegExp(r'Report(?:ing)?(?:\s+Time)?\s*[:\-]?\s*(.+)', caseSensitive: false).firstMatch(nextLine);
             if (rMatch != null && reporting.isEmpty) {
-              reporting = 'Report ${rMatch.group(1)!.trim()}';
-              if (reporting.length > 30) reporting = reporting.substring(0, 30);
+              final text = rMatch.group(1)!.trim();
+              reporting = text.toLowerCase().startsWith('report') ? text : 'Report $text';
+              if (reporting.length > 40) reporting = reporting.substring(0, 40);
             }
 
-            if (RegExp(r'(?:Block\s*[-–]?\s*\d+|Room\s*[-–]?\s*\d+|\b\d{1,2}[-–]\d{2,4}[A-Za-z]?\b|Uni[- ]Mall)', caseSensitive: false).hasMatch(nextLine)) {
-              room = nextLine.toLowerCase().contains('awaited') ? 'Seating Awaited' : nextLine.trim();
-            } else if (nextLine.toLowerCase().contains('awaited')) {
-              room = 'Seating Awaited';
+            final isTimeLine = RegExp(r'\b\d{1,2}:\d{2}').hasMatch(nextLine) ||
+                nextLine.toUpperCase().contains('AM') ||
+                nextLine.toUpperCase().contains('PM');
+
+            if (!isTimeLine) {
+              final roomRegex = RegExp(r'(?:Block\s*[-–]?\s*\d+(?:\s*(?:Room|Hall)\s*[-–]?\s*\d+)?|Room\s*[-–]?\s*\d+|(?<![:\d])\b\d{1,2}[-–][1-9]\d{1,3}[A-Za-z]?(?![:\d])|Uni[- ]Mall)', caseSensitive: false);
+              if (roomRegex.hasMatch(nextLine)) {
+                final match = roomRegex.firstMatch(nextLine);
+                final extracted = match != null ? match.group(0)!.trim() : nextLine.trim();
+                final candidate = nextLine.toLowerCase().contains('awaited') ? 'Seating Awaited' : extracted;
+                if (room == 'Seating Awaited' || candidate != 'Seating Awaited') {
+                  room = candidate;
+                }
+              } else if (nextLine.toLowerCase().contains('awaited') && room == 'Seating Awaited') {
+                room = 'Seating Awaited';
+              }
             }
 
             final seatMatch = RegExp(r'(?:Seat|Desk)(?:\s*No\.?)?\s*[:\-]?\s*([A-Za-z0-9\-]+)', caseSensitive: false).firstMatch(nextLine);
@@ -270,9 +283,13 @@ class ExamParser {
               );
 
               final roomCellRaw = cells.firstWhere(
-                (c) => c.toLowerCase().contains('block') ||
-                    c.toLowerCase().contains('room') ||
-                    RegExp(r'.*\b\d{1,2}[-–]\d{2,4}[A-Za-z]?\b.*').hasMatch(c),
+                (c) => !RegExp(r'\b\d{1,2}:\d{2}').hasMatch(c) &&
+                    !c.toUpperCase().contains('AM') &&
+                    !c.toUpperCase().contains('PM') &&
+                    (c.toLowerCase().contains('block') ||
+                     c.toLowerCase().contains('room') ||
+                     RegExp(r'(?<![:\d])\b\d{1,2}[-–][1-9]\d{1,3}[A-Za-z]?(?![:\d])').hasMatch(c) ||
+                     c.toLowerCase().contains('uni-mall')),
                 orElse: () => 'Seating Awaited',
               );
               final roomCell = roomCellRaw.toLowerCase().contains('awaited') ? 'Seating Awaited' : roomCellRaw.trim();
