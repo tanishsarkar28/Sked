@@ -110,21 +110,45 @@ class ResultParser {
         if (tgpaData is List) {
           for (final row in tgpaData) {
             if (row is! Map<String, dynamic>) continue;
-            final cat = row['Category']?.toString() ?? '';
-            if (cat.toLowerCase() == 'student' || tgpaData.length == 1) {
+            final cat = (row['Category'] ?? row['category'] ?? '').toString().trim();
+
+            final isAverage = cat.toLowerCase().contains('average') ||
+                cat.toLowerCase().contains('university') ||
+                cat.toLowerCase().contains('programme') ||
+                cat.toLowerCase().contains('program') ||
+                cat.toLowerCase().contains('batch') ||
+                cat.toLowerCase().contains('section') ||
+                cat.toLowerCase().contains('class');
+
+            if (isAverage) continue;
+
+            final isStudent = cat.toLowerCase() == 'student' ||
+                cat.toLowerCase() == 'self' ||
+                cat.toLowerCase() == 'my performance' ||
+                cat.toLowerCase() == 'individual' ||
+                cat.isEmpty ||
+                tgpaData.length == 1;
+
+            if (isStudent) {
               for (final entry in row.entries) {
                 final k = entry.key;
-                if (k.toLowerCase().startsWith('tgpasem')) {
-                  final semNum = int.tryParse(k.substring(7));
+                if (k.toLowerCase().startsWith('tgpasem') || k.toLowerCase().startsWith('sem')) {
+                  final semNum = int.tryParse(k.replaceAll(RegExp(r'[^0-9]'), ''));
                   if (semNum == null) continue;
                   final tgpaVal = (entry.value as num?)?.toDouble() ?? double.tryParse(entry.value?.toString() ?? '');
                   if (tgpaVal != null && tgpaVal >= 1.0 && tgpaVal <= 10.0) {
-                    terms.add(ParsedTerm(
-                      name: 'Term $semNum',
+                    final existingIdx = terms.indexWhere((t) => t.semester == semNum);
+                    final newTerm = ParsedTerm(
+                      name: 'Semester : ${intToRoman(semNum)}',
                       semester: semNum,
                       tgpa: tgpaVal,
                       totalCredits: 20.0,
-                    ));
+                    );
+                    if (existingIdx != -1) {
+                      terms[existingIdx] = newTerm;
+                    } else {
+                      terms.add(newTerm);
+                    }
                   }
                 }
               }
@@ -164,6 +188,38 @@ class ResultParser {
     return ParsedResultSummary(cgpa: cgpa, terms: terms, source: 'json');
   }
 
+  static int? romanToInt(String raw) {
+    switch (raw.trim().toUpperCase()) {
+      case 'I': return 1;
+      case 'II': return 2;
+      case 'III': return 3;
+      case 'IV': return 4;
+      case 'V': return 5;
+      case 'VI': return 6;
+      case 'VII': return 7;
+      case 'VIII': return 8;
+      case 'IX': return 9;
+      case 'X': return 10;
+      default: return int.tryParse(raw.trim());
+    }
+  }
+
+  static String intToRoman(int n) {
+    switch (n) {
+      case 1: return 'I';
+      case 2: return 'II';
+      case 3: return 'III';
+      case 4: return 'IV';
+      case 5: return 'V';
+      case 6: return 'VI';
+      case 7: return 'VII';
+      case 8: return 'VIII';
+      case 9: return 'IX';
+      case 10: return 'X';
+      default: return n.toString();
+    }
+  }
+
   static List<ParsedTerm> _parseTermsArray(List arr) {
     final result = <ParsedTerm>[];
     for (var i = 0; i < arr.length; i++) {
@@ -173,8 +229,8 @@ class ResultParser {
       final sem = (item['Semester'] as num?)?.toInt() ??
           (item['semester'] as num?)?.toInt() ??
           (i + 1);
-      final rawTag = (item['TermTag'] as String?) ?? (item['termTag'] as String?) ?? 'Term $sem';
-      final termName = rawTag.trim().isNotEmpty ? rawTag.trim() : 'Term $sem';
+      final rawTag = (item['TermTag'] as String?) ?? (item['termTag'] as String?) ?? 'Semester : ${intToRoman(sem)}';
+      final termName = rawTag.trim().isNotEmpty ? rawTag.trim() : 'Semester : ${intToRoman(sem)}';
 
       final rawTgpa = (item['Tgpa'] as num?)?.toDouble() ??
           (item['tgpa'] as num?)?.toDouble() ??
@@ -225,8 +281,8 @@ class ResultParser {
     final terms = <ParsedTerm>[];
 
     // 1. CGPA Extraction
-    // Match number before CGPA (e.g. "8.65\nCGPA" or "8.65 CGPA")
-    final cgpaNumFirstExp = RegExp(r'([0-9]+\.[0-9]+)\s*(?:\n|\r|\s)+\s*(?:CGPA|NET\s*PERCENTAGE)', caseSensitive: false);
+    // Match number before CGPA / Overall Performance (e.g. "8.31\nOverall Performance" or "8.31 CGPA")
+    final cgpaNumFirstExp = RegExp(r'([0-9]+\.[0-9]+)\s*(?:\n|\r|\s)+\s*(?:Overall\s*Performance|CGPA|NET\s*PERCENTAGE|Cumulative\s*Grade)', caseSensitive: false);
     final m1 = cgpaNumFirstExp.firstMatch(text);
     if (m1 != null) {
       final v = double.tryParse(m1.group(1) ?? '');
@@ -235,9 +291,9 @@ class ResultParser {
       }
     }
 
-    // Match CGPA before number (e.g. "CGPA: 8.65")
+    // Match CGPA / Overall Performance before number (e.g. "Overall Performance\n8.31" or "CGPA: 8.31")
     if (cgpa == null) {
-      final cgpaExp = RegExp(r'(?:CGPA|Cumulative\s*Grade\s*Point\s*Average|Net\s*Percentage)\s*[:\-]?\s*([0-9]+\.[0-9]+)', caseSensitive: false);
+      final cgpaExp = RegExp(r'(?:Overall\s*Performance|CGPA|Cumulative\s*Grade\s*Point\s*Average|Net\s*Percentage)\s*[:\-]?\s*(?:\n|\r|\s)*\s*([0-9]+\.[0-9]+)', caseSensitive: false);
       final m2 = cgpaExp.firstMatch(text);
       if (m2 != null) {
         final v = double.tryParse(m2.group(1) ?? '');
@@ -247,20 +303,38 @@ class ResultParser {
       }
     }
 
-    // 2. Term & TGPA Extraction (allowing newlines between Term and TGPA)
-    final termExp = RegExp(r'Term\s*([0-9]+)[\s\S]{0,100}?(?:TGPA|Term\s*GPA|Grade\s*Point\s*Average)\s*[:\-]?\s*([0-9]+\.[0-9]+)', caseSensitive: false);
     final foundTerms = <int, double>{};
-    for (final m in termExp.allMatches(text)) {
-      final sem = int.tryParse(m.group(1) ?? '');
+
+    // 2. Term & TGPA Extraction (allowing Roman numerals: I, II, III, IV, etc.)
+    // Pattern A: "Semester : I \n 7.77" or "Semester I \n 7.77"
+    final semPatternA = RegExp(r'(?:Semester|Term)\s*[:\-]?\s*\b(VIII|VII|III|VI|IV|IX|II|V|I|X|[0-9]+)\b[\s\S]{0,100}?(?:TGPA|Term\s*GPA|Grade\s*Point\s*Average)?\s*[:\-]?\s*([0-9]+\.[0-9]{1,2})', caseSensitive: false);
+    for (final m in semPatternA.allMatches(text)) {
+      final semStr = m.group(1);
+      if (semStr == null) continue;
+      final sem = romanToInt(semStr);
       final tgpa = double.tryParse(m.group(2) ?? '');
       if (sem != null && tgpa != null && tgpa >= 1.0 && tgpa <= 10.0) {
         foundTerms[sem] = tgpa;
       }
     }
 
+    // Pattern B (reversed): "7.77 \n Semester : I"
+    if (foundTerms.isEmpty) {
+      final semPatternB = RegExp(r'([0-9]+\.[0-9]{1,2})[\s\S]{0,100}?(?:Semester|Term)\s*[:\-]?\s*\b(VIII|VII|III|VI|IV|IX|II|V|I|X|[0-9]+)\b', caseSensitive: false);
+      for (final m in semPatternB.allMatches(text)) {
+        final tgpa = double.tryParse(m.group(1) ?? '');
+        final semStr = m.group(2);
+        if (semStr == null) continue;
+        final sem = romanToInt(semStr);
+        if (sem != null && tgpa != null && tgpa >= 1.0 && tgpa <= 10.0 && !foundTerms.containsKey(sem)) {
+          foundTerms[sem] = tgpa;
+        }
+      }
+    }
+
     // Fallback for chips "Term 1: 8.40"
     if (foundTerms.isEmpty()) {
-      final chipExp = RegExp(r'Term\s*([0-9]+)\s*[:\-]\s*([0-9]+\.[0-9]+)', caseSensitive: false);
+      final chipExp = RegExp(r'(?:Term|Semester)\s*([0-9]+)\s*[:\-]\s*([0-9]+\.[0-9]+)', caseSensitive: false);
       for (final m in chipExp.allMatches(text)) {
         final sem = int.tryParse(m.group(1) ?? '');
         final tgpa = double.tryParse(m.group(2) ?? '');
@@ -270,22 +344,10 @@ class ResultParser {
       }
     }
 
-    // Fallback for reversed pattern "TGPA: 8.40 ... Term 1"
-    if (foundTerms.isEmpty()) {
-      final revExp = RegExp(r'(?:TGPA|Term\s*GPA)\s*[:\-]?\s*([0-9]+\.[0-9]+)[\s\S]{0,100}?Term\s*([0-9]+)', caseSensitive: false);
-      for (final m in revExp.allMatches(text)) {
-        final tgpa = double.tryParse(m.group(1) ?? '');
-        final sem = int.tryParse(m.group(2) ?? '');
-        if (sem != null && tgpa != null && tgpa >= 1.0 && tgpa <= 10.0) {
-          foundTerms[sem] = tgpa;
-        }
-      }
-    }
-
     final sortedKeys = foundTerms.keys.toList()..sort();
     for (final sem in sortedKeys) {
       terms.add(ParsedTerm(
-        name: 'Term $sem',
+        name: 'Semester : ${intToRoman(sem)}',
         semester: sem,
         tgpa: foundTerms[sem],
         totalCredits: 20.0,
@@ -299,7 +361,7 @@ class ResultParser {
     double? cgpa;
     final terms = <ParsedTerm>[];
 
-    final cgpaMatch = RegExp(r'(?:CGPA|Cumulative\s*Grade)[^<0-9]*([0-9]+(?:\.[0-9]+)?)', caseSensitive: false).firstMatch(html);
+    final cgpaMatch = RegExp(r'(?:CGPA|Cumulative\s*Grade|Overall\s*Performance)[^<0-9]*([0-9]+(?:\.[0-9]+)?)', caseSensitive: false).firstMatch(html);
     if (cgpaMatch != null) {
       final v = double.tryParse(cgpaMatch.group(1) ?? '');
       if (v != null && v >= 1.0 && v <= 10.0) {
@@ -307,17 +369,48 @@ class ResultParser {
       }
     }
 
-    final tgpaMatches = RegExp(r'(?:Term|Semester)\s*([0-9]+)[^<]*?TGPA[^<0-9]*([0-9]+(?:\.[0-9]+)?)', caseSensitive: false).allMatches(html);
-    for (final m in tgpaMatches) {
-      final sem = int.tryParse(m.group(1) ?? '');
+    // 1. Classic TermId / TGPA pattern: "<p>TermId: 124251; TGPA: 8.14</p>"
+    final classicTgpaMap = <String, double>{};
+    final termTgpaExp = RegExp(r'TermId:\s*([0-9A-Za-z]+).*?TGPA:\s*([0-9]+(?:\.[0-9]+)?)', caseSensitive: false);
+    for (final m in termTgpaExp.allMatches(html)) {
+      final tid = (m.group(1) ?? '').trim();
       final tgpa = double.tryParse(m.group(2) ?? '');
-      if (sem != null && tgpa != null && tgpa >= 1.0 && tgpa <= 10.0 && !terms.any((t) => t.semester == sem)) {
-        terms.add(ParsedTerm(
-          name: 'Term $sem',
-          semester: sem,
-          tgpa: tgpa,
-          totalCredits: 20.0,
-        ));
+      if (tgpa != null && tgpa >= 1.0 && tgpa <= 10.0) {
+        classicTgpaMap[tid] = tgpa;
+      }
+    }
+
+    final regularTermIds = classicTgpaMap.keys
+        .where((k) => RegExp(r'^\d+$').hasMatch(k))
+        .toList()..sort();
+
+    var counter = 1;
+    for (final tid in regularTermIds) {
+      final tgpa = classicTgpaMap[tid];
+      if (tgpa == null) continue;
+      terms.add(ParsedTerm(
+        name: 'Semester : ${intToRoman(counter)}',
+        semester: counter,
+        tgpa: tgpa,
+        totalCredits: 20.0,
+      ));
+      counter++;
+    }
+
+    // 2. Fallback: match "Semester I: 7.77" or "Term 1: 7.77"
+    if (terms.isEmpty()) {
+      final tgpaMatches = RegExp(r'(?:Term|Semester)\s*[:\-]?\s*(I|II|III|IV|V|VI|VII|VIII|IX|X|[0-9]+)[^<0-9]*?TGPA[^<0-9]*([0-9]+(?:\.[0-9]+)?)', caseSensitive: false).allMatches(html);
+      for (final m in tgpaMatches) {
+        final sem = romanToInt(m.group(1) ?? '');
+        final tgpa = double.tryParse(m.group(2) ?? '');
+        if (sem != null && tgpa != null && tgpa >= 1.0 && tgpa <= 10.0 && !terms.any((t) => t.semester == sem)) {
+          terms.add(ParsedTerm(
+            name: 'Semester : ${intToRoman(sem)}',
+            semester: sem,
+            tgpa: tgpa,
+            totalCredits: 20.0,
+          ));
+        }
       }
     }
 
@@ -336,14 +429,19 @@ class ResultParser {
       ..sort((a, b) => (a.semester ?? 99).compareTo(b.semester ?? 99));
 
     for (final pt in sortedParsed) {
-      final termId = 'term_${pt.name.toLowerCase().replaceAll(' ', '_')}';
+      final semNum = pt.semester;
+      final termId = semNum != null ? 'term_sem_$semNum' : 'term_${pt.name.toLowerCase().replaceAll(' ', '_')}';
       if (termId == currentTerm.id) continue;
 
-      final existing = currentState.terms.where((t) => t.id == termId || t.name.toLowerCase() == pt.name.toLowerCase()).firstOrNull;
+      final existing = currentState.terms.where((t) {
+        if (t.id == termId) return true;
+        if (semNum != null && (t.name.toLowerCase().contains(' $semNum') || t.name.toLowerCase().contains(' ${intToRoman(semNum).toLowerCase()}'))) return true;
+        return t.name.toLowerCase() == pt.name.toLowerCase();
+      }).firstOrNull;
       final mergedSubjects = pt.subjects.isNotEmpty ? pt.subjects : (existing?.subjects ?? const []);
 
       updatedTerms.add(TermData(
-        id: termId,
+        id: existing?.id ?? termId,
         name: pt.name,
         isCurrent: false,
         subjects: mergedSubjects,

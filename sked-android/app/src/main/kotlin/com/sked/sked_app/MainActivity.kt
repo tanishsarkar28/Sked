@@ -83,6 +83,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -2426,10 +2427,56 @@ fun UmsAuthBridgeDialog(
                                                             val exams = examsFound
 
                                                             // 3. RESULT SUMMARY SYNC: Fetch CGPA & Past Semesters TGPA
-                                                            val classicResult = com.sked.sked_app.gpa.ResultParser.parse(cleanDsHtml)
-                                                            if (classicResult.terms.isNotEmpty() || classicResult.cgpa != null) {
-                                                                com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, classicResult, entries)
-                                                                android.util.Log.i("SkedSync", "Fast path: Synced ${classicResult.terms.size} terms from classic UMS (CGPA: ${classicResult.cgpa})")
+                                                            try {
+                                                                val cm = CookieManager.getInstance()
+                                                                val umsCookies = cm.getCookie("https://ums.lpu.in") ?: ""
+                                                                val okClient = OkHttpClient.Builder().connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS).build()
+
+                                                                // 3a. Direct JSON API for official CGPA
+                                                                try {
+                                                                    val basicReq = Request.Builder()
+                                                                        .url("https://ums.lpu.in/lpuums/StudentDashboard.aspx/GetStudentBasicInformation")
+                                                                        .header("Cookie", umsCookies)
+                                                                        .header("Content-Type", "application/json; charset=UTF-8")
+                                                                        .header("X-Requested-With", "XMLHttpRequest")
+                                                                        .post("{}".toRequestBody("application/json".toMediaType()))
+                                                                        .build()
+                                                                    okClient.newCall(basicReq).execute().use { resp ->
+                                                                        val jsonStr = resp.body?.string() ?: ""
+                                                                        val obj = try { JSONObject(jsonStr) } catch (_: Exception) { JSONObject() }
+                                                                        val d = obj.opt("d") ?: obj
+                                                                        val arr = if (d is JSONArray) d else (d as? JSONObject)?.optJSONArray("d")
+                                                                        val first = arr?.optJSONObject(0) ?: (d as? JSONObject)
+                                                                        val rawCgpa = first?.optDouble("CGPA", first.optDouble("cgpa", Double.NaN)) ?: Double.NaN
+                                                                        if (!rawCgpa.isNaN() && rawCgpa in 1.0..10.0) {
+                                                                            android.util.Log.i("SkedSync", "Fast path: Official CGPA from GetStudentBasicInformation: $rawCgpa")
+                                                                            com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, com.sked.sked_app.gpa.ParsedResultSummary(cgpa = rawCgpa), entries)
+                                                                        }
+                                                                    }
+                                                                } catch (e: Exception) {
+                                                                    android.util.Log.w("SkedSync", "GetStudentBasicInformation notice: ${e.message}")
+                                                                }
+
+                                                                // 3b. Classic Results page for past semesters
+                                                                try {
+                                                                    val resReq = Request.Builder()
+                                                                        .url("https://ums.lpu.in/lpuums/frmStudentResult.aspx")
+                                                                        .header("Cookie", umsCookies)
+                                                                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                                                                        .build()
+                                                                    okClient.newCall(resReq).execute().use { resp ->
+                                                                        val html = resp.body?.string() ?: ""
+                                                                        val classicResult = com.sked.sked_app.gpa.ResultParser.parse(html)
+                                                                        if (classicResult.terms.isNotEmpty() || classicResult.cgpa != null) {
+                                                                            com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, classicResult, entries)
+                                                                            android.util.Log.i("SkedSync", "Fast path: Synced ${classicResult.terms.size} terms from frmStudentResult.aspx (CGPA: ${classicResult.cgpa})")
+                                                                        }
+                                                                    }
+                                                                } catch (e: Exception) {
+                                                                    android.util.Log.w("SkedSync", "frmStudentResult notice: ${e.message}")
+                                                                }
+                                                            } catch (e: Exception) {
+                                                                android.util.Log.w("SkedSync", "Classic result fast path notice: ${e.message}")
                                                             }
 
                                                             withContext(Dispatchers.Main) {
@@ -2551,20 +2598,20 @@ fun UmsAuthBridgeDialog(
                                                                     android.util.Log.i("SkedSync", "Result attempt #$resAttempts [len=${resText.length}] snippet: ${resText.replace(Regex("""\s+"""), " ").take(140)}")
                                                                 }
 
-                                                                if (resRawJson.isNotBlank() && resRawJson != "{}") {
-                                                                    val parsed = com.sked.sked_app.gpa.ResultParser.parse(resRawJson)
-                                                                    if (parsed.terms.isNotEmpty() || parsed.cgpa != null) {
-                                                                        com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, parsed, entries)
-                                                                        android.util.Log.i("SkedSync", "Successfully synced ${parsed.terms.size} terms from Result JSON payload! CGPA=${parsed.cgpa}")
-                                                                        break
-                                                                    }
-                                                                }
-
                                                                 if (resText.isNotBlank()) {
                                                                     val parsed = com.sked.sked_app.gpa.ResultParser.parse(resText)
                                                                     if (parsed.terms.isNotEmpty() || parsed.cgpa != null) {
                                                                         com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, parsed, entries)
                                                                         android.util.Log.i("SkedSync", "Successfully synced ${parsed.terms.size} terms from Result DOM text! CGPA=${parsed.cgpa}")
+                                                                        break
+                                                                    }
+                                                                }
+
+                                                                if (resRawJson.isNotBlank() && resRawJson != "{}") {
+                                                                    val parsed = com.sked.sked_app.gpa.ResultParser.parse(resRawJson)
+                                                                    if (parsed.terms.isNotEmpty() || parsed.cgpa != null) {
+                                                                        com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, parsed, entries)
+                                                                        android.util.Log.i("SkedSync", "Successfully synced ${parsed.terms.size} terms from Result JSON payload! CGPA=${parsed.cgpa}")
                                                                         break
                                                                     }
                                                                 }

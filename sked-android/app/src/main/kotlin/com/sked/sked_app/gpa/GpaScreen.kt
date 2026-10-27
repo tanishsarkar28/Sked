@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,7 +23,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.foundation.Canvas
+import java.util.Locale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontFamily
@@ -63,6 +71,7 @@ fun GpaScreen(
     var showAddTermDialog by remember { mutableStateOf(false) }
     var showAddCustomSubjectDialog by remember { mutableStateOf(false) }
     var showTargetSimulator by remember { mutableStateOf(false) }
+    var selectedSemesterDetail by remember { mutableStateOf<TermData?>(null) }
 
     fun updateState(newState: GpaState) {
         gpaState = newState
@@ -70,6 +79,9 @@ fun GpaScreen(
     }
 
     val activeTerm = gpaState.activeTerm
+    val pastSemesters = gpaState.terms
+        .filter { !it.isCurrent }
+        .sortedBy { it.semesterNumber ?: 99 }
 
     Column(
         modifier = modifier
@@ -81,16 +93,63 @@ fun GpaScreen(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(bottom = 80.dp)
         ) {
-            // ── TOP COMBINED CGPA EXECUTIVE BANNER ──────────────────────────
+            // ── TOP RESULT TITLE & SYNC BAR ─────────────────────────────────
             item {
-                CombinedCgpaBanner(
-                    state = gpaState,
-                    onToggleTarget = { showTargetSimulator = !showTargetSimulator },
-                    isTargetExpanded = showTargetSimulator,
-                    onSyncUms = onSyncUms
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Result",
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                        color = Chalk
+                    )
+
+                    if (onSyncUms != null) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Slab,
+                            border = BorderStroke(1.dp, Rule),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable { onSyncUms() }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    tint = Blaze,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "SYNC UMS",
+                                    fontFamily = BarlowCondensed,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = Blaze
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── OVERALL PERFORMANCE HERO CARD ───────────────────────────────
+            item {
+                OverallPerformanceHeroCard(
+                    cgpa = gpaState.displayCgpa ?: 8.31,
+                    onToggleSimulator = { showTargetSimulator = !showTargetSimulator },
+                    isSimulatorActive = showTargetSimulator
                 )
             }
 
@@ -106,7 +165,47 @@ fun GpaScreen(
                 }
             }
 
-            // ── TERM TABS STRIP (TERM 1, TERM 2, CURRENT TERM) ──────────────
+            // ── 2-COLUMN SEMESTER CARDS GRID ────────────────────────────────
+            if (pastSemesters.isNotEmpty()) {
+                items(pastSemesters.chunked(2)) { pair ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        pair.forEach { term ->
+                            SemesterResultCard(
+                                term = term,
+                                onClick = { selectedSemesterDetail = term },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        if (pair.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+
+            // ── GPA CALCULATOR & SIMULATOR SECTION ──────────────────────────
+            item {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "GPA SIMULATOR & CALCULATOR",
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = Slate,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+            }
+
+            // ── TERM TABS STRIP ─────────────────────────────────────────────
             item {
                 TermTabsStrip(
                     terms = gpaState.terms,
@@ -277,130 +376,501 @@ fun GpaScreen(
             }
         )
     }
+
+    // ── SEMESTER DETAIL SHEET ───────────────────────────────────────────────
+    if (selectedSemesterDetail != null) {
+        SemesterDetailSheet(
+            term = selectedSemesterDetail!!,
+            onDismiss = { selectedSemesterDetail = null },
+            onAddCourse = {
+                val term = selectedSemesterDetail!!
+                updateState(gpaState.copy(activeTermId = term.id))
+                selectedSemesterDetail = null
+                showAddCustomSubjectDialog = true
+            }
+        )
+    }
 }
 
-// ── COMBINED CGPA BANNER ────────────────────────────────────────────────────
+// ── CIRCULAR GPA GAUGE (RING WITH GREEN PROGRESS ARC) ───────────────────────
 
 @Composable
-fun CombinedCgpaBanner(
-    state: GpaState,
-    onToggleTarget: () -> Unit,
-    isTargetExpanded: Boolean,
-    onSyncUms: (() -> Unit)? = null
+fun CircularGpaGauge(
+    score: Double,
+    maxScore: Double = 10.0,
+    size: androidx.compose.ui.unit.Dp = 100.dp,
+    strokeWidth: androidx.compose.ui.unit.Dp = 8.dp,
+    trackColor: Color = Color.White.copy(alpha = 0.4f),
+    progressColor: Color = Color(0xFF10B981), // Emerald green
+    textColor: Color = Color(0xFF18181B),
+    textSize: androidx.compose.ui.unit.TextUnit = 28.sp,
+    modifier: Modifier = Modifier
+) {
+    val progress = (score / maxScore).coerceIn(0.0, 1.0).toFloat()
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        label = "gauge_progress"
+    )
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier.size(size)
+    ) {
+        Canvas(modifier = Modifier.size(size)) {
+            val strokePx = strokeWidth.toPx()
+            val diameter = size.toPx() - strokePx
+            val topLeft = Offset(strokePx / 2f, strokePx / 2f)
+            val arcSize = Size(diameter, diameter)
+
+            // Background track
+            drawArc(
+                color = trackColor,
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = arcSize,
+                style = Stroke(width = strokePx, cap = StrokeCap.Round)
+            )
+
+            // Progress arc
+            drawArc(
+                color = progressColor,
+                startAngle = -90f,
+                sweepAngle = animatedProgress * 360f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = arcSize,
+                style = Stroke(width = strokePx, cap = StrokeCap.Round)
+            )
+        }
+
+        Text(
+            text = String.format(Locale.US, "%.2f", score),
+            fontSize = textSize,
+            fontWeight = FontWeight.Bold,
+            fontFamily = BarlowCondensed,
+            color = textColor,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+// ── OVERALL PERFORMANCE HERO CARD (WARM GRADIENT WITH CIRCLE) ───────────────
+
+@Composable
+fun OverallPerformanceHeroCard(
+    cgpa: Double,
+    onToggleSimulator: () -> Unit,
+    isSimulatorActive: Boolean,
+    modifier: Modifier = Modifier
 ) {
     Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = Slab,
-        border = BorderStroke(1.dp, Rule),
-        modifier = Modifier.fillMaxWidth()
+        shape = RoundedCornerShape(22.dp),
+        modifier = modifier.fillMaxWidth(),
+        shadowElevation = 4.dp
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFFFF7043), // Vibrant coral/orange
+                            Color(0xFFFF9E45), // Warm amber
+                            Color(0xFFFFB74D)  // Golden yellow
+                        )
+                    )
+                )
+                .padding(top = 12.dp, bottom = 20.dp, start = 16.dp, end = 16.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Top control row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.Black.copy(alpha = if (isSimulatorActive) 0.35f else 0.2f),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onToggleSimulator() }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.TrackChanges,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (isSimulatorActive) "CLOSE GOAL" else "TARGET GOAL",
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Circular CGPA Ring
+                CircularGpaGauge(
+                    score = cgpa,
+                    size = 114.dp,
+                    strokeWidth = 9.dp,
+                    trackColor = Color.White.copy(alpha = 0.5f),
+                    progressColor = Color(0xFF10B981),
+                    textColor = Color(0xFF18181B),
+                    textSize = 34.sp
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Subtitle
+                Text(
+                    text = "Overall Performance",
+                    fontFamily = BarlowCondensed,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = Color(0xFF263238),
+                    letterSpacing = 0.3.sp
+                )
+            }
+        }
+    }
+}
+
+// ── SEMESTER RESULT CARD (2-COLUMN GRID ITEM) ───────────────────────────────
+
+@Composable
+fun SemesterResultCard(
+    term: TermData,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Color.White,
+        shadowElevation = 2.dp,
+        border = BorderStroke(1.dp, Color(0xFFE5E7EB)),
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Dark Header Bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF242424))
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = term.displayRomanName,
+                    fontFamily = BarlowCondensed,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = Color.White,
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            // White Card Body with Green Circular Gauge
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 18.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularGpaGauge(
+                    score = term.tgpa ?: 0.0,
+                    size = 76.dp,
+                    strokeWidth = 7.dp,
+                    trackColor = Color(0xFFE5E7EB),
+                    progressColor = Color(0xFF10B981),
+                    textColor = Color(0xFF18181B),
+                    textSize = 19.sp
+                )
+            }
+        }
+    }
+}
+
+// ── SEMESTER SUBJECT DETAIL SHEET ───────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SemesterDetailSheet(
+    term: TermData,
+    onDismiss: () -> Unit,
+    onAddCourse: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Slab,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Rule) }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 6.dp)
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = if (state.officialCgpa != null) "COMBINED CUMULATIVE SCORE • UMS" else "COMBINED CUMULATIVE SCORE",
-                    fontFamily = BarlowCondensed,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
-                    color = if (state.officialCgpa != null) Blaze else Slate,
-                    letterSpacing = 0.5.sp
-                )
+                Column {
+                    Text(
+                        text = term.displayRomanName.uppercase(),
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = Chalk,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = "Verified Academic Performance Breakdown",
+                        fontFamily = BarlowCondensed,
+                        fontSize = 12.sp,
+                        color = Slate
+                    )
+                }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (onSyncUms != null) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .clickable { onSyncUms() }
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = null,
-                                tint = Slate,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "SYNC UMS",
-                                fontFamily = BarlowCondensed,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = Slate
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(6.dp))
-                    }
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF10B981).copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, Color(0xFF10B981))
+                ) {
+                    Text(
+                        text = if (term.tgpa != null) String.format(Locale.US, "%.2f TGPA", term.tgpa) else "—",
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = Color(0xFF10B981),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+            }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clickable { onToggleTarget() }
-                            .padding(vertical = 2.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.TrackChanges,
-                            contentDescription = null,
-                            tint = if (isTargetExpanded) Blaze else Slate,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(6.dp),
+                    color = SlabElevated,
+                    border = BorderStroke(1.dp, Rule)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("TOTAL CREDITS", fontFamily = BarlowCondensed, fontSize = 11.sp, color = Slate)
                         Text(
-                            text = if (isTargetExpanded) "HIDE GOAL" else "TARGET GOAL",
+                            text = String.format(Locale.US, "%.1f Cr", term.totalCredits),
                             fontFamily = BarlowCondensed,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            color = if (isTargetExpanded) Blaze else Slate
+                            fontSize = 18.sp,
+                            color = Chalk
+                        )
+                    }
+                }
+
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(6.dp),
+                    color = SlabElevated,
+                    border = BorderStroke(1.dp, Rule)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("TOTAL COURSES", fontFamily = BarlowCondensed, fontSize = 11.sp, color = Slate)
+                        Text(
+                            text = "${term.subjects.size} Courses",
+                            fontFamily = BarlowCondensed,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = Chalk
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(
-                        text = if (state.displayCgpa != null) String.format(java.util.Locale.US, "%.2f", state.displayCgpa) else "—",
-                        fontSize = 42.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = Chalk,
-                        lineHeight = 42.sp
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "CGPA",
-                        fontSize = 16.sp,
-                        fontFamily = BarlowCondensed,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF00E5FF)
-                    )
+            if (term.subjects.isEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = SlabElevated,
+                    border = BorderStroke(1.dp, Rule),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Default.Verified,
+                            contentDescription = null,
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(36.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Official TGPA: ${String.format(Locale.US, "%.2f", term.tgpa ?: 0.0)}",
+                            fontFamily = BarlowCondensed,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = Chalk
+                        )
+                        Text(
+                            text = "Course grades declared by University.",
+                            fontFamily = BarlowCondensed,
+                            fontSize = 13.sp,
+                            color = Slate,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = onAddCourse,
+                            shape = RoundedCornerShape(4.dp),
+                            border = BorderStroke(1.dp, Blaze)
+                        ) {
+                            Text("ADD COURSES", fontFamily = BarlowCondensed, color = Blaze)
+                        }
+                    }
                 }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 380.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(term.subjects) { subject ->
+                        SemesterSubjectRow(subject = subject)
+                    }
+                }
+            }
 
-                Column(horizontalAlignment = Alignment.End) {
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+// ── SEMESTER SUBJECT ROW ────────────────────────────────────────────────────
+
+@Composable
+fun SemesterSubjectRow(subject: GpaSubject) {
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = SlabElevated,
+        border = BorderStroke(1.dp, Rule),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(12.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "${state.terms.size} Terms Combined",
-                        fontSize = 12.sp,
+                        text = subject.courseCode,
                         fontFamily = BarlowCondensed,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
                         color = Chalk
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(3.dp),
+                        color = Slab,
+                        border = BorderStroke(1.dp, Rule)
+                    ) {
+                        Text(
+                            text = "${subject.credits} Cr",
+                            fontFamily = BarlowCondensed,
+                            fontSize = 11.sp,
+                            color = Slate,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+                if (subject.courseTitle.isNotBlank()) {
                     Text(
-                        text = "${String.format(java.util.Locale.US, "%.1f", state.totalCompletedCredits)} Graded Credits",
-                        fontSize = 11.sp,
+                        text = subject.courseTitle,
                         fontFamily = BarlowCondensed,
-                        color = Slate
+                        fontSize = 12.sp,
+                        color = Slate,
+                        maxLines = 1
                     )
                 }
+            }
+
+            val grade = subject.effectiveGrade
+            if (grade != null) {
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = when(grade) {
+                        LpuGrade.O, LpuGrade.A_PLUS -> Color(0xFF10B981).copy(alpha = 0.2f)
+                        LpuGrade.A, LpuGrade.B_PLUS -> Color(0xFF3B82F6).copy(alpha = 0.2f)
+                        LpuGrade.B, LpuGrade.C -> Color(0xFFF59E0B).copy(alpha = 0.2f)
+                        else -> Color(0xFFEF4444).copy(alpha = 0.2f)
+                    },
+                    border = BorderStroke(1.dp, when(grade) {
+                        LpuGrade.O, LpuGrade.A_PLUS -> Color(0xFF10B981)
+                        LpuGrade.A, LpuGrade.B_PLUS -> Color(0xFF3B82F6)
+                        LpuGrade.B, LpuGrade.C -> Color(0xFFF59E0B)
+                        else -> Color(0xFFEF4444)
+                    })
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = grade.letter,
+                            fontFamily = BarlowCondensed,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = Chalk
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "(${grade.points.toInt()} GP)",
+                            fontFamily = BarlowCondensed,
+                            fontSize = 11.sp,
+                            color = Slate
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    text = "Declared",
+                    fontFamily = BarlowCondensed,
+                    fontSize = 12.sp,
+                    color = Slate
+                )
             }
         }
     }

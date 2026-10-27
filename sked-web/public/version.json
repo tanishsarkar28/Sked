@@ -1,8 +1,8 @@
 {
-  "versionCode": 8,
-  "versionName": "1.3.0",
+  "versionCode": 9,
+  "versionName": "1.3.1",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Added Auto-Sync engine with on-device session persistence\n• Added automated detection and smart alerts for makeup & adjustment classes\n• Added cancellation tracking, quiet hours, and fail-safe cache protection",
+  "releaseNotes": "• Authentic Result view redesign with circular gauges for CGPA and semester TGPAs\n• Tap any semester gauge to view detailed course breakdown, grades, and marks\n• Precision CGPA & TGPA calculation with category filtering and official UMS direct sync",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",

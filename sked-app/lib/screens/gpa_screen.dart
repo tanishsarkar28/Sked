@@ -71,18 +71,41 @@ class _GpaScreenState extends State<GpaScreen> {
       );
     }
 
+    final pastSemesters = _state.terms.where((t) => t.displayTgpa != null).toList();
     final activeTerm = _state.activeTerm;
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       children: [
-        // ── TOP COMBINED CGPA BANNER ─────────────────────────────────────────
-        _buildCgpaBanner(),
+        // ── TOP OVERALL PERFORMANCE HERO CARD ────────────────────────────────
+        _buildOverallPerformanceCard(),
         if (_showTargetSimulator) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           _buildTargetSimulator(),
         ],
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
+
+        // ── 2-COLUMN SEMESTER CARDS GRID ─────────────────────────────────────
+        if (pastSemesters.isNotEmpty) ...[
+          for (int i = 0; i < pastSemesters.length; i += 2)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildSemesterCard(pastSemesters[i]),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: i + 1 < pastSemesters.length
+                        ? _buildSemesterCard(pastSemesters[i + 1])
+                        : const SizedBox(),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 8),
+        ],
 
         // ── TERM SELECTOR STRIP ──────────────────────────────────────────────
         _buildTermStrip(),
@@ -1083,4 +1106,499 @@ class _GpaScreenState extends State<GpaScreen> {
       ),
     );
   }
+
+  // ── AUTHENTIC RESULT HERO CARD (WARM GRADIENT WITH CIRCULAR GAUGE) ────────
+  Widget _buildOverallPerformanceCard() {
+    final cgpa = _state.displayCgpa ?? 8.31;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFFFF7043),
+            Color(0xFFFF9E45),
+            Color(0xFFFFB74D),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              if (widget.onSyncUms != null)
+                InkWell(
+                  onTap: widget.onSyncUms,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.sync, size: 12, color: Colors.white),
+                        const SizedBox(width: 4),
+                        Text(
+                          'SYNC UMS',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                const SizedBox(),
+              InkWell(
+                onTap: () => setState(() => _showTargetSimulator = !_showTargetSimulator),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(_showTargetSimulator ? 0.35 : 0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.track_changes, size: 13, color: Colors.white),
+                      const SizedBox(width: 4),
+                      Text(
+                        _showTargetSimulator ? 'CLOSE GOAL' : 'TARGET GOAL',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _buildCircularGauge(
+            score: cgpa,
+            size: 114,
+            strokeWidth: 9,
+            trackColor: Colors.white.withOpacity(0.4),
+            progressColor: const Color(0xFF10B981),
+            textColor: const Color(0xFF18181B),
+            fontSize: 28,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Overall Performance',
+            style: GoogleFonts.barlowCondensed(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF2E1905),
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── 2-COLUMN SEMESTER RESULT CARD (MATCHING RESULT SCREEN) ─────────────────
+  Widget _buildSemesterCard(TermData term) {
+    final tgpa = term.displayTgpa ?? 0.0;
+    return InkWell(
+      onTap: () => _showSemesterDetailSheet(term),
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              color: const Color(0xFF242424),
+              alignment: Alignment.center,
+              child: Text(
+                'Semester : ${term.displayRomanName}',
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              child: _buildCircularGauge(
+                score: tgpa,
+                size: 76,
+                strokeWidth: 7,
+                trackColor: const Color(0xFFE4E4E7),
+                progressColor: const Color(0xFF10B981),
+                textColor: const Color(0xFF18181B),
+                fontSize: 18,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── SEMESTER DETAIL BOTTOM SHEET ──────────────────────────────────────────
+  void _showSemesterDetailSheet(TermData term) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: SkedColors.slab,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        final tgpa = term.displayTgpa;
+        return DraggableScrollableSheet(
+          initialChildSize: 0.65,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) {
+            return Column(
+              children: [
+                // Drag handle
+                Container(
+                  margin: const EdgeInsets.only(top: 10, bottom: 8),
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: SkedColors.rule,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                // Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'SEMESTER ${term.displayRomanName}',
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: SkedColors.chalk,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          Text(
+                            '${term.subjects.length} Courses • ${term.totalCredits.toStringAsFixed(1)} Graded Credits',
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 12,
+                              color: SkedColors.slate,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (tgpa != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981).withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4)),
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                'TGPA ',
+                                style: GoogleFonts.barlowCondensed(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF10B981),
+                                ),
+                              ),
+                              Text(
+                                tgpa.toStringAsFixed(2),
+                                style: GoogleFonts.barlowCondensed(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF10B981),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const Divider(color: SkedColors.rule, height: 1),
+                Expanded(
+                  child: term.subjects.isEmpty
+                      ? Center(
+                          child: Text(
+                            'No courses listed for Semester ${term.displayRomanName}',
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 14,
+                              color: SkedColors.slate,
+                            ),
+                          ),
+                        )
+                      : ListView.separated(
+                          controller: scrollController,
+                          padding: const EdgeInsets.all(16),
+                          itemCount: term.subjects.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final sub = term.subjects[index];
+                            final gradeLetter = sub.effectiveGradeLetter;
+                            final gradePoint = sub.effectiveGradePoint;
+                            return Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: SkedColors.ink,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: SkedColors.rule),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Text(
+                                              sub.courseCode,
+                                              style: GoogleFonts.barlowCondensed(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w700,
+                                                color: SkedColors.chalk,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: SkedColors.slab,
+                                                borderRadius: BorderRadius.circular(3),
+                                              ),
+                                              child: Text(
+                                                '${sub.credits.toStringAsFixed(1)} CR',
+                                                style: GoogleFonts.barlowCondensed(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: SkedColors.slate,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        if (sub.courseTitle.isNotEmpty && sub.courseTitle != sub.courseCode) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            sub.courseTitle,
+                                            style: GoogleFonts.barlowCondensed(
+                                              fontSize: 12,
+                                              color: SkedColors.slate,
+                                            ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                        if (sub.marksBreakdown != null && sub.marksBreakdown!.hasAnyMarks) ...[
+                                          const SizedBox(height: 6),
+                                          Wrap(
+                                            spacing: 6,
+                                            runSpacing: 4,
+                                            children: [
+                                              if (sub.marksBreakdown!.caMarks != null)
+                                                _marksChip('CA: ${sub.marksBreakdown!.caMarks!.toStringAsFixed(1)}/${sub.marksBreakdown!.caMax.toStringAsFixed(0)}'),
+                                              if (sub.marksBreakdown!.midTermMarks != null)
+                                                _marksChip('MTE: ${sub.marksBreakdown!.midTermMarks!.toStringAsFixed(1)}/${sub.marksBreakdown!.midTermMax.toStringAsFixed(0)}'),
+                                              if (sub.marksBreakdown!.endTermMarks != null)
+                                                _marksChip('ETE: ${sub.marksBreakdown!.endTermMarks!.toStringAsFixed(1)}/${sub.marksBreakdown!.endTermMax.toStringAsFixed(0)}'),
+                                            ],
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  if (gradeLetter != null)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: _getGradeColor(gradeLetter).withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: _getGradeColor(gradeLetter).withOpacity(0.4)),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          Text(
+                                            gradeLetter,
+                                            style: GoogleFonts.barlowCondensed(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w700,
+                                              color: _getGradeColor(gradeLetter),
+                                            ),
+                                          ),
+                                          if (gradePoint != null)
+                                            Text(
+                                              'GP: ${gradePoint.toStringAsFixed(0)}',
+                                              style: GoogleFonts.barlowCondensed(
+                                                fontSize: 10,
+                                                color: _getGradeColor(gradeLetter),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _marksChip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: SkedColors.slab,
+        borderRadius: BorderRadius.circular(3),
+        border: Border.all(color: SkedColors.rule),
+      ),
+      child: Text(
+        text,
+        style: GoogleFonts.barlowCondensed(
+          fontSize: 10,
+          color: SkedColors.slate,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCircularGauge({
+    required double score,
+    double size = 80,
+    double strokeWidth = 7,
+    Color trackColor = const Color(0x66FFFFFF),
+    Color progressColor = const Color(0xFF10B981),
+    Color textColor = const Color(0xFF18181B),
+    double fontSize = 22,
+  }) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          CustomPaint(
+            size: Size(size, size),
+            painter: CircularGaugePainter(
+              score: score,
+              trackColor: trackColor,
+              progressColor: progressColor,
+              strokeWidth: strokeWidth,
+            ),
+          ),
+          Text(
+            score.toStringAsFixed(2),
+            style: GoogleFonts.barlowCondensed(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w700,
+              color: textColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class CircularGaugePainter extends CustomPainter {
+  final double score;
+  final double maxScore;
+  final Color trackColor;
+  final Color progressColor;
+  final double strokeWidth;
+
+  CircularGaugePainter({
+    required this.score,
+    this.maxScore = 10.0,
+    required this.trackColor,
+    required this.progressColor,
+    required this.strokeWidth,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - strokeWidth) / 2;
+
+    final trackPaint = Paint()
+      ..color = trackColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    final progressPaint = Paint()
+      ..color = progressColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    // Draw full track
+    canvas.drawCircle(center, radius, trackPaint);
+
+    // Draw progress arc (-pi/2 start)
+    final sweep = (score / maxScore).clamp(0.0, 1.0) * 2 * 3.141592653589793;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -3.141592653589793 / 2,
+      sweep,
+      false,
+      progressPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CircularGaugePainter oldDelegate) =>
+      oldDelegate.score != score || oldDelegate.progressColor != progressColor;
 }

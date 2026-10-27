@@ -58,6 +58,39 @@ object ResultParser {
         return ParsedResultSummary()
     }
 
+    fun romanToInt(raw: String): Int? {
+        val clean = raw.trim().uppercase()
+        return when (clean) {
+            "I" -> 1
+            "II" -> 2
+            "III" -> 3
+            "IV" -> 4
+            "V" -> 5
+            "VI" -> 6
+            "VII" -> 7
+            "VIII" -> 8
+            "IX" -> 9
+            "X" -> 10
+            else -> clean.toIntOrNull()
+        }
+    }
+
+    fun intToRoman(n: Int): String {
+        return when (n) {
+            1 -> "I"
+            2 -> "II"
+            3 -> "III"
+            4 -> "IV"
+            5 -> "V"
+            6 -> "VI"
+            7 -> "VII"
+            8 -> "VIII"
+            9 -> "IX"
+            10 -> "X"
+            else -> n.toString()
+        }
+    }
+
     private fun parseFromJson(raw: String): ParsedResultSummary {
         var cgpa: Double? = null
         val terms = mutableListOf<ParsedTerm>()
@@ -75,13 +108,13 @@ object ResultParser {
                 val profArr = profObj.optJSONArray("profileData")
                 if (profArr != null && profArr.length() > 0) {
                     val p = profArr.getJSONObject(0)
-                    val rawCgpa = p.optDouble("cgpa", Double.NaN)
+                    val rawCgpa = p.optDouble("cgpa", p.optDouble("CGPA", Double.NaN))
                     if (!rawCgpa.isNaN() && rawCgpa in 1.0..10.0) {
                         cgpa = rawCgpa
                     }
                 }
                 if (cgpa == null) {
-                    val rawCgpa = obj.optDouble("cgpa", Double.NaN)
+                    val rawCgpa = obj.optDouble("cgpa", obj.optDouble("CGPA", Double.NaN))
                     if (!rawCgpa.isNaN() && rawCgpa in 1.0..10.0) {
                         cgpa = rawCgpa
                     }
@@ -92,23 +125,46 @@ object ResultParser {
                 if (tgpaData is JSONArray) {
                     for (i in 0 until tgpaData.length()) {
                         val row = tgpaData.optJSONObject(i) ?: continue
-                        val cat = row.optString("Category", "")
-                        if (cat.equals("Student", ignoreCase = true) || tgpaData.length() == 1) {
+                        val cat = row.optString("Category", row.optString("category", "")).trim()
+
+                        // Strictly ignore university / programme / batch / class averages
+                        val isAverage = cat.contains("average", ignoreCase = true) ||
+                                cat.contains("university", ignoreCase = true) ||
+                                cat.contains("programme", ignoreCase = true) ||
+                                cat.contains("program", ignoreCase = true) ||
+                                cat.contains("batch", ignoreCase = true) ||
+                                cat.contains("section", ignoreCase = true) ||
+                                cat.contains("class", ignoreCase = true)
+
+                        if (isAverage) continue
+
+                        val isStudent = cat.equals("Student", ignoreCase = true) ||
+                                cat.equals("Self", ignoreCase = true) ||
+                                cat.equals("My Performance", ignoreCase = true) ||
+                                cat.equals("Individual", ignoreCase = true) ||
+                                cat.isBlank() ||
+                                tgpaData.length() == 1
+
+                        if (isStudent) {
                             val keys = row.keys()
                             while (keys.hasNext()) {
                                 val k = keys.next()
-                                if (k.startsWith("TGPASem", ignoreCase = true)) {
-                                    val semNum = k.substring(7).toIntOrNull() ?: continue
+                                if (k.startsWith("TGPASem", ignoreCase = true) || k.startsWith("Sem", ignoreCase = true)) {
+                                    val semNum = k.replace(Regex("[^0-9]"), "").toIntOrNull() ?: continue
                                     val tgpaVal = row.optDouble(k, Double.NaN)
                                     if (!tgpaVal.isNaN() && tgpaVal in 1.0..10.0) {
-                                        terms.add(
-                                            ParsedTerm(
-                                                name = "Term $semNum",
-                                                semester = semNum,
-                                                tgpa = tgpaVal,
-                                                totalCredits = 20.0
-                                            )
+                                        val existingIdx = terms.indexOfFirst { it.semester == semNum }
+                                        val newTerm = ParsedTerm(
+                                            name = "Semester : ${intToRoman(semNum)}",
+                                            semester = semNum,
+                                            tgpa = tgpaVal,
+                                            totalCredits = 20.0
                                         )
+                                        if (existingIdx >= 0) {
+                                            terms[existingIdx] = newTerm
+                                        } else {
+                                            terms.add(newTerm)
+                                        }
                                     }
                                 }
                             }
@@ -153,7 +209,7 @@ object ResultParser {
             val item = arr.optJSONObject(i) ?: continue
 
             val sem = item.optInt("Semester", item.optInt("semester", i + 1))
-            val termName = item.optString("TermTag", item.optString("termTag", "Term $sem")).ifBlank { "Term $sem" }
+            val termName = item.optString("TermTag", item.optString("termTag", "Semester : ${intToRoman(sem)}")).ifBlank { "Semester : ${intToRoman(sem)}" }
             val tgpaVal = item.optDouble("Tgpa", item.optDouble("tgpa", item.optDouble("TGPA", Double.NaN)))
             val parsedTgpa = tgpaVal.takeIf { !it.isNaN() && it in 1.0..10.0 }
 
@@ -203,8 +259,11 @@ object ResultParser {
         val terms = mutableListOf<ParsedTerm>()
 
         // 1. CGPA Extraction
-        // Match number before CGPA (e.g. "8.65\nCGPA" or "8.65 CGPA")
-        val cgpaNumFirstPattern = Pattern.compile("""([0-9]+\.[0-9]+)\s*(?:\n|\r|\s)+\s*(?:CGPA|NET\s*PERCENTAGE)""", Pattern.CASE_INSENSITIVE)
+        // Match number before CGPA / Overall Performance (e.g. "8.31\nOverall Performance" or "8.31 CGPA")
+        val cgpaNumFirstPattern = Pattern.compile(
+            """([0-9]+\.[0-9]+)\s*(?:\n|\r|\s)+\s*(?:Overall\s*Performance|CGPA|NET\s*PERCENTAGE|Cumulative\s*Grade)""",
+            Pattern.CASE_INSENSITIVE
+        )
         val m1 = cgpaNumFirstPattern.matcher(text)
         if (m1.find()) {
             val v = m1.group(1)?.toDoubleOrNull()
@@ -213,9 +272,12 @@ object ResultParser {
             }
         }
 
-        // Match CGPA before number (e.g. "CGPA: 8.65")
+        // Match CGPA / Overall Performance before number (e.g. "Overall Performance\n8.31" or "CGPA: 8.31")
         if (cgpa == null) {
-            val cgpaPattern = Pattern.compile("""(?:CGPA|Cumulative\s*Grade\s*Point\s*Average|Net\s*Percentage)\s*[:\-]?\s*([0-9]+\.[0-9]+)""", Pattern.CASE_INSENSITIVE)
+            val cgpaPattern = Pattern.compile(
+                """(?:Overall\s*Performance|CGPA|Cumulative\s*Grade\s*Point\s*Average|Net\s*Percentage)\s*[:\-]?\s*(?:\n|\r|\s)*\s*([0-9]+\.[0-9]+)""",
+                Pattern.CASE_INSENSITIVE
+            )
             val m2 = cgpaPattern.matcher(text)
             if (m2.find()) {
                 val v = m2.group(1)?.toDoubleOrNull()
@@ -225,24 +287,44 @@ object ResultParser {
             }
         }
 
-        // 2. Term & TGPA Extraction (allowing newlines between Term and TGPA)
-        val termPattern = Pattern.compile(
-            """Term\s*([0-9]+)[\s\S]{0,100}?(?:TGPA|Term\s*GPA|Grade\s*Point\s*Average)\s*[:\-]?\s*([0-9]+\.[0-9]+)""",
+        val foundTerms = mutableMapOf<Int, Double>()
+
+        // 2. Term & TGPA Extraction (allowing Roman numerals: I, II, III, IV, etc.)
+        // Pattern A: "Semester : I \n 7.77" or "Semester I \n 7.77" or "Term 1 \n 7.77"
+        val semPatternA = Pattern.compile(
+            """(?:Semester|Term)\s*[:\-]?\s*\b(VIII|VII|III|VI|IV|IX|II|V|I|X|[0-9]+)\b[\s\S]{0,100}?(?:TGPA|Term\s*GPA|Grade\s*Point\s*Average)?\s*[:\-]?\s*([0-9]+\.[0-9]{1,2})""",
             Pattern.CASE_INSENSITIVE
         )
-        val termMatcher = termPattern.matcher(text)
-        val foundTerms = mutableMapOf<Int, Double>()
-        while (termMatcher.find()) {
-            val sem = termMatcher.group(1)?.toIntOrNull() ?: continue
-            val tgpa = termMatcher.group(2)?.toDoubleOrNull() ?: continue
+        val matcherA = semPatternA.matcher(text)
+        while (matcherA.find()) {
+            val semStr = matcherA.group(1) ?: continue
+            val sem = romanToInt(semStr) ?: continue
+            val tgpa = matcherA.group(2)?.toDoubleOrNull() ?: continue
             if (tgpa in 1.0..10.0) {
                 foundTerms[sem] = tgpa
             }
         }
 
+        // Pattern B (reversed): "7.77 \n Semester : I"
+        if (foundTerms.isEmpty()) {
+            val semPatternB = Pattern.compile(
+                """([0-9]+\.[0-9]{1,2})[\s\S]{0,100}?(?:Semester|Term)\s*[:\-]?\s*\b(VIII|VII|III|VI|IV|IX|II|V|I|X|[0-9]+)\b""",
+                Pattern.CASE_INSENSITIVE
+            )
+            val matcherB = semPatternB.matcher(text)
+            while (matcherB.find()) {
+                val tgpa = matcherB.group(1)?.toDoubleOrNull() ?: continue
+                val semStr = matcherB.group(2) ?: continue
+                val sem = romanToInt(semStr) ?: continue
+                if (tgpa in 1.0..10.0 && !foundTerms.containsKey(sem)) {
+                    foundTerms[sem] = tgpa
+                }
+            }
+        }
+
         // Fallback for chips "Term 1: 8.40"
         if (foundTerms.isEmpty()) {
-            val chipPattern = Pattern.compile("""Term\s*([0-9]+)\s*[:\-]\s*([0-9]+\.[0-9]+)""", Pattern.CASE_INSENSITIVE)
+            val chipPattern = Pattern.compile("""(?:Term|Semester)\s*([0-9]+)\s*[:\-]\s*([0-9]+\.[0-9]+)""", Pattern.CASE_INSENSITIVE)
             val chipMatcher = chipPattern.matcher(text)
             while (chipMatcher.find()) {
                 val sem = chipMatcher.group(1)?.toIntOrNull() ?: continue
@@ -253,26 +335,10 @@ object ResultParser {
             }
         }
 
-        // Fallback for reversed pattern "TGPA: 8.40 ... Term 1"
-        if (foundTerms.isEmpty()) {
-            val revPattern = Pattern.compile(
-                """(?:TGPA|Term\s*GPA)\s*[:\-]?\s*([0-9]+\.[0-9]+)[\s\S]{0,100}?Term\s*([0-9]+)""",
-                Pattern.CASE_INSENSITIVE
-            )
-            val revMatcher = revPattern.matcher(text)
-            while (revMatcher.find()) {
-                val tgpa = revMatcher.group(1)?.toDoubleOrNull() ?: continue
-                val sem = revMatcher.group(2)?.toIntOrNull() ?: continue
-                if (tgpa in 1.0..10.0) {
-                    foundTerms[sem] = tgpa
-                }
-            }
-        }
-
         for ((sem, tgpa) in foundTerms.toSortedMap()) {
             terms.add(
                 ParsedTerm(
-                    name = "Term $sem",
+                    name = "Semester : ${intToRoman(sem)}",
                     semester = sem,
                     tgpa = tgpa,
                     totalCredits = 20.0
@@ -287,7 +353,7 @@ object ResultParser {
         var cgpa: Double? = null
         val terms = mutableListOf<ParsedTerm>()
 
-        val cgpaMatch = Regex("""(?:CGPA|Cumulative\s*Grade)[^<0-9]*([0-9]+(?:\.[0-9]+)?)""", RegexOption.IGNORE_CASE).find(html)
+        val cgpaMatch = Regex("""(?:CGPA|Cumulative\s*Grade|Overall\s*Performance)[^<0-9]*([0-9]+(?:\.[0-9]+)?)""", RegexOption.IGNORE_CASE).find(html)
         if (cgpaMatch != null) {
             val v = cgpaMatch.groupValues[1].toDoubleOrNull()
             if (v != null && v in 1.0..10.0) {
@@ -295,19 +361,52 @@ object ResultParser {
             }
         }
 
-        val tgpaMatches = Regex("""(?:Term|Semester)\s*([0-9]+)[^<]*?TGPA[^<0-9]*([0-9]+(?:\.[0-9]+)?)""", RegexOption.IGNORE_CASE).findAll(html)
-        for (m in tgpaMatches) {
-            val sem = m.groupValues[1].toIntOrNull() ?: continue
+        // 1. Classic TermId / TGPA pattern from frmStudentResult.aspx: "<p>TermId: 124251; TGPA: 8.14</p>"
+        val classicTgpaMap = mutableMapOf<String, Double>()
+        val termTgpaRegex = Regex("""TermId:\s*([0-9A-Za-z]+).*?TGPA:\s*([0-9]+(?:\.[0-9]+)?)""", RegexOption.IGNORE_CASE)
+        for (m in termTgpaRegex.findAll(html)) {
+            val tid = m.groupValues[1].trim()
             val tgpa = m.groupValues[2].toDoubleOrNull() ?: continue
-            if (tgpa in 1.0..10.0 && terms.none { it.semester == sem }) {
-                terms.add(
-                    ParsedTerm(
-                        name = "Term $sem",
-                        semester = sem,
-                        tgpa = tgpa,
-                        totalCredits = 20.0
-                    )
+            if (tgpa in 1.0..10.0) {
+                classicTgpaMap[tid] = tgpa
+            }
+        }
+
+        // Regular terms are sorted in ascending order (Semester 1 = earliest digit ID)
+        val regularTermIds = classicTgpaMap.keys
+            .filter { it.matches(Regex("""^\d+$""")) }
+            .sorted()
+
+        var counter = 1
+        for (tid in regularTermIds) {
+            val tgpa = classicTgpaMap[tid] ?: continue
+            terms.add(
+                ParsedTerm(
+                    name = "Semester : ${intToRoman(counter)}",
+                    semester = counter,
+                    tgpa = tgpa,
+                    totalCredits = 20.0
                 )
+            )
+            counter++
+        }
+
+        // 2. Fallback: match "Semester I: 7.77" or "Term 1: 7.77"
+        if (terms.isEmpty()) {
+            val tgpaMatches = Regex("""(?:Term|Semester)\s*[:\-]?\s*(I|II|III|IV|V|VI|VII|VIII|IX|X|[0-9]+)[^<0-9]*?TGPA[^<0-9]*([0-9]+(?:\.[0-9]+)?)""", RegexOption.IGNORE_CASE).findAll(html)
+            for (m in tgpaMatches) {
+                val sem = romanToInt(m.groupValues[1]) ?: continue
+                val tgpa = m.groupValues[2].toDoubleOrNull() ?: continue
+                if (tgpa in 1.0..10.0 && terms.none { it.semester == sem }) {
+                    terms.add(
+                        ParsedTerm(
+                            name = "Semester : ${intToRoman(sem)}",
+                            semester = sem,
+                            tgpa = tgpa,
+                            totalCredits = 20.0
+                        )
+                    )
+                }
             }
         }
 
@@ -325,13 +424,18 @@ object ResultParser {
 
         val updatedTerms = mutableListOf<TermData>()
 
-        // 1. Add all parsed past terms (Term 1, Term 2, etc.)
+        // 1. Add all parsed past terms (Semester : I, Semester : II, etc.)
         for (pt in summary.terms.sortedBy { it.semester ?: 99 }) {
-            val termId = "term_${pt.name.lowercase().replace(" ", "_")}"
+            val semNum = pt.semester
+            val termId = if (semNum != null) "term_sem_$semNum" else "term_${pt.name.lowercase().replace(" ", "_")}"
             // Don't overwrite the current term with past term
             if (termId == currentTerm.id) continue
 
-            val existing = currentState.terms.firstOrNull { it.id == termId || it.name.equals(pt.name, ignoreCase = true) }
+            val existing = currentState.terms.firstOrNull {
+                it.id == termId ||
+                (semNum != null && it.semesterNumber == semNum) ||
+                it.name.equals(pt.name, ignoreCase = true)
+            }
             val mergedSubjects = if (pt.subjects.isNotEmpty()) {
                 pt.subjects
             } else {
@@ -339,7 +443,7 @@ object ResultParser {
             }
 
             val termData = TermData(
-                id = termId,
+                id = existing?.id ?: termId,
                 name = pt.name,
                 isCurrent = false,
                 subjects = mergedSubjects,
@@ -351,7 +455,8 @@ object ResultParser {
 
         // 2. Add any existing past terms that weren't in the parsed summary
         for (et in currentState.terms) {
-            if (!et.isCurrent && updatedTerms.none { it.id == et.id || it.name.equals(et.name, ignoreCase = true) }) {
+            val etSem = et.semesterNumber
+            if (!et.isCurrent && updatedTerms.none { it.id == et.id || (etSem != null && it.semesterNumber == etSem) || it.name.equals(et.name, ignoreCase = true) }) {
                 updatedTerms.add(et)
             }
         }
