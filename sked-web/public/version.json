@@ -1,8 +1,8 @@
 {
-  "versionCode": 9,
-  "versionName": "1.3.1",
+  "versionCode": 10,
+  "versionName": "1.3.2",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Authentic Result view redesign with circular gauges for CGPA and semester TGPAs\n• Tap any semester gauge to view detailed course breakdown, grades, and marks\n• Precision CGPA & TGPA calculation with category filtering and official UMS direct sync",
+  "releaseNotes": "• Dark-themed authentic semester result cards with circular progress gauges\n• Removed synthetic credit badges from fetched UMS results while preserving verified CGPA & TGPA\n• Customizable CGPA Target Goal Simulator with direct decimal input\n• Semester delete protection for completed terms and streamlined custom semester creation",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",

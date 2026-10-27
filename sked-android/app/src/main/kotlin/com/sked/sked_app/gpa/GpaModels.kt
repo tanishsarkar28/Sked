@@ -44,14 +44,15 @@ enum class LpuGrade(
 data class GpaSubject(
     val courseCode: String,
     val courseTitle: String = "",
-    val credits: Double = 3.0,
+    val credits: Double = 0.0,
     val selectedGrade: String? = null, // null until student taps a grade
     val isMarksMode: Boolean = false,
     val caMarks: Double? = null,
     val midTermMarks: Double? = null,
     val endTermMarks: Double? = null,
     val attendanceMarks: Double? = null,
-    val isCustom: Boolean = false
+    val isCustom: Boolean = false,
+    val userEditedCredits: Boolean = false
 ) {
     val totalMarks: Double
         get() = (caMarks ?: 0.0) + (midTermMarks ?: 0.0) + (endTermMarks ?: 0.0) + (attendanceMarks ?: 0.0)
@@ -76,8 +77,12 @@ data class TermData(
     val isCurrent: Boolean = false,
     val subjects: List<GpaSubject> = emptyList(),
     val manualTgpa: Double? = null,
-    val manualCredits: Double? = null
+    val manualCredits: Double? = null,
+    val isCustom: Boolean = false
 ) {
+    val isDeletable: Boolean
+        get() = isCustom && !isCurrent && manualTgpa == null
+
     val gradedSubjects: List<GpaSubject>
         get() = subjects.filter { it.gradePoints != null }
 
@@ -97,25 +102,26 @@ data class TermData(
 
     val weightedPoints: Double
         get() = if (manualTgpa != null && manualTgpa > 0.0) {
-            manualTgpa * (if (evaluatedCredits > 0.0) evaluatedCredits else (manualCredits ?: 24.0))
+            manualTgpa * (if (evaluatedCredits > 0.0) evaluatedCredits else (manualCredits ?: 20.0))
         } else if (subjects.isNotEmpty()) {
             gradedSubjects.sumOf { it.weightedPoints }
         } else {
             (manualTgpa ?: 0.0) * (manualCredits ?: 0.0)
         }
 
-    val tgpa: Double?
+    val officialTgpa: Double?
+        get() = manualTgpa
+
+    val simulatedTgpa: Double?
         get() {
-            if (manualTgpa != null && manualTgpa > 0.0) {
-                return manualTgpa
+            if (evaluatedCredits > 0.0) {
+                return gradedSubjects.sumOf { it.weightedPoints } / evaluatedCredits
             }
-            if (subjects.isNotEmpty()) {
-                val cr = evaluatedCredits
-                if (cr <= 0.0) return null
-                return weightedPoints / cr
-            }
-            return manualTgpa
+            return null
         }
+
+    val tgpa: Double?
+        get() = officialTgpa ?: simulatedTgpa
 
     val semesterNumber: Int?
         get() {
@@ -199,32 +205,49 @@ object GpaStorage {
                     val tObj = arr.getJSONObject(i)
                     val subArr = tObj.optJSONArray("subjects") ?: JSONArray()
                     val subjects = mutableListOf<GpaSubject>()
+                    val hasManualTgpa = tObj.has("manualTgpa") && !tObj.isNull("manualTgpa")
                     for (j in 0 until subArr.length()) {
                         val sObj = subArr.getJSONObject(j)
+                        val isCustomSub = sObj.optBoolean("isCustom", false)
+                        val userEditedCredits = sObj.optBoolean("userEditedCredits", false)
+                        val rawCredits = sObj.optDouble("credits", 0.0)
+                        // If it's a fetched course from UMS and user hasn't edited credits, reset old placeholder 3.0 to 0.0
+                        val finalCredits = if (!isCustomSub && hasManualTgpa && !userEditedCredits) {
+                            if (rawCredits == 3.0) 0.0 else rawCredits
+                        } else {
+                            rawCredits
+                        }
+
                         subjects.add(
                             GpaSubject(
                                 courseCode = sObj.optString("courseCode"),
                                 courseTitle = sObj.optString("courseTitle"),
-                                credits = sObj.optDouble("credits", 3.0),
+                                credits = finalCredits,
                                 selectedGrade = if (sObj.has("selectedGrade")) sObj.optString("selectedGrade").ifBlank { null } else null,
                                 isMarksMode = sObj.optBoolean("isMarksMode", false),
                                 caMarks = if (sObj.has("caMarks")) sObj.optDouble("caMarks") else null,
                                 midTermMarks = if (sObj.has("midTermMarks")) sObj.optDouble("midTermMarks") else null,
                                 endTermMarks = if (sObj.has("endTermMarks")) sObj.optDouble("endTermMarks") else null,
                                 attendanceMarks = if (sObj.has("attendanceMarks")) sObj.optDouble("attendanceMarks") else null,
-                                isCustom = sObj.optBoolean("isCustom", false)
+                                isCustom = isCustomSub,
+                                userEditedCredits = userEditedCredits
                             )
                         )
                     }
 
+                    val isCurrentTerm = tObj.optBoolean("isCurrent", false)
+                    val termName = tObj.optString("name", "Term ${i + 1}")
+                    val isCustomTerm = tObj.optBoolean("isCustom", !isCurrentTerm && !hasManualTgpa && !termName.startsWith("Semester :", ignoreCase = true))
+
                     terms.add(
                         TermData(
                             id = tObj.optString("id"),
-                            name = tObj.optString("name", "Term ${i + 1}"),
-                            isCurrent = tObj.optBoolean("isCurrent", false),
+                            name = termName,
+                            isCurrent = isCurrentTerm,
                             subjects = subjects,
-                            manualTgpa = if (tObj.has("manualTgpa")) tObj.optDouble("manualTgpa") else null,
-                            manualCredits = if (tObj.has("manualCredits")) tObj.optDouble("manualCredits") else null
+                            manualTgpa = if (hasManualTgpa) tObj.optDouble("manualTgpa") else null,
+                            manualCredits = if (tObj.has("manualCredits")) tObj.optDouble("manualCredits") else null,
+                            isCustom = isCustomTerm
                         )
                     )
                 }
@@ -351,6 +374,7 @@ object GpaStorage {
             tObj.put("id", term.id)
             tObj.put("name", term.name)
             tObj.put("isCurrent", term.isCurrent)
+            tObj.put("isCustom", term.isCustom)
             term.manualTgpa?.let { tObj.put("manualTgpa", it) }
             term.manualCredits?.let { tObj.put("manualCredits", it) }
 
@@ -367,6 +391,7 @@ object GpaStorage {
                 s.endTermMarks?.let { sObj.put("endTermMarks", it) }
                 s.attendanceMarks?.let { sObj.put("attendanceMarks", it) }
                 sObj.put("isCustom", s.isCustom)
+                sObj.put("userEditedCredits", s.userEditedCredits)
                 subArr.put(sObj)
             }
             tObj.put("subjects", subArr)

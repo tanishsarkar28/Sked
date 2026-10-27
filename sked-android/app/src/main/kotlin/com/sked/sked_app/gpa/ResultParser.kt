@@ -225,21 +225,23 @@ object ResultParser {
                     val code = cObj.optString("CourseCode", cObj.optString("courseCode", cObj.optString("code", ""))).trim().uppercase()
                     if (code.isBlank()) continue
                     val title = cObj.optString("CourseTitle", cObj.optString("courseTitle", cObj.optString("courseName", ""))).trim()
-                    val cr = cObj.optDouble("Credits", cObj.optDouble("credits", cObj.optDouble("credit", 3.0)))
+                    val cr = cObj.optDouble("Credits", cObj.optDouble("credits", cObj.optDouble("credit", 0.0)))
                     val gr = cObj.optString("Grade", cObj.optString("grade", "")).trim().uppercase().ifBlank { null }
 
                     subjects.add(
                         GpaSubject(
                             courseCode = code,
                             courseTitle = title,
-                            credits = if (cr > 0.0) cr else 3.0,
-                            selectedGrade = gr
+                            credits = if (cr > 0.0) cr else 0.0,
+                            selectedGrade = gr,
+                            isCustom = false,
+                            userEditedCredits = false
                         )
                     )
                 }
             }
 
-            val totalCr = if (subjects.isNotEmpty()) subjects.sumOf { it.credits } else item.optDouble("totalCredits", 20.0)
+            val totalCr = if (subjects.isNotEmpty() && subjects.sumOf { it.credits } > 0.0) subjects.sumOf { it.credits } else item.optDouble("totalCredits", 20.0)
 
             result.add(
                 ParsedTerm(
@@ -448,7 +450,8 @@ object ResultParser {
                 isCurrent = false,
                 subjects = mergedSubjects,
                 manualTgpa = pt.tgpa ?: existing?.manualTgpa,
-                manualCredits = pt.totalCredits ?: existing?.manualCredits ?: 20.0
+                manualCredits = pt.totalCredits ?: existing?.manualCredits ?: 20.0,
+                isCustom = false
             )
             updatedTerms.add(termData)
         }

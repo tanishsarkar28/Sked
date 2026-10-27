@@ -72,6 +72,7 @@ fun GpaScreen(
     var showAddCustomSubjectDialog by remember { mutableStateOf(false) }
     var showTargetSimulator by remember { mutableStateOf(false) }
     var selectedSemesterDetail by remember { mutableStateOf<TermData?>(null) }
+    var termToDelete by remember { mutableStateOf<TermData?>(null) }
 
     fun updateState(newState: GpaState) {
         gpaState = newState
@@ -213,7 +214,12 @@ fun GpaScreen(
                     onSelectTerm = { termId ->
                         updateState(gpaState.copy(activeTermId = termId))
                     },
-                    onAddTerm = { showAddTermDialog = true }
+                    onAddTerm = { showAddTermDialog = true },
+                    onDeleteTerm = { term ->
+                        if (term.isDeletable) {
+                            termToDelete = term
+                        }
+                    }
                 )
             }
 
@@ -231,11 +237,9 @@ fun GpaScreen(
                             }
                             updateState(gpaState.copy(terms = updatedTerms))
                         },
-                        onDeleteTerm = if (!activeTerm.isCurrent && gpaState.terms.size > 1) {
+                        onDeleteTerm = if (activeTerm.isDeletable) {
                             {
-                                val remaining = gpaState.terms.filterNot { it.id == activeTerm.id }
-                                val nextActive = remaining.firstOrNull { it.isCurrent }?.id ?: remaining.first().id
-                                updateState(gpaState.copy(terms = remaining, activeTermId = nextActive))
+                                termToDelete = activeTerm
                             }
                         } else null
                     )
@@ -353,6 +357,52 @@ fun GpaScreen(
                 val updated = gpaState.terms + newTerm
                 updateState(gpaState.copy(terms = updated, activeTermId = newTerm.id))
                 showAddTermDialog = false
+            }
+        )
+    }
+
+    // ── DELETE CONFIRMATION DIALOG ──────────────────────────────────────────
+    if (termToDelete != null) {
+        val target = termToDelete!!
+        AlertDialog(
+            onDismissRequest = { termToDelete = null },
+            containerColor = Slab,
+            title = {
+                Text(
+                    text = "Delete ${target.name}?",
+                    fontFamily = BarlowCondensed,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = Chalk
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to delete this custom semester? All courses and grades in this term will be permanently removed.",
+                    fontFamily = BarlowCondensed,
+                    fontSize = 14.sp,
+                    color = Slate
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val targetId = target.id
+                        termToDelete = null
+                        val remaining = gpaState.terms.filterNot { it.id == targetId }
+                        val nextActive = remaining.firstOrNull { it.isCurrent }?.id ?: remaining.firstOrNull()?.id ?: ""
+                        updateState(gpaState.copy(terms = remaining, activeTermId = nextActive))
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text("DELETE", fontFamily = BarlowCondensed, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { termToDelete = null }) {
+                    Text("CANCEL", fontFamily = BarlowCondensed, color = Slate)
+                }
             }
         )
     }
@@ -563,9 +613,9 @@ fun SemesterResultCard(
 ) {
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = Color.White,
-        shadowElevation = 2.dp,
-        border = BorderStroke(1.dp, Color(0xFFE5E7EB)),
+        color = Slab,
+        shadowElevation = 0.dp,
+        border = BorderStroke(1.dp, Rule),
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() }
@@ -578,7 +628,7 @@ fun SemesterResultCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF242424))
+                    .background(Color(0xFF202024))
                     .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -587,12 +637,12 @@ fun SemesterResultCard(
                     fontFamily = BarlowCondensed,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
-                    color = Color.White,
+                    color = Chalk,
                     textAlign = TextAlign.Center
                 )
             }
 
-            // White Card Body with Green Circular Gauge
+            // Dark Card Body with Green Circular Gauge
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -600,12 +650,12 @@ fun SemesterResultCard(
                 contentAlignment = Alignment.Center
             ) {
                 CircularGpaGauge(
-                    score = term.tgpa ?: 0.0,
+                    score = term.officialTgpa ?: term.tgpa ?: 0.0,
                     size = 76.dp,
                     strokeWidth = 7.dp,
-                    trackColor = Color(0xFFE5E7EB),
+                    trackColor = Color(0xFF27272A),
                     progressColor = Color(0xFF10B981),
-                    textColor = Color(0xFF18181B),
+                    textColor = Color.White,
                     textSize = 19.sp
                 )
             }
@@ -683,13 +733,22 @@ fun SemesterDetailSheet(
                     border = BorderStroke(1.dp, Rule)
                 ) {
                     Column(modifier = Modifier.padding(10.dp)) {
-                        Text("TOTAL CREDITS", fontFamily = BarlowCondensed, fontSize = 11.sp, color = Slate)
                         Text(
-                            text = String.format(Locale.US, "%.1f Cr", term.totalCredits),
+                            text = if (term.totalCredits > 0.0 && term.manualTgpa == null) "TOTAL CREDITS" else "ACADEMIC STATUS",
+                            fontFamily = BarlowCondensed,
+                            fontSize = 11.sp,
+                            color = Slate
+                        )
+                        Text(
+                            text = if (term.totalCredits > 0.0 && term.manualTgpa == null) {
+                                String.format(Locale.US, "%.1f Cr", term.totalCredits)
+                            } else {
+                                "Verified Grade"
+                            },
                             fontFamily = BarlowCondensed,
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,
-                            color = Chalk
+                            color = if (term.totalCredits > 0.0 && term.manualTgpa == null) Chalk else Color(0xFF10B981)
                         )
                     }
                 }
@@ -801,19 +860,21 @@ fun SemesterSubjectRow(subject: GpaSubject) {
                         fontSize = 15.sp,
                         color = Chalk
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Surface(
-                        shape = RoundedCornerShape(3.dp),
-                        color = Slab,
-                        border = BorderStroke(1.dp, Rule)
-                    ) {
-                        Text(
-                            text = "${subject.credits} Cr",
-                            fontFamily = BarlowCondensed,
-                            fontSize = 11.sp,
-                            color = Slate,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                        )
+                    if (subject.credits > 0.0) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(3.dp),
+                            color = Slab,
+                            border = BorderStroke(1.dp, Rule)
+                        ) {
+                            Text(
+                                text = "${String.format(Locale.US, "%.1f", subject.credits)} Cr",
+                                fontFamily = BarlowCondensed,
+                                fontSize = 11.sp,
+                                color = Slate,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            )
+                        }
                     }
                 }
                 if (subject.courseTitle.isNotBlank()) {
@@ -883,7 +944,8 @@ fun TermTabsStrip(
     terms: List<TermData>,
     activeTermId: String,
     onSelectTerm: (String) -> Unit,
-    onAddTerm: () -> Unit
+    onAddTerm: () -> Unit,
+    onDeleteTerm: ((TermData) -> Unit)? = null
 ) {
     val scrollState = rememberScrollState()
 
@@ -896,37 +958,58 @@ fun TermTabsStrip(
     ) {
         terms.forEach { term ->
             val isSelected = term.id == activeTermId
-            val tgpaStr = if (term.tgpa != null) String.format(java.util.Locale.US, "%.2f", term.tgpa) else "—"
+            val tgpaStr = if (term.tgpa != null) String.format(java.util.Locale.US, "%.2f", term.tgpa) else "0.00"
 
-            Surface(
-                shape = RoundedCornerShape(4.dp),
-                color = if (isSelected) Blaze else Slab,
-                border = BorderStroke(1.dp, if (isSelected) Blaze else Rule),
-                modifier = Modifier
-                    .height(44.dp)
-                    .clickable { onSelectTerm(term.id) }
-            ) {
-                Column(
+            Box(modifier = Modifier.wrapContentSize()) {
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = if (isSelected) Blaze else Slab,
+                    border = BorderStroke(1.dp, if (isSelected) Blaze else Rule),
                     modifier = Modifier
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .height(44.dp)
+                        .clickable { onSelectTerm(term.id) }
                 ) {
-                    Text(
-                        text = if (term.isCurrent) "${term.name} ★" else term.name,
-                        fontFamily = BarlowCondensed,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        color = if (isSelected) Ink else Chalk,
-                        letterSpacing = 0.5.sp
-                    )
-                    Text(
-                        text = "TGPA: $tgpaStr",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (isSelected) Ink.copy(alpha = 0.8f) else Slate
-                    )
+                    Column(
+                        modifier = Modifier
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (term.isCurrent) "${term.name} ★" else term.name,
+                            fontFamily = BarlowCondensed,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = if (isSelected) Ink else Chalk,
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            text = "TGPA: $tgpaStr",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isSelected) Ink.copy(alpha = 0.8f) else Slate
+                        )
+                    }
+                }
+
+                if (term.isDeletable && onDeleteTerm != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 4.dp, y = (-4).dp)
+                            .size(16.dp)
+                            .background(Color(0xFFEF4444), RoundedCornerShape(8.dp))
+                            .clickable { onDeleteTerm(term) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Delete",
+                            tint = Color.White,
+                            modifier = Modifier.size(10.dp)
+                        )
+                    }
                 }
             }
         }
@@ -1048,9 +1131,9 @@ fun ActiveTermHeaderCard(
                 verticalAlignment = Alignment.Bottom
             ) {
                 Row(verticalAlignment = Alignment.Bottom) {
-                    val tgpaVal = term.tgpa
+                    val tgpaVal = if (term.simulatedTgpa != null) term.simulatedTgpa else (term.manualTgpa ?: 0.0)
                     Text(
-                        text = if (tgpaVal != null) String.format(java.util.Locale.US, "%.2f", tgpaVal) else "—",
+                        text = String.format(java.util.Locale.US, "%.2f", tgpaVal),
                         fontSize = 36.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
@@ -1104,11 +1187,11 @@ fun TargetSimulatorCard(
     val totalCr = state.totalCompletedCredits
     val otherWeighted = state.terms.filterNot { it.id == activeTerm?.id }.sumOf { it.weightedPoints }
 
-    val neededTgpa = if (activeCr > 0.0) {
+    val neededTgpa: Double? = if (activeCr > 0.0) {
         val neededWeighted = (targetValue * totalCr) - otherWeighted
         neededWeighted / activeCr
     } else {
-        targetValue
+        null
     }
 
     Surface(
@@ -1135,25 +1218,73 @@ fun TargetSimulatorCard(
                     )
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf("8.00", "8.50", "9.00").forEach { goal ->
-                        Box(
-                            modifier = Modifier
-                                .background(if (targetInput == goal) Blaze else Ink, RoundedCornerShape(3.dp))
-                                .border(1.dp, Rule, RoundedCornerShape(3.dp))
-                                .clickable {
-                                    targetInput = goal
-                                    onSetTarget(goal.toDoubleOrNull())
-                                }
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                // Custom Target CGPA Control
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "TARGET:",
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = Slate
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = Ink,
+                        border = BorderStroke(1.dp, Blaze.copy(alpha = 0.6f))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                         ) {
-                            Text(
-                                text = goal,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (targetInput == goal) Ink else Chalk
+                            Box(
+                                modifier = Modifier
+                                    .clickable {
+                                        val v = (targetInput.toDoubleOrNull() ?: 8.50) - 0.10
+                                        val next = (Math.round(v * 100.0) / 100.0).coerceIn(1.0, 10.0)
+                                        targetInput = String.format(Locale.US, "%.2f", next)
+                                        onSetTarget(next)
+                                    }
+                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                            ) {
+                                Text("-", color = Blaze, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = targetInput,
+                                onValueChange = { str ->
+                                    if (str.length <= 5) {
+                                        targetInput = str
+                                        val parsed = str.toDoubleOrNull()
+                                        if (parsed != null && parsed in 1.0..10.0) {
+                                            onSetTarget(parsed)
+                                        }
+                                    }
+                                },
+                                textStyle = androidx.compose.ui.text.TextStyle(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = Chalk,
+                                    textAlign = TextAlign.Center
+                                ),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                singleLine = true,
+                                modifier = Modifier.width(44.dp)
                             )
+
+                            Box(
+                                modifier = Modifier
+                                    .clickable {
+                                        val v = (targetInput.toDoubleOrNull() ?: 8.50) + 0.10
+                                        val next = (Math.round(v * 100.0) / 100.0).coerceIn(1.0, 10.0)
+                                        targetInput = String.format(Locale.US, "%.2f", next)
+                                        onSetTarget(next)
+                                    }
+                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                            ) {
+                                Text("+", color = Blaze, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
                         }
                     }
                 }
@@ -1175,6 +1306,7 @@ fun TargetSimulatorCard(
                     )
                     Text(
                         text = when {
+                            neededTgpa == null -> "Set course credits below to calculate needed TGPA"
                             neededTgpa <= 0.0 -> "Target already secured!"
                             neededTgpa > 10.0 -> "Requires > 10.0 TGPA (Not possible this term)"
                             neededTgpa >= 9.0 -> "Requires predominantly 'O' and 'A+' grades"
@@ -1183,17 +1315,21 @@ fun TargetSimulatorCard(
                         },
                         fontFamily = BarlowCondensed,
                         fontSize = 11.sp,
-                        color = if (neededTgpa > 10.0) Color(0xFFFF5252) else Slate
+                        color = if (neededTgpa != null && neededTgpa > 10.0) Color(0xFFFF5252) else Slate
                     )
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = if (neededTgpa > 10.0) "IMPOSSIBLE" else String.format(java.util.Locale.US, "%.2f", neededTgpa),
+                        text = when {
+                            neededTgpa == null -> "—"
+                            neededTgpa > 10.0 -> "IMPOSSIBLE"
+                            else -> String.format(java.util.Locale.US, "%.2f", neededTgpa)
+                        },
                         fontFamily = FontFamily.Monospace,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (neededTgpa > 10.0) Color(0xFFFF5252) else if ((activeTerm?.tgpa ?: 0.0) >= neededTgpa) Color(0xFF00E676) else Blaze
+                        color = if (neededTgpa != null && neededTgpa > 10.0) Color(0xFFFF5252) else if (neededTgpa != null && (activeTerm?.tgpa ?: 0.0) >= neededTgpa) Color(0xFF00E676) else Blaze
                     )
                     Text(
                         text = "NEEDED TGPA",
@@ -1253,11 +1389,12 @@ fun GpaSubjectCard(
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp,
-                            color = Slate,
+                            color = if (subject.credits > 0.0) Slate else Slate.copy(alpha = 0.3f),
                             modifier = Modifier
                                 .clickable {
-                                    if (subject.credits > 0.5) {
-                                        onUpdateSubject(subject.copy(credits = subject.credits - 0.5))
+                                    if (subject.credits >= 0.5) {
+                                        val next = (subject.credits - 0.5).coerceAtLeast(0.0)
+                                        onUpdateSubject(subject.copy(credits = next, userEditedCredits = true))
                                     }
                                 }
                                 .padding(horizontal = 4.dp)
@@ -1268,7 +1405,7 @@ fun GpaSubjectCard(
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 11.sp,
-                            color = Chalk,
+                            color = if (subject.credits > 0.0) Chalk else Slate,
                             modifier = Modifier.padding(horizontal = 3.dp)
                         )
 
@@ -1281,7 +1418,8 @@ fun GpaSubjectCard(
                             modifier = Modifier
                                 .clickable {
                                     if (subject.credits < 10.0) {
-                                        onUpdateSubject(subject.copy(credits = subject.credits + 0.5))
+                                        val next = subject.credits + 0.5
+                                        onUpdateSubject(subject.copy(credits = next, userEditedCredits = true))
                                     }
                                 }
                                 .padding(horizontal = 4.dp)
@@ -1513,9 +1651,7 @@ fun AddTermDialog(
     onDismiss: () -> Unit,
     onAdd: (TermData) -> Unit
 ) {
-    var name by remember { mutableStateOf("Term ${existingCount + 1}") }
-    var tgpaInput by remember { mutableStateOf("") }
-    var creditsInput by remember { mutableStateOf("20.0") }
+    var name by remember { mutableStateOf("Semester ${existingCount + 1}") }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -1524,57 +1660,37 @@ fun AddTermDialog(
             border = BorderStroke(1.dp, Rule),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.padding(18.dp)) {
                 Text(
-                    text = "ADD NEW TERM",
+                    text = "ADD NEW SEMESTER",
                     fontFamily = BarlowCondensed,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
+                    fontSize = 18.sp,
                     color = Chalk
                 )
                 Text(
-                    text = "Add a past term to compute your overall CGPA.",
+                    text = "Enter a name for the new semester. You can add subjects manually after creating it.",
                     fontFamily = BarlowCondensed,
-                    fontSize = 11.sp,
+                    fontSize = 12.sp,
                     color = Slate
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Term Name (e.g. Term 1)", color = Slate) },
+                    label = { Text("Term Name (e.g. Semester 5)", color = Slate) },
                     singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Blaze,
+                        unfocusedBorderColor = Rule,
+                        focusedTextColor = Chalk,
+                        unfocusedTextColor = Chalk
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = tgpaInput,
-                        onValueChange = { tgpaInput = it },
-                        label = { Text("TGPA (Optional)", color = Slate, fontSize = 11.sp) },
-                        placeholder = { Text("e.g. 8.40", color = Slate) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    OutlinedTextField(
-                        value = creditsInput,
-                        onValueChange = { creditsInput = it },
-                        label = { Text("Credits", color = Slate, fontSize = 11.sp) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1586,15 +1702,15 @@ fun AddTermDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
-                            val tg = tgpaInput.toDoubleOrNull()
-                            val cr = creditsInput.toDoubleOrNull() ?: 20.0
                             if (name.isNotBlank()) {
                                 onAdd(
                                     TermData(
                                         name = name.trim(),
                                         isCurrent = false,
-                                        manualTgpa = tg,
-                                        manualCredits = cr
+                                        subjects = emptyList(),
+                                        manualTgpa = null,
+                                        manualCredits = null,
+                                        isCustom = true
                                     )
                                 )
                             }

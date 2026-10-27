@@ -1225,15 +1225,9 @@ class _GpaScreenState extends State<GpaScreen> {
       borderRadius: BorderRadius.circular(10),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: SkedColors.slab,
           borderRadius: BorderRadius.circular(10),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.08),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          border: Border.all(color: SkedColors.rule),
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(
@@ -1241,14 +1235,14 @@ class _GpaScreenState extends State<GpaScreen> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 6),
-              color: const Color(0xFF242424),
+              color: const Color(0xFF202024),
               alignment: Alignment.center,
               child: Text(
                 'Semester : ${term.displayRomanName}',
                 style: GoogleFonts.barlowCondensed(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: Colors.white,
+                  color: SkedColors.chalk,
                   letterSpacing: 0.5,
                 ),
               ),
@@ -1259,9 +1253,9 @@ class _GpaScreenState extends State<GpaScreen> {
                 score: tgpa,
                 size: 76,
                 strokeWidth: 7,
-                trackColor: const Color(0xFFE4E4E7),
+                trackColor: SkedColors.rule,
                 progressColor: const Color(0xFF10B981),
-                textColor: const Color(0xFF18181B),
+                textColor: Colors.white,
                 fontSize: 18,
               ),
             ),
@@ -1319,7 +1313,9 @@ class _GpaScreenState extends State<GpaScreen> {
                             ),
                           ),
                           Text(
-                            '${term.subjects.length} Courses • ${term.totalCredits.toStringAsFixed(1)} Graded Credits',
+                            term.totalCredits > 0.0 && term.manualTgpa == null
+                                ? '${term.subjects.length} Courses • ${term.totalCredits.toStringAsFixed(1)} Graded Credits'
+                                : '${term.subjects.length} Courses • Verified Academic Record',
                             style: GoogleFonts.barlowCondensed(
                               fontSize: 12,
                               color: SkedColors.slate,
@@ -1404,22 +1400,24 @@ class _GpaScreenState extends State<GpaScreen> {
                                                 color: SkedColors.chalk,
                                               ),
                                             ),
-                                            const SizedBox(width: 8),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                              decoration: BoxDecoration(
-                                                color: SkedColors.slab,
-                                                borderRadius: BorderRadius.circular(3),
-                                              ),
-                                              child: Text(
-                                                '${sub.credits.toStringAsFixed(1)} CR',
-                                                style: GoogleFonts.barlowCondensed(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: SkedColors.slate,
+                                            if (sub.credits > 0.0) ...[
+                                              const SizedBox(width: 8),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                decoration: BoxDecoration(
+                                                  color: SkedColors.slab,
+                                                  borderRadius: BorderRadius.circular(3),
+                                                ),
+                                                child: Text(
+                                                  '${sub.credits.toStringAsFixed(1)} CR',
+                                                  style: GoogleFonts.barlowCondensed(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: SkedColors.slate,
+                                                  ),
                                                 ),
                                               ),
-                                            ),
+                                            ],
                                           ],
                                         ),
                                         if (sub.courseTitle.isNotEmpty && sub.courseTitle != sub.courseCode) ...[
