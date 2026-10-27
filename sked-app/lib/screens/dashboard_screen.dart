@@ -14,7 +14,9 @@ import '../widgets/about_developer_dialog.dart';
 import '../widgets/ums_auth_bridge_sheet.dart';
 import '../services/update_service.dart';
 import '../services/widget_service.dart';
+import '../services/sync_service.dart';
 import 'exam_screen.dart';
+import 'gpa_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String userId;
@@ -30,7 +32,8 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProviderStateMixin {
+class _DashboardScreenState extends State<DashboardScreen>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final List<String> _days = const ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   String _activeTab = 'CLASSES'; // 'CLASSES' | 'EXAMS'
@@ -44,12 +47,37 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   bool _isLoading = false;
   bool _showWebViewBridge = false;
   String _resyncPassword = '';
+  bool _hasAuthFailed = false;
+  int _lastSyncTimestamp = 0;
+
+  String _formatLastSyncTime() {
+    if (_lastSyncTimestamp <= 0) return '';
+    final now = DateTime.now();
+    final syncDate = DateTime.fromMillisecondsSinceEpoch(_lastSyncTimestamp);
+    final diff = now.difference(syncDate);
+    final hour = syncDate.hour % 12 == 0 ? 12 : syncDate.hour % 12;
+    final minute = syncDate.minute.toString().padLeft(2, '0');
+    final period = syncDate.hour >= 12 ? 'PM' : 'AM';
+    final timeStr = '$hour:$minute $period';
+
+    if (diff.inMinutes < 1) {
+      return 'Synced just now';
+    } else if (diff.inMinutes < 60) {
+      return 'Synced ${diff.inMinutes}m ago';
+    } else if (diff.inHours < 24 && now.day == syncDate.day) {
+      return 'Synced $timeStr';
+    } else {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return 'Synced ${months[syncDate.month - 1]} ${syncDate.day}, $timeStr';
+    }
+  }
 
   late final AnimationController _refreshAnimCtrl;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _todayName = TimetableParser.todayName();
     _selectedDay = _days.contains(_todayName) ? _todayName : 'Monday';
 
@@ -61,20 +89,127 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     _loadLocalData();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAppUpdate();
+      _runAutoSyncCheck();
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _runAutoSyncCheck();
+    }
+  }
+
+  Future<void> _runAutoSyncCheck({bool force = false}) async {
+    final authFailed = await SyncService.hasAuthFailed();
+    if (mounted) {
+      setState(() => _hasAuthFailed = authFailed);
+    }
+
+    final event = await SyncService.performSync(force: force);
+    if (!mounted) return;
+
+    final updatedAuthFailed = await SyncService.hasAuthFailed();
+    final prefs = await SharedPreferences.getInstance();
+    final updatedTs = prefs.getInt(SyncService.keyLastSyncTimestamp) ?? 0;
+    setState(() {
+      _hasAuthFailed = updatedAuthFailed;
+      _lastSyncTimestamp = updatedTs;
+    });
+
+    if (event.type == SyncResultType.success) {
+      if (event.newMakeupClasses.isNotEmpty || event.cancelledMakeupDescriptions.isNotEmpty) {
+        await _loadLocalData();
+      }
+
+      if (event.newMakeupClasses.isNotEmpty) {
+        final count = event.newMakeupClasses.length;
+        final title = count == 1
+            ? '🔔 New Makeup Class: ${event.newMakeupClasses.first.courseCode} (${event.newMakeupClasses.first.day})'
+            : '🔔 $count New Makeup Classes Detected!';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: SkedColors.blaze,
+            content: Text(
+              title,
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                letterSpacing: 0.3,
+              ),
+            ),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      } else if (event.cancelledMakeupDescriptions.isNotEmpty) {
+        final desc = event.cancelledMakeupDescriptions.join(', ');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: SkedColors.slabElevated,
+            content: Text(
+              '⚠️ Makeup class cancelled: $desc',
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: SkedColors.chalk,
+              ),
+            ),
+          ),
+        );
+      }
+    } else if (event.type == SyncResultType.authExpired && force) {
+      _triggerReSync();
+    }
   }
 
   Future<void> _checkAppUpdate() async {
     try {
       final update = await UpdateService.checkForUpdate();
       if (update != null && mounted) {
-        UpdateService.showUpdateDialog(context, update);
+        final shouldNotify = await UpdateService.shouldNotifyUpdate(update.versionCode);
+        if (shouldNotify) {
+          // BUG-10 FIX: showUpdateDialog is now inside the shouldNotify guard
+          // — it no longer pops up on every app launch after the user dismissed it.
+          await UpdateService.markUpdateNotified(update.versionCode);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: SkedColors.blaze,
+              content: Row(
+                children: [
+                  const Icon(Icons.system_update_alt, color: Colors.white, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '🚀 Sked v${update.versionName} is available! Tap to install.',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              action: SnackBarAction(
+                label: 'INSTALL',
+                textColor: Colors.white,
+                onPressed: () => UpdateService.showUpdateDialog(context, update),
+              ),
+              duration: const Duration(seconds: 10),
+            ),
+          );
+          UpdateService.showUpdateDialog(context, update);
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('_checkAppUpdate error: $e');
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _refreshAnimCtrl.dispose();
     super.dispose();
   }
@@ -89,12 +224,15 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       final todayEntries = TimetableParser.filterByDay(allEntries, _todayName);
       final weekMap = TimetableParser.groupByDay(allEntries);
       final realExams = await ExamParser.loadExamsFromPrefs();
+      final prefs = await SharedPreferences.getInstance();
+      final lastSyncTs = prefs.getInt(SyncService.keyLastSyncTimestamp) ?? 0;
 
       if (mounted) {
         setState(() {
           _todayClasses = todayEntries;
           _weekClasses = weekMap;
           _exams = realExams;
+          _lastSyncTimestamp = lastSyncTs;
           if (!_days.contains(_selectedDay)) {
             _selectedDay = _days.contains(_todayName) ? _todayName : 'Monday';
           }
@@ -109,7 +247,9 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           tomorrowExam: tomorrowExam,
         );
       }
-    } catch (_) {
+    } catch (e) {
+      // BUG-12 FIX: log instead of silently swallowing — helps debug corrupt prefs
+      debugPrint('_loadLocalData error: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -119,6 +259,56 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   }
 
   Future<void> _triggerReSync() async {
+    setState(() => _isLoading = true);
+    _refreshAnimCtrl.repeat();
+
+    try {
+      final event = await SyncService.performSync(force: true);
+
+      // BUG-01/03 FIX: Stop stamping the timestamp here unconditionally.
+      // SyncService.performSync() writes keyLastSyncTimestamp ONLY on success
+      // (line 217 of sync_service.dart). We read it back after a successful sync.
+
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _refreshAnimCtrl.reset();
+      }
+
+      if (event.type == SyncResultType.success) {
+        await _loadLocalData(); // _loadLocalData reads & commits _lastSyncTimestamp from prefs
+        if (mounted) {
+          final msg = event.newMakeupClasses.isNotEmpty
+              ? 'Synced: ${event.newMakeupClasses.length} new makeup classes found!'
+              : 'Timetable up to date.';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: SkedColors.blaze,
+              content: Text(
+                msg,
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } else if (event.type == SyncResultType.authExpired || event.type == SyncResultType.serverError) {
+        if (mounted) {
+          _showFullReAuthDialog();
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _refreshAnimCtrl.reset();
+      }
+    }
+  }
+
+  Future<void> _showFullReAuthDialog() async {
     final prefs = await SharedPreferences.getInstance();
     final savedPwd = prefs.getString('saved_ums_pwd') ?? '';
 
@@ -372,7 +562,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           textAlign: TextAlign.center,
         ),
         content: const Text(
-          'This will remove your saved credentials and timetable from this iPhone. You can log back in anytime.',
+          'This will remove your saved credentials and timetable from this device. You can log back in anytime.',
           style: TextStyle(fontSize: 13, color: SkedColors.slate, height: 1.4),
           textAlign: TextAlign.center,
         ),
@@ -478,18 +668,6 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               );
             },
           ),
-          RotationTransition(
-            turns: _refreshAnimCtrl,
-            child: IconButton(
-              tooltip: 'Refresh',
-              icon: Icon(
-                Icons.refresh,
-                color: _isLoading ? SkedColors.blaze : SkedColors.chalk,
-                size: 20,
-              ),
-              onPressed: _loadLocalData,
-            ),
-          ),
           IconButton(
             tooltip: 'Log Out',
             icon: const Icon(Icons.logout, color: SkedColors.dangerRed, size: 20),
@@ -499,6 +677,37 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       ),
       body: Column(
         children: [
+          if (_hasAuthFailed)
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: SkedColors.slab,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: SkedColors.blaze.withOpacity(0.5)),
+              ),
+              child: InkWell(
+                onTap: _triggerReSync,
+                child: Row(
+                  children: [
+                    const Icon(Icons.sync_problem, color: SkedColors.blaze, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'UMS session expired • Tap to reconnect auto-sync',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: SkedColors.chalk,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios, color: SkedColors.slate, size: 12),
+                  ],
+                ),
+              ),
+            ),
+
           // Header Bar
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -533,36 +742,100 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                           ],
                         ),
                         const SizedBox(height: 3),
-                        Text(
-                          isTodaySelected
-                              ? (displayCount > 0 ? '$displayCount classes today.' : 'Nothing today.')
-                              : (displayCount > 0 ? '$displayCount classes on $_selectedDay.' : 'No classes on $_selectedDay.'),
-                          style: GoogleFonts.barlowCondensed(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: SkedColors.chalk,
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              isTodaySelected
+                                  ? (displayCount > 0 ? '$displayCount classes today.' : 'Nothing today.')
+                                  : (displayCount > 0 ? '$displayCount classes on $_selectedDay.' : 'No classes on $_selectedDay.'),
+                              style: GoogleFonts.barlowCondensed(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: SkedColors.chalk,
+                              ),
+                            ),
+                            () {
+                              final makeupCount = _weekClasses.values
+                                  .expand((list) => list)
+                                  .where((c) => c.isMakeup)
+                                  .length;
+                              if (makeupCount > 0) {
+                                return Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                      decoration: BoxDecoration(
+                                        color: SkedColors.blaze.withOpacity(0.18),
+                                        borderRadius: BorderRadius.circular(3),
+                                        border: Border.all(color: SkedColors.blaze.withOpacity(0.5)),
+                                      ),
+                                      child: Text(
+                                        '$makeupCount MAKEUP',
+                                        style: GoogleFonts.barlowCondensed(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: SkedColors.blaze,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            }(),
+                          ],
                         ),
                       ],
                     ),
 
-                    // RE-SYNC button
-                    OutlinedButton.icon(
-                      onPressed: _triggerReSync,
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                        side: const BorderSide(color: SkedColors.rule),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      ),
-                      icon: const Icon(Icons.sync, size: 14, color: SkedColors.blaze),
-                      label: Text(
-                        'RE-SYNC',
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: SkedColors.chalk,
+                    // RE-SYNC button with timestamp
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _isLoading
+                              ? null
+                              : () {
+                                  if (_activeTab == 'GPA' || _activeTab == 'EXAMS') {
+                                    _showFullReAuthDialog();
+                                  } else {
+                                    _triggerReSync();
+                                  }
+                                },
+                          style: OutlinedButton.styleFrom(
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                            side: BorderSide(color: _isLoading ? SkedColors.blaze : SkedColors.rule),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          ),
+                          icon: RotationTransition(
+                            turns: _refreshAnimCtrl,
+                            child: const Icon(Icons.sync, size: 14, color: SkedColors.blaze),
+                          ),
+                          label: Text(
+                            _isLoading ? 'SYNCING...' : 'RE-SYNC',
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: _isLoading ? SkedColors.blaze : SkedColors.chalk,
+                            ),
+                          ),
                         ),
-                      ),
+                        if (_formatLastSyncTime().isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            _formatLastSyncTime(),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontFamily: 'monospace',
+                              color: SkedColors.slate,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
@@ -570,7 +843,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                 const Divider(color: SkedColors.rule, height: 1),
                 const SizedBox(height: 8),
 
-                // ── Mode Switcher: CLASSES vs EXAMS ─────────────────────────
+                // ── Mode Switcher: CLASSES vs EXAMS vs GPA ──────────────────
                 Row(
                   children: [
                     Expanded(
@@ -581,13 +854,22 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                         onTap: () => setState(() => _activeTab = 'CLASSES'),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: _modeButton(
                         label: 'EXAMS (${_exams.length})',
                         icon: Icons.school_outlined,
                         isActive: _activeTab == 'EXAMS',
                         onTap: () => setState(() => _activeTab = 'EXAMS'),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: _modeButton(
+                        label: 'GPA',
+                        icon: Icons.calculate_outlined,
+                        isActive: _activeTab == 'GPA',
+                        onTap: () => setState(() => _activeTab = 'GPA'),
                       ),
                     ),
                   ],
@@ -599,8 +881,15 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           // Content Area
           Expanded(
             child: _activeTab == 'EXAMS'
-                ? ExamScreen(exams: _exams, onRefresh: _triggerReSync)
-                : _buildClassesTab(isSunday),
+                ? ExamScreen(exams: _exams, onRefresh: _showFullReAuthDialog)
+                : _activeTab == 'GPA'
+                    ? GpaScreen(
+                        timetable: _todayClasses.isNotEmpty
+                            ? _todayClasses
+                            : _weekClasses.values.expand((e) => e).toList(),
+                        onSyncUms: _showFullReAuthDialog,
+                      )
+                    : _buildClassesTab(isSunday),
           ),
         ],
       ),

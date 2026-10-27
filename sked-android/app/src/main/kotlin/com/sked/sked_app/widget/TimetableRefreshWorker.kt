@@ -119,7 +119,12 @@ class TimetableRefreshWorker(ctx: Context, params: WorkerParameters) :
                 TimetableWidget().update(applicationContext, id)
             }
 
-            // 4. Record background widget sync telemetry
+            // 4. Check for app updates and post notification if new release available
+            try {
+                com.sked.sked_app.update.AppUpdateManager.checkForUpdate(applicationContext)
+            } catch (_: Exception) {}
+
+            // 5. Record background widget sync telemetry
             try {
                 com.sked.sked_app.telemetry.TelemetryManager.recordWidgetSync(applicationContext)
             } catch (_: Exception) {}

@@ -88,6 +88,24 @@ class ClassEntry {
     return s > 0 ? s + 50 : 0;
   }
 
+  /// Returns true if this class is identified as a makeup, extra, or adjustment class.
+  bool get isMakeup {
+    final t = type.toLowerCase();
+    final d = description.toLowerCase();
+    return t.contains('make') ||
+        t.contains('adjust') ||
+        t.contains('extra') ||
+        d.contains('make-up') ||
+        d.contains('makeup') ||
+        d.contains('adjustment') ||
+        d.contains('extra class') ||
+        d.contains('make up');
+  }
+
+  /// Unique key for timetable diffing and notification deduplication.
+  String get uniqueKey =>
+      '${courseCode.toUpperCase()}_${day.toLowerCase()}_${start.trim()}_${end.trim()}_${room.toLowerCase()}';
+
   /// Returns true if this class is currently ongoing at [nowMinutes].
   bool isOngoingNow(int nowMinutes) {
     final s = startMinutes;

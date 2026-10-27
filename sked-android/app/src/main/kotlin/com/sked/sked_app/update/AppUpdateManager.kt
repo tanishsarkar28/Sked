@@ -1,5 +1,8 @@
 package com.sked.sked_app.update
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -8,7 +11,13 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import android.graphics.BitmapFactory
+import com.sked.sked_app.MainActivity
+import com.sked.sked_app.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -40,6 +49,75 @@ object AppUpdateManager {
     private const val PREFS_NAME = "SkedUpdatePrefs"
     private const val KEY_LAST_CHECK_TIME = "last_check_time"
     private const val KEY_CUSTOM_URL = "custom_version_url"
+    private const val KEY_LAST_NOTIFIED_CODE = "last_notified_update_code"
+    const val UPDATE_CHANNEL_ID = "sked_updates"
+
+    fun createUpdateNotificationChannel(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                UPDATE_CHANNEL_ID,
+                "App Updates",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifies you when a new version of Sked is released"
+                enableVibration(true)
+                setShowBadge(true)
+            }
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            nm?.createNotificationChannel(channel)
+        }
+    }
+
+    fun notifyUpdateAvailable(context: Context, update: UpdateInfo, force: Boolean = false) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+                return
+            }
+        }
+
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val lastNotified = prefs.getInt(KEY_LAST_NOTIFIED_CODE, 0)
+        if (!force && lastNotified == update.versionCode) return
+
+        createUpdateNotificationChannel(context)
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("EXTRA_SHOW_UPDATE", true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            2001,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val summary = if (update.releaseNotes.isNotBlank()) update.releaseNotes.take(120) else "New features and performance improvements."
+        val largeIcon = try {
+            BitmapFactory.decodeResource(context.resources, R.drawable.sked_logo)
+        } catch (_: Exception) {
+            null
+        }
+
+        val builder = NotificationCompat.Builder(context, UPDATE_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification_sked)
+            .setContentTitle("🚀 Sked Update Available (v${update.versionName})")
+            .setContentText("Tap to install: $summary")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Version ${update.versionName} is ready to install!\n\n${update.releaseNotes}\n\nTap to download and install."))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+
+        if (largeIcon != null) {
+            builder.setLargeIcon(largeIcon)
+        }
+
+        try {
+            NotificationManagerCompat.from(context).notify(2001, builder.build())
+            prefs.edit().putInt(KEY_LAST_NOTIFIED_CODE, update.versionCode).apply()
+        } catch (_: Exception) {}
+    }
 
     // Candidate version endpoints (checks primary then fallbacks)
     private val VERSION_URLS = listOf(
@@ -110,7 +188,7 @@ object AppUpdateManager {
 
                     val (localCode, _) = getCurrentVersionInfo(context)
                     if (remoteVersionCode > localCode) {
-                        return@withContext UpdateInfo(
+                        val updateInfo = UpdateInfo(
                             versionCode = remoteVersionCode,
                             versionName = remoteVersionName,
                             releaseNotes = releaseNotes,
@@ -119,6 +197,8 @@ object AppUpdateManager {
                             fileSize = fileSize,
                             forceUpdate = forceUpdate
                         )
+                        notifyUpdateAvailable(context, updateInfo)
+                        return@withContext updateInfo
                     } else {
                         // Already on latest
                         return@withContext null

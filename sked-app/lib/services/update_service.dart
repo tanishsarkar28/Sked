@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
 
 class AppUpdateInfo {
@@ -24,8 +25,20 @@ class AppUpdateInfo {
 }
 
 class UpdateService {
-  static const int currentVersionCode = 7;
-  static const String currentVersionName = '1.2.4';
+  static const int currentVersionCode = 8;
+  static const String currentVersionName = '1.3.0';
+  static const String keyLastNotifiedUpdate = 'last_notified_update_code';
+
+  static Future<bool> shouldNotifyUpdate(int remoteCode) async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastNotified = prefs.getInt(keyLastNotifiedUpdate) ?? 0;
+    return lastNotified != remoteCode;
+  }
+
+  static Future<void> markUpdateNotified(int remoteCode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(keyLastNotifiedUpdate, remoteCode);
+  }
 
   static const List<String> versionUrls = [
     'https://sked-gold.vercel.app/version.json',
@@ -104,7 +117,7 @@ class UpdateService {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'A new version of Sked is available for your iPhone (${update.fileSize}).',
+              'A new version of Sked is available for your device (${update.fileSize}).',
               style: const TextStyle(fontSize: 13, color: SkedColors.chalk, height: 1.4),
             ),
             const SizedBox(height: 12),

@@ -164,7 +164,7 @@ class AboutDeveloperDialog extends StatelessWidget {
                   const SizedBox(width: 10),
                   const Expanded(
                     child: Text(
-                      '100% On-Device & Private. All timetable and datesheet data scraped and stored locally on your iPhone with zero external servers.',
+                      '100% On-Device & Private. All timetable and datesheet data scraped and stored locally on your device with zero external servers.',
                       style: TextStyle(
                         fontSize: 11,
                         color: SkedColors.slate,
@@ -266,7 +266,7 @@ class AboutDeveloperDialog extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  'SKED v1.2.4 • iOS',
+                  'SKED v${UpdateService.currentVersionName} • iOS',
                   style: const TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 10,

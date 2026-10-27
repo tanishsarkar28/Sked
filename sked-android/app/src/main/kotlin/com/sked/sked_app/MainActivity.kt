@@ -17,6 +17,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -71,6 +72,7 @@ import com.sked.sked_app.widget.TimetableRefreshWorker
 import com.sked.sked_app.widget.TimetableRefreshWorker.Companion.KEY_USER_ID
 import com.sked.sked_app.widget.TimetableWidgetReceiver
 import com.sked.sked_app.update.*
+import com.sked.sked_app.gpa.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -101,7 +103,24 @@ data class ClassItem(
     val section: String = "",
     val group: String = "",
     val description: String = ""
-)
+) {
+    val isMakeup: Boolean
+        get() {
+            val t = type.lowercase()
+            val d = description.lowercase()
+            return t.contains("make") ||
+                    t.contains("adjust") ||
+                    t.contains("extra") ||
+                    d.contains("make-up") ||
+                    d.contains("makeup") ||
+                    d.contains("adjustment") ||
+                    d.contains("extra class") ||
+                    d.contains("make up")
+        }
+
+    val uniqueKey: String
+        get() = "${courseCode.uppercase()}_${day.lowercase()}_${start.trim()}_${end.trim()}_${room.lowercase()}"
+}
 
 // ── Sked Palette — logo-anchored: orange on black, one accent, no scatter ───
 
@@ -147,6 +166,16 @@ class MainActivity : ComponentActivity() {
         com.sked.sked_app.telemetry.TelemetryManager.recordDailyActiveUser(this)
         TimetableRefreshWorker.schedule(this)
 
+        AutoSyncManager.createNotificationChannel(this)
+        AppUpdateManager.createUpdateNotificationChannel(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
+
+        handleTestNotificationIntent(intent)
+
         setContent {
             SkedApp(
                 onPinWidget = { pinHomeWidget() },
@@ -155,11 +184,45 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleTestNotificationIntent(intent)
+    }
+
+    private fun handleTestNotificationIntent(intent: Intent?) {
+        if (intent == null) return
+        val testType = intent.getStringExtra("TEST_NOTIFICATION") ?: return
+        if (testType.equals("MAKEUP", ignoreCase = true)) {
+            AutoSyncManager.createNotificationChannel(this)
+            AutoSyncManager.postMakeupNotification(
+                this,
+                "🔔 Makeup Class Added: CSE316",
+                "Tomorrow (Wednesday) • 10:20 AM - 11:10 AM • Room 34-601 (Dr. Rohit Sharma)"
+            )
+        } else if (testType.equals("UPDATE", ignoreCase = true)) {
+            AppUpdateManager.createUpdateNotificationChannel(this)
+            AppUpdateManager.notifyUpdateAvailable(
+                this,
+                com.sked.sked_app.update.UpdateInfo(
+                    versionCode = 9,
+                    versionName = "1.3.1",
+                    releaseNotes = "• Instant UMS sync engine\n• Real-time makeup class alerts\n• Exam radar updates",
+                    apkUrl = "https://sked-gold.vercel.app/downloads/sked-android.apk"
+                ),
+                force = true
+            )
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         TimetableRefreshWorker.runNow(this)
-        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+        // BUG-02 FIX: Use lifecycleScope so the coroutine is automatically
+        // cancelled when the Activity is destroyed — no more scope leaks.
+        lifecycleScope.launch(Dispatchers.IO) {
             TimetableRefreshWorker.updateWidget(this@MainActivity)
+            AutoSyncManager.performSync(this@MainActivity)
         }
     }
 
@@ -183,14 +246,24 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// BUG-04 FIX: Reusable OkHttpClient singleton for WebView interception.
+// Avoids thread pool & socket exhaustion from per-request client allocation.
+private val interceptOkHttpClient: OkHttpClient by lazy {
+    OkHttpClient.Builder()
+        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+}
+
 private fun verifyAdminCredentials(id: String, pass: String): Boolean {
     val trimmedId = id.trim()
     val input = "$trimmedId:$pass:sked_admin_salt_99"
     val md = java.security.MessageDigest.getInstance("SHA-256")
     val digest = md.digest(input.toByteArray(Charsets.UTF_8))
     val hash = digest.joinToString("") { "%02x".format(it) }
-    return hash == "724a25c83f0bc481e107a9b40df041af5fdee54ef7353f411917af941f901b76" ||
-           (trimmedId.equals("admin", ignoreCase = true) && (pass == "admin" || pass == "admin123" || pass == "skedadmin"))
+    // BUG-13 FIX: removed plaintext admin fallback passwords that were visible
+    // to anyone who decompiled the APK. SHA-256 hash is the only valid path.
+    return hash == "724a25c83f0bc481e107a9b40df041af5fdee54ef7353f411917af941f901b76"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -221,6 +294,9 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
     var loginUserIdInput by remember { mutableStateOf("") }
     var loginPasswordInput by remember { mutableStateOf("") }
     var hasTimetable by remember { mutableStateOf(false) }
+    var lastSyncTimestamp by remember {
+        mutableLongStateOf(prefs.getLong(AutoSyncManager.KEY_LAST_SYNC_TIMESTAMP, System.currentTimeMillis()))
+    }
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -243,18 +319,25 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
 
                 // Load real exam datesheet only
                 val realExams = ExamParser.loadExamsFromPrefs(context)
+                val savedTs = prefs.getLong(AutoSyncManager.KEY_LAST_SYNC_TIMESTAMP, 0L)
 
                 withContext(Dispatchers.Main) {
                     todayClasses = todayEntries
                     weekClasses = weekMap
                     examList = realExams
                     hasTimetable = allEntries.isNotEmpty()
+                    if (savedTs > 0L) {
+                        lastSyncTimestamp = savedTs
+                    }
                     if (selectedDay !in days) {
                         selectedDay = if (todayName in days) todayName else "Monday"
                     }
                     isLoading = false
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                // BUG-11 FIX: log the exception instead of silently discarding it.
+                // Silent swallows make corrupt SharedPreferences undiagnosable.
+                android.util.Log.e("SkedApp", "loadLocalData error", e)
             } finally {
                 withContext(Dispatchers.Main) {
                     isLoading = false
@@ -311,6 +394,59 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
         )
     } else {
         // ── LOGGED IN: Main Timetable Dashboard ──────────────────────────────
+
+        // BUG-14 FIX: Single shared lambda for both onRefresh and onReSync
+        // so they can never diverge in behaviour across future edits.
+        val triggerForcedSync: () -> Unit = {
+            isLoading = true
+            coroutineScope.launch(Dispatchers.IO) {
+                val syncRes = AutoSyncManager.performSync(context, force = true)
+                withContext(Dispatchers.Main) {
+                    isLoading = false
+                    when (syncRes.type) {
+                        AndroidSyncResultType.SUCCESS -> {
+                            // BUG-14: read the timestamp AutoSyncManager already committed
+                            val ts = prefs.getLong(AutoSyncManager.KEY_LAST_SYNC_TIMESTAMP, 0L)
+                            if (ts > 0L) lastSyncTimestamp = ts
+                            loadLocalData()
+                            if (syncRes.newMakeupClasses.isNotEmpty()) {
+                                Toast.makeText(context, "Synced: ${syncRes.newMakeupClasses.size} new makeup classes found!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Timetable up to date.", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        AndroidSyncResultType.AUTH_EXPIRED, AndroidSyncResultType.SERVER_ERROR -> {
+                            val savedPwd = prefs.getString("saved_ums_pwd", "") ?: ""
+                            if (savedPwd.isNotBlank()) {
+                                Toast.makeText(context, "Refreshing UMS session...", Toast.LENGTH_SHORT).show()
+                                loginUserIdInput = currentUserId
+                                loginPasswordInput = savedPwd
+                                showWebViewBridge = true
+                            } else {
+                                Toast.makeText(context, "UMS session expired. Please re-authenticate.", Toast.LENGTH_SHORT).show()
+                                loginUserIdInput = currentUserId
+                                showReSyncDialog = true
+                            }
+                        }
+                        else -> {
+                            loadLocalData()
+                        }
+                    }
+                }
+            }
+        }
+
+        val triggerFullReSync: () -> Unit = {
+            val savedPwd = prefs.getString("saved_ums_pwd", "") ?: ""
+            loginUserIdInput = currentUserId
+            if (savedPwd.isNotBlank()) {
+                loginPasswordInput = savedPwd
+                showWebViewBridge = true
+            } else {
+                showReSyncDialog = true
+            }
+        }
+
         DashboardScreen(
             userId = currentUserId,
             todayClasses = todayClasses,
@@ -320,13 +456,12 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
             todayName = todayName,
             days = days,
             isLoading = isLoading,
+            lastSyncTimestamp = lastSyncTimestamp,
             exams = examList,
-            onRefresh = { loadLocalData() },
+            onRefresh = triggerForcedSync,
             onPinWidget = onPinWidget,
-            onReSync = {
-                loginUserIdInput = currentUserId
-                showReSyncDialog = true
-            },
+            onReSync = triggerForcedSync,
+            onFullReSync = triggerFullReSync,
             onLogoutClick = { showLogoutDialog = true }
         )
     }
@@ -340,11 +475,14 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
             onSuccess = { syncedUserId ->
                 loginErrorMessage = ""
                 currentUserId = syncedUserId
+                val now = System.currentTimeMillis()
                 prefs.edit()
                     .putString(KEY_USER_ID, syncedUserId)
                     .putString("saved_ums_user", syncedUserId)
                     .putString("saved_ums_pwd", loginPasswordInput)
+                    .putLong(AutoSyncManager.KEY_LAST_SYNC_TIMESTAMP, now)
                     .apply()
+                lastSyncTimestamp = now
                 showWebViewBridge = false
                 showReSyncDialog = false
                 loadLocalData()
@@ -781,10 +919,12 @@ fun DashboardScreen(
     todayName: String,
     days: List<String>,
     isLoading: Boolean,
+    lastSyncTimestamp: Long,
     exams: List<ExamItem> = emptyList(),
     onRefresh: () -> Unit,
     onPinWidget: () -> Unit,
     onReSync: () -> Unit,
+    onFullReSync: () -> Unit = onReSync,
     onLogoutClick: () -> Unit
 ) {
     val context = LocalContext.current
@@ -809,6 +949,36 @@ fun DashboardScreen(
         SimpleDateFormat("EEEE • MMM d", Locale.getDefault()).format(Date())
     }
 
+    val lastSyncText = remember(lastSyncTimestamp, isLoading) {
+        if (lastSyncTimestamp <= 0L) {
+            "Synced just now"
+        } else {
+            val now = System.currentTimeMillis()
+            val diffMs = now - lastSyncTimestamp
+            val diffMins = diffMs / (60 * 1000)
+            val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(lastSyncTimestamp))
+            when {
+                diffMins < 1 -> "Synced just now"
+                diffMins < 60 -> "Synced ${diffMins}m ago"
+                diffMs < 24 * 60 * 60 * 1000L -> "Synced $timeFormat"
+                else -> {
+                    val dateFormat = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(lastSyncTimestamp))
+                    "Synced $dateFormat"
+                }
+            }
+        }
+    }
+
+    val refreshRotation by rememberInfiniteTransition(label = "refresh").animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "refreshRot"
+    )
+
     Scaffold(
         containerColor = Ink,
         topBar = {
@@ -824,16 +994,6 @@ fun DashboardScreen(
                     )
                 },
                 actions = {
-                    val refreshRotation by rememberInfiniteTransition(label = "refresh").animateFloat(
-                        initialValue = 0f,
-                        targetValue = 360f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(900, easing = LinearEasing),
-                            repeatMode = RepeatMode.Restart
-                        ),
-                        label = "refreshRot"
-                    )
-
                     IconButton(onClick = { showAboutDialog = true }) {
                         Icon(
                             imageVector = Icons.Default.Info,
@@ -854,15 +1014,6 @@ fun DashboardScreen(
                             imageVector = Icons.Default.Share,
                             contentDescription = "Share Sked",
                             tint = Slate
-                        )
-                    }
-
-                    IconButton(onClick = onRefresh) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh",
-                            tint = if (isLoading) Blaze else Chalk,
-                            modifier = if (isLoading) Modifier.rotate(refreshRotation) else Modifier
                         )
                     }
 
@@ -891,6 +1042,52 @@ fun DashboardScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // BUG-08 FIX: Offload SharedPreferences query from composition thread to IO
+            var hasAuthFailed by remember { mutableStateOf(false) }
+            LaunchedEffect(isLoading) {
+                hasAuthFailed = withContext(Dispatchers.IO) {
+                    AutoSyncManager.hasAuthFailed(context)
+                }
+            }
+            if (hasAuthFailed) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Slab,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Blaze.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .clickable { onReSync() }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = Blaze,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "UMS session expired • Tap to reconnect auto-sync",
+                            fontFamily = BarlowCondensed,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                            color = Chalk,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = Slate,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+            }
+
             // Header row — flat, rule-separated, no card wrapper
             Column(
                 modifier = Modifier
@@ -923,41 +1120,85 @@ fun DashboardScreen(
 
                         val isTodaySelected = selectedDay.equals(todayName, ignoreCase = true)
                         val displayCount = if (isTodaySelected) todayClasses.size else (weekClasses.entries.find { it.key.equals(selectedDay, ignoreCase = true) }?.value?.size ?: 0)
-                        Text(
-                            text = if (isTodaySelected) {
-                                if (displayCount > 0) "$displayCount classes today." else "Nothing today."
-                            } else {
-                                if (displayCount > 0) "$displayCount classes on $selectedDay." else "No classes on $selectedDay."
-                            },
-                            fontSize = 16.sp,
-                            fontFamily = BarlowCondensed,
-                            fontWeight = FontWeight.Bold,
-                            color = Chalk
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = if (isTodaySelected) {
+                                    if (displayCount > 0) "$displayCount classes today." else "Nothing today."
+                                } else {
+                                    if (displayCount > 0) "$displayCount classes on $selectedDay." else "No classes on $selectedDay."
+                                },
+                                fontSize = 16.sp,
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                color = Chalk
+                            )
+
+                            val makeupCountThisWeek = remember(weekClasses) {
+                                weekClasses.values.flatten().count { it.isMakeup }
+                            }
+                            if (makeupCountThisWeek > 0) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(3.dp),
+                                    color = Blaze.copy(alpha = 0.18f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Blaze.copy(alpha = 0.5f))
+                                ) {
+                                    Text(
+                                        text = "$makeupCountThisWeek MAKEUP",
+                                        fontFamily = BarlowCondensed,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp,
+                                        color = Blaze,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
 
-                    // Re-sync — sharp, utilitarian
-                    OutlinedButton(
-                        onClick = onReSync,
-                        shape = RoundedCornerShape(4.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Chalk),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Sync,
-                            contentDescription = null,
-                            tint = Blaze,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            text = "RE-SYNC",
-                            fontSize = 11.sp,
-                            fontFamily = BarlowCondensed,
-                            fontWeight = FontWeight.Bold,
-                            color = Chalk
-                        )
+                    // Re-sync — sharp, utilitarian with timestamp
+                    Column(horizontalAlignment = Alignment.End) {
+                        OutlinedButton(
+                            onClick = {
+                                if (activeTab == "GPA" || activeTab == "EXAMS") {
+                                    onFullReSync()
+                                } else {
+                                    onReSync()
+                                }
+                            },
+                            enabled = !isLoading,
+                            shape = RoundedCornerShape(4.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (isLoading) Blaze else Rule),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Chalk),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Sync,
+                                contentDescription = null,
+                                tint = Blaze,
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .then(if (isLoading) Modifier.rotate(refreshRotation) else Modifier)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = if (isLoading) "SYNCING..." else "RE-SYNC",
+                                fontSize = 11.sp,
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isLoading) Blaze else Chalk
+                            )
+                        }
+
+                        if (lastSyncText.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = lastSyncText,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = Slate
+                            )
+                        }
                     }
                 }
 
@@ -966,12 +1207,12 @@ fun DashboardScreen(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // ── Mode Switcher: CLASSES vs EXAMS ─────────────────────────
+                // ── Mode Switcher: CLASSES vs EXAMS vs GPA ──────────────────
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Surface(
                         shape = RoundedCornerShape(4.dp),
@@ -993,7 +1234,7 @@ fun DashboardScreen(
                                 tint = if (activeTab == "CLASSES") Ink else Slate,
                                 modifier = Modifier.size(13.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
                             Text(
                                 text = "CLASSES",
                                 fontSize = 12.sp,
@@ -1025,7 +1266,7 @@ fun DashboardScreen(
                                 tint = if (activeTab == "EXAMS") Ink else Slate,
                                 modifier = Modifier.size(14.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
                             Text(
                                 text = "EXAMS (${exams.size})",
                                 fontSize = 12.sp,
@@ -1036,13 +1277,51 @@ fun DashboardScreen(
                             )
                         }
                     }
+
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (activeTab == "GPA") Blaze else Slab,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (activeTab == "GPA") Blaze else Rule),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(34.dp)
+                            .clickable { activeTab = "GPA" }
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Calculate,
+                                contentDescription = null,
+                                tint = if (activeTab == "GPA") Ink else Slate,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "GPA",
+                                fontSize = 12.sp,
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activeTab == "GPA") Ink else Slate,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                    }
                 }
             }
 
             if (activeTab == "EXAMS") {
                 ExamScreen(
                     exams = exams,
-                    onRefresh = onReSync,
+                    onRefresh = onFullReSync,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else if (activeTab == "GPA") {
+                GpaScreen(
+                    timetableEntries = weekClasses.values.flatten().ifEmpty { todayClasses },
+                    onSyncUms = onFullReSync,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -1666,9 +1945,15 @@ fun UmsAuthBridgeDialog(
                         wv.evaluateJavascript(themeJs, null)
                     } catch (_: Exception) {}
 
+                    val startTime = android.os.SystemClock.elapsedRealtime()
                     while (!isDone) {
                         kotlinx.coroutines.delay(800)
-                        elapsedSeconds += 1
+                        // BUG-19 FIX: Calculate elapsed seconds accurately from wall clock
+                        // rather than assuming 800ms delay equals 1 second.
+                        elapsedSeconds = ((android.os.SystemClock.elapsedRealtime() - startTime) / 1000L).toInt()
+                        if (elapsedSeconds >= 5 && statusText.contains("Turnstile", ignoreCase = true) && !showRawWebView) {
+                            showRawWebView = true
+                        }
                         val tickJs = """
                             (function() {
                                 try {
@@ -1785,10 +2070,16 @@ fun UmsAuthBridgeDialog(
                                                 '/frmSeatingPlan.aspx',
                                                 '/lpuums/frmStudentSeatingPlan.aspx',
                                                 '/frmStudentSeatingPlan.aspx',
-                                                '/lpuums/frmExamSeatingPlan.aspx'
+                                                '/lpuums/frmExamSeatingPlan.aspx',
+                                                '/frmStudentResult.aspx',
+                                                '/lpuums/frmStudentResult.aspx',
+                                                '/frmGradeCard.aspx',
+                                                '/lpuums/frmGradeCard.aspx',
+                                                '/frmResultSummary.aspx',
+                                                '/lpuums/frmResultSummary.aspx'
                                             ];
                                             try {
-                                                var regex = /href=["']([^"']*(?:datesheet|seating|exam|schedule)[^"']*)["']/gi;
+                                                var regex = /href=["']([^"']*(?:datesheet|seating|exam|schedule|result|grade)[^"']*)["']/gi;
                                                 var match;
                                                 while ((match = regex.exec(loginHtml)) !== null) {
                                                     var u = match[1];
@@ -1799,7 +2090,7 @@ fun UmsAuthBridgeDialog(
                                                 var links = document.querySelectorAll('a[href]');
                                                 for (var li = 0; li < links.length; li++) {
                                                     var href = links[li].getAttribute('href') || '';
-                                                    if (href && /(?:datesheet|seating|exam)/i.test(href) && !href.startsWith('javascript:') && !href.startsWith('#') && href.indexOf('openapp.aspx') === -1 && dsUrls.indexOf(href) === -1) {
+                                                    if (href && /(?:datesheet|seating|exam|result|grade)/i.test(href) && !href.startsWith('javascript:') && !href.startsWith('#') && href.indexOf('openapp.aspx') === -1 && dsUrls.indexOf(href) === -1) {
                                                         dsUrls.push(href);
                                                     }
                                                 }
@@ -1815,7 +2106,7 @@ fun UmsAuthBridgeDialog(
                                                 for (var i = 0; i < results.length; i++) {
                                                     var h = results[i].html || '';
                                                     debugInfo.push(results[i].name + ':' + results[i].status + ':' + h.length);
-                                                    if (h && (/[A-Z]{2,5}\d{3,4}/.test(h) || /datesheet|seating|exam/i.test(h))) {
+                                                    if (h && (/[A-Z]{2,5}\d{3,4}/.test(h) || /datesheet|seating|exam|result|grade|tgpa|cgpa/i.test(h))) {
                                                         combinedHtml += '\n<!-- PAGE: ' + results[i].name + ' -->\n' + h;
                                                     }
                                                 }
@@ -1950,6 +2241,11 @@ fun UmsAuthBridgeDialog(
                                                 wv.evaluateJavascript("window._skedDsDebug || ''") { dsDbg ->
                                                     coroutineScope.launch(Dispatchers.IO) {
                                                         try {
+                                                            val rawCookies = CookieManager.getInstance().getCookie("https://ums.lpu.in") ?: ""
+                                                            if (rawCookies.isNotBlank()) {
+                                                                AutoSyncManager.saveCookies(context, rawCookies)
+                                                            }
+
                                                             val entries: List<ClassItem> = if (!ttRaw.isNullOrBlank()) TimetableParser.parse(ttRaw) else emptyList()
                                                             if (entries.isNotEmpty()) {
                                                                 TimetableParser.saveToPrefs(context, entries, userId)
@@ -1997,9 +2293,11 @@ fun UmsAuthBridgeDialog(
                                                                         .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36")
                                                                         .build()
 
-                                                                    val resp = okClient.newCall(req).execute()
-                                                                    val loc = resp.header("Location") ?: ""
-                                                                    android.util.Log.i("SkedSync", "openapp.aspx code: ${resp.code}, Location: ${loc.take(120)}")
+                                                                    val loc = okClient.newCall(req).execute().use { resp ->
+                                                                        val l = resp.header("Location") ?: ""
+                                                                        android.util.Log.i("SkedSync", "openapp.aspx code: ${resp.code}, Location: ${l.take(120)}")
+                                                                        l
+                                                                    }
                                                                     if (loc.isNotBlank()) {
                                                                         seatingUrl = if (loc.startsWith("http")) loc else "https://ums.lpu.in" + loc
                                                                     }
@@ -2127,6 +2425,156 @@ fun UmsAuthBridgeDialog(
                                                             }
                                                             val exams = examsFound
 
+                                                            // 3. RESULT SUMMARY SYNC: Fetch CGPA & Past Semesters TGPA
+                                                            val classicResult = com.sked.sked_app.gpa.ResultParser.parse(cleanDsHtml)
+                                                            if (classicResult.terms.isNotEmpty() || classicResult.cgpa != null) {
+                                                                com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, classicResult, entries)
+                                                                android.util.Log.i("SkedSync", "Fast path: Synced ${classicResult.terms.size} terms from classic UMS (CGPA: ${classicResult.cgpa})")
+                                                            }
+
+                                                            withContext(Dispatchers.Main) {
+                                                                statusText = "Syncing Result Summary & CGPA..."
+                                                            }
+
+                                                            var resultUrl = ""
+                                                            try {
+                                                                val cm = CookieManager.getInstance()
+                                                                val umsCookies = cm.getCookie("https://ums.lpu.in") ?: ""
+                                                                val okClient = OkHttpClient.Builder()
+                                                                    .followRedirects(false)
+                                                                    .followSslRedirects(false)
+                                                                    .connectTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+                                                                    .readTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+                                                                    .build()
+
+                                                                val req = Request.Builder()
+                                                                    .url("https://ums.lpu.in/lpuums/openapp.aspx?from=ums&toApp=nextproject&pagename=dashboard/examination/result/resultsummary")
+                                                                    .header("Cookie", umsCookies)
+                                                                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36")
+                                                                    .build()
+
+                                                                val loc = okClient.newCall(req).execute().use { resp ->
+                                                                    resp.header("Location") ?: ""
+                                                                }
+                                                                if (loc.isNotBlank()) {
+                                                                    resultUrl = if (loc.startsWith("http")) loc else "https://ums.lpu.in" + loc
+                                                                }
+                                                            } catch (e: Exception) {
+                                                                android.util.Log.w("SkedSync", "openapp.aspx result query notice: ${e.message}")
+                                                            }
+
+                                                            if (resultUrl.isBlank()) {
+                                                                resultUrl = "https://studentums.lpu.in/dashboard/examination/result/resultsummary"
+                                                            }
+
+                                                            android.util.Log.i("SkedSync", "Navigating WebView to authentic resultUrl: $resultUrl")
+                                                            withContext(Dispatchers.Main) {
+                                                                wv.loadUrl(resultUrl)
+                                                            }
+
+                                                            var resAttempts = 0
+                                                            val maxResAttempts = 36 // 18 seconds max
+                                                            while (resAttempts < maxResAttempts) {
+                                                                delay(500)
+                                                                resAttempts++
+                                                                val elapsedSec = resAttempts / 2
+                                                                withContext(Dispatchers.Main) {
+                                                                    statusText = "Syncing Result Summary & CGPA (${elapsedSec}s)..."
+                                                                }
+
+                                                                val resInfoJson = withContext(Dispatchers.Main) {
+                                                                    suspendCancellableCoroutine<String> { cont ->
+                                                                        val pollResJs = """
+                                                                            (function() {
+                                                                                try {
+                                                                                    var href = window.location.href;
+                                                                                    if (href.indexOf('studentdashboard') !== -1 && href.indexOf('resultsummary') === -1) {
+                                                                                        window.location.href = 'https://studentums.lpu.in/dashboard/examination/result/resultsummary';
+                                                                                    }
+                                                                                    if (!window._skedResultHooked) {
+                                                                                        window._skedResultHooked = true;
+                                                                                        window._skedCapturedResults = {};
+                                                                                        var origLog = console.log;
+                                                                                        console.log = function() {
+                                                                                            try {
+                                                                                                var label = typeof arguments[0] === 'string' ? arguments[0] : '';
+                                                                                                for (var i = 0; i < arguments.length; i++) {
+                                                                                                    var a = arguments[i];
+                                                                                                    if (typeof a === 'object' && a !== null) {
+                                                                                                        try {
+                                                                                                            var s = JSON.stringify(a);
+                                                                                                            if (label.indexOf('TGPA Data') !== -1 || s.indexOf('TGPASem') !== -1 || s.indexOf('Tgpa') !== -1) {
+                                                                                                                window._skedCapturedResults['tgpaData'] = a;
+                                                                                                            }
+                                                                                                            if (label.indexOf('CoursewiseGrade') !== -1 || s.indexOf('CourseCode') !== -1 || s.indexOf('Assessment') !== -1) {
+                                                                                                                window._skedCapturedResults['coursewise'] = a;
+                                                                                                            }
+                                                                                                            if (s.indexOf('profileData') !== -1 || s.indexOf('cgpa') !== -1) {
+                                                                                                                window._skedCapturedResults['profile'] = a;
+                                                                                                            }
+                                                                                                        } catch(e) {}
+                                                                                                    }
+                                                                                                }
+                                                                                            } catch(e) {}
+                                                                                            return origLog.apply(console, arguments);
+                                                                                        };
+                                                                                    }
+                                                                                    var txt = document.body ? document.body.innerText : '';
+                                                                                    return JSON.stringify({
+                                                                                        url: href,
+                                                                                        len: txt.length,
+                                                                                        txt: txt,
+                                                                                        rawJson: JSON.stringify(window._skedCapturedResults || {})
+                                                                                    });
+                                                                                } catch(e) {
+                                                                                    return JSON.stringify({ error: e.toString(), url: window.location.href, len: 0, txt: '', rawJson: '{}' });
+                                                                                }
+                                                                            })()
+                                                                        """.trimIndent()
+                                                                        wv.evaluateJavascript(pollResJs) { res ->
+                                                                            cont.resume(res ?: "{}")
+                                                                        }
+                                                                    }
+                                                                }
+
+                                                                val cleanResInfo = if (resInfoJson.startsWith("\"") && resInfoJson.endsWith("\"")) {
+                                                                    try {
+                                                                        JSONObject("{\"v\":$resInfoJson}").getString("v")
+                                                                    } catch (_: Exception) { resInfoJson }
+                                                                } else resInfoJson
+
+                                                                val resObj = try { JSONObject(cleanResInfo) } catch (_: Exception) { JSONObject() }
+                                                                val resText = resObj.optString("txt")
+                                                                val resRawJson = resObj.optString("rawJson")
+
+                                                                if (resAttempts % 4 == 0 || resAttempts == 1) {
+                                                                    android.util.Log.i("SkedSync", "Result attempt #$resAttempts [len=${resText.length}] snippet: ${resText.replace(Regex("""\s+"""), " ").take(140)}")
+                                                                }
+
+                                                                if (resRawJson.isNotBlank() && resRawJson != "{}") {
+                                                                    val parsed = com.sked.sked_app.gpa.ResultParser.parse(resRawJson)
+                                                                    if (parsed.terms.isNotEmpty() || parsed.cgpa != null) {
+                                                                        com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, parsed, entries)
+                                                                        android.util.Log.i("SkedSync", "Successfully synced ${parsed.terms.size} terms from Result JSON payload! CGPA=${parsed.cgpa}")
+                                                                        break
+                                                                    }
+                                                                }
+
+                                                                if (resText.isNotBlank()) {
+                                                                    val parsed = com.sked.sked_app.gpa.ResultParser.parse(resText)
+                                                                    if (parsed.terms.isNotEmpty() || parsed.cgpa != null) {
+                                                                        com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, parsed, entries)
+                                                                        android.util.Log.i("SkedSync", "Successfully synced ${parsed.terms.size} terms from Result DOM text! CGPA=${parsed.cgpa}")
+                                                                        break
+                                                                    }
+                                                                }
+
+                                                                if (resAttempts >= 16 && (resText.contains("No Data Available", ignoreCase = true) || resText.contains("No record found", ignoreCase = true))) {
+                                                                    android.util.Log.i("SkedSync", "Result summary indicates no previous terms available")
+                                                                    break
+                                                                }
+                                                            }
+
                                                         try {
                                                             val manager = GlanceAppWidgetManager(context)
                                                             val ids = manager.getGlanceIds(TimetableWidget::class.java)
@@ -2139,7 +2587,9 @@ fun UmsAuthBridgeDialog(
                                                         withContext(Dispatchers.Main) {
                                                              if (entries.isNotEmpty()) {
                                                                  val examMsg = if (exams.isNotEmpty()) " & ${exams.size} exams" else ""
-                                                                 Toast.makeText(context, "Synced timetable (${entries.size} classes$examMsg)", Toast.LENGTH_SHORT).show()
+                                                                 val gpaState = com.sked.sked_app.gpa.GpaStorage.load(context, entries)
+                                                                 val cgpaMsg = if (gpaState.displayCgpa != null) " • CGPA: ${String.format(java.util.Locale.US, "%.2f", gpaState.displayCgpa)}" else ""
+                                                                 Toast.makeText(context, "Synced timetable (${entries.size} classes$examMsg$cgpaMsg)", Toast.LENGTH_SHORT).show()
                                                                  onSuccess(userId)
                                                              } else {
                                                                  isSyncing = false
@@ -2229,7 +2679,6 @@ fun UmsAuthBridgeDialog(
                                 }
                                 if (url.contains("LoginNew.aspx", ignoreCase = true) && request.method.equals("GET", ignoreCase = true)) {
                                     try {
-                                        val okHttp = OkHttpClient.Builder().build()
                                         val cm = CookieManager.getInstance()
                                         val cookies = cm.getCookie("https://ums.lpu.in") ?: ""
 
@@ -2242,14 +2691,19 @@ fun UmsAuthBridgeDialog(
                                             builder.header("Cookie", cookies)
                                         }
 
-                                        val resp = okHttp.newCall(builder.build()).execute()
-                                        val setCookies = resp.headers("Set-Cookie")
-                                        for (sc in setCookies) {
-                                            cm.setCookie("https://ums.lpu.in", sc)
+                                        // BUG-04 & BUG-09 FIX: Use singleton client and close response body
+                                        val resp = interceptOkHttpClient.newCall(builder.build()).execute()
+                                        val (mime, bodyBytes) = resp.use { r ->
+                                            val setCookies = r.headers("Set-Cookie")
+                                            for (sc in setCookies) {
+                                                cm.setCookie("https://ums.lpu.in", sc)
+                                            }
+                                            val m = r.header("Content-Type", "text/html")?.split(";")?.firstOrNull()?.trim() ?: "text/html"
+                                            Pair(m, r.body?.bytes())
                                         }
-                                        val mime = resp.header("Content-Type", "text/html")?.split(";")?.firstOrNull()?.trim() ?: "text/html"
-                                        val bodyStream = resp.body?.byteStream()
-                                        return android.webkit.WebResourceResponse(mime, "utf-8", bodyStream)
+                                        if (bodyBytes != null) {
+                                            return android.webkit.WebResourceResponse(mime, "utf-8", java.io.ByteArrayInputStream(bodyBytes))
+                                        }
                                     } catch (_: Exception) {}
                                 }
                                 return super.shouldInterceptRequest(view, request)
@@ -2805,6 +3259,23 @@ fun ClassCard(
                     )
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (item.isMakeup) {
+                            Surface(
+                                shape = RoundedCornerShape(3.dp),
+                                color = Blaze.copy(alpha = 0.18f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Blaze.copy(alpha = 0.6f))
+                            ) {
+                                Text(
+                                    text = "MAKEUP",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Blaze,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+
                         // Monochrome type pill
                         Surface(
                             shape = RoundedCornerShape(3.dp),

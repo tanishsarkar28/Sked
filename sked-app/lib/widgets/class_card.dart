@@ -109,6 +109,27 @@ class ClassCard extends StatelessWidget {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            if (item.isMakeup) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: SkedColors.blaze.withOpacity(0.18),
+                                  borderRadius: BorderRadius.circular(3),
+                                  border: Border.all(color: SkedColors.blaze.withOpacity(0.6)),
+                                ),
+                                child: Text(
+                                  'MAKEUP',
+                                  style: GoogleFonts.barlowCondensed(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: SkedColors.blaze,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+
                             // Monochrome type pill
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

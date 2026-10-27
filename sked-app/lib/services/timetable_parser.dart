@@ -15,6 +15,8 @@ class TimetableParser {
     'L': 'Lecture',
     'P': 'Practical',
     'T': 'Tutorial',
+    'M': 'Make-up',
+    'A': 'Adjustment',
   };
 
   static const List<String> dayNames = [
@@ -45,7 +47,8 @@ class TimetableParser {
   }
 
   static (String start, String end) parseTimeRange(String range) {
-    final parts = range.split('-');
+    // BUG-17 FIX: split on ASCII hyphen, en-dash (\u2013), or em-dash (\u2014)
+    final parts = range.split(RegExp(r'[-\u2013\u2014]'));
     final start = parts.isNotEmpty ? parts[0].trim() : '';
     final end = parts.length > 1 ? parts[1].trim() : '';
     return (start, end);
@@ -138,7 +141,8 @@ class TimetableParser {
   /// Filter entries for a specific day (case-insensitive), sorted by start time.
   static List<ClassEntry> filterByDay(List<ClassEntry> entries, String dayName) {
     final filtered = entries.where((e) => e.day.toLowerCase() == dayName.toLowerCase()).toList();
-    filtered.sort((a, b) => a.start.compareTo(b.start));
+    // BUG-05 FIX: sort by numeric startMinutes, not string ("9:20" > "10:20" lexicographically)
+    filtered.sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
     return filtered;
   }
 
@@ -149,7 +153,8 @@ class TimetableParser {
       map.putIfAbsent(e.day, () => []).add(e);
     }
     for (final day in map.keys) {
-      map[day]!.sort((a, b) => a.start.compareTo(b.start));
+      // BUG-05 FIX: sort by numeric startMinutes, not string
+      map[day]!.sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
     }
     return map;
   }

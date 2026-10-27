@@ -32,7 +32,13 @@ object TimetableParser {
 
     // ── Type mapping ─────────────────────────────────────────────────────────
 
-    private val TYPE_LABELS = mapOf("L" to "Lecture", "P" to "Practical", "T" to "Tutorial")
+    private val TYPE_LABELS = mapOf(
+        "L" to "Lecture",
+        "P" to "Practical",
+        "T" to "Tutorial",
+        "M" to "Make-up",
+        "A" to "Adjustment"
+    )
 
     private val DAY_NAMES = arrayOf(
         "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
@@ -67,8 +73,20 @@ object TimetableParser {
     }
 
     private fun parseTimeRange(range: String): Pair<String, String> {
-        val parts = range.split("-")
+        // BUG-17 FIX: handle en-dash (\u2013) and em-dash (\u2014) in addition to ASCII hyphen
+        val parts = range.split(Regex("[-\u2013\u2014]"), limit = 2)
         return Pair(parts.getOrElse(0) { "" }.trim(), parts.getOrElse(1) { "" }.trim())
+    }
+
+    fun parseTimeInMinutes(timeStr: String): Int {
+        val clean = timeStr.trim()
+        val parts = clean.split(":")
+        if (parts.size >= 2) {
+            val h = parts[0].trim().toIntOrNull() ?: 0
+            val m = parts[1].trim().take(2).toIntOrNull() ?: 0
+            return h * 60 + m
+        }
+        return 0
     }
 
     private fun parseType(code: String): String {
@@ -166,7 +184,8 @@ object TimetableParser {
     fun filterByDay(entries: List<ClassItem>, dayName: String): List<ClassItem> {
         return entries
             .filter { it.day.equals(dayName, ignoreCase = true) }
-            .sortedBy { it.start }
+            // BUG-05 FIX: sort by numeric minutes — "9:20" > "10:20" lexicographically
+            .sortedBy { parseTimeInMinutes(it.start) }
     }
 
     /**
@@ -175,7 +194,8 @@ object TimetableParser {
     fun groupByDay(entries: List<ClassItem>): Map<String, List<ClassItem>> {
         return entries
             .groupBy { it.day }
-            .mapValues { (_, dayEntries) -> dayEntries.sortedBy { it.start } }
+            // BUG-05 FIX: sort by numeric minutes
+            .mapValues { (_, dayEntries) -> dayEntries.sortedBy { parseTimeInMinutes(it.start) } }
     }
 
     // ── SharedPreferences persistence ────────────────────────────────────────
@@ -200,6 +220,9 @@ object TimetableParser {
             .putString(KEY_ALL_ENTRIES, allJson.toString())
             .putString(KEY_TODAY, todayJson.toString())
             .putString(KEY_USER_ID, userId)
+            // BUG-15 FIX: Removed KEY_LAST_SYNC_TIMESTAMP write from here.
+            // AutoSyncManager.performSync() is the single owner of that timestamp
+            // to prevent dual-write drift and false "synced just now" on any save.
             .apply()
     }
 
