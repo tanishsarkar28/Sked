@@ -1,13 +1,15 @@
 package com.sked.sked_app.leave
 
 data class LeaveBalance(
-    val dayTotal: Int = 75,
+    val dayTotal: Int = 0,
     val dayAvailed: Int = 0,
-    val dayBalance: Int = 75,
-    val nightTotal: Int = 60,
+    val dayBalance: Int = 0,
+    val nightTotal: Int = 0,
     val nightAvailed: Int = 0,
-    val nightBalance: Int = 60
-)
+    val nightBalance: Int = 0
+) {
+    val isLoaded: Boolean get() = dayTotal > 0 || nightTotal > 0
+}
 
 data class LeaveRecord(
     val leaveId: String = "",

@@ -32,12 +32,12 @@ object LeaveStorage {
         return try {
             val obj = JSONObject(raw)
             LeaveBalance(
-                dayTotal = obj.optInt("dayTotal", 75),
+                dayTotal = obj.optInt("dayTotal", 0),
                 dayAvailed = obj.optInt("dayAvailed", 0),
-                dayBalance = obj.optInt("dayBalance", 75),
-                nightTotal = obj.optInt("nightTotal", 60),
+                dayBalance = obj.optInt("dayBalance", 0),
+                nightTotal = obj.optInt("nightTotal", 0),
                 nightAvailed = obj.optInt("nightAvailed", 0),
-                nightBalance = obj.optInt("nightBalance", 60)
+                nightBalance = obj.optInt("nightBalance", 0)
             )
         } catch (_: Exception) {
             LeaveBalance()

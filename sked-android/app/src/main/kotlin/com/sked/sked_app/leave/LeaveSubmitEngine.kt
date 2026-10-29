@@ -25,8 +25,18 @@ object LeaveSubmitEngine {
     suspend fun fetchLatestData(context: Context): LeaveParser.ParsedLeaveData = withContext(Dispatchers.IO) {
         try {
             val cm = CookieManager.getInstance()
-            val cookies = cm.getCookie("https://ums.lpu.in") ?: ""
-            if (cookies.isBlank()) return@withContext LeaveParser.ParsedLeaveData()
+            var cookies = cm.getCookie("https://ums.lpu.in") ?: ""
+            if (cookies.isBlank()) {
+                val prefs = context.getSharedPreferences("sked_prefs", Context.MODE_PRIVATE)
+                cookies = prefs.getString(com.sked.sked_app.AutoSyncManager.KEY_UMS_COOKIES, "") ?: ""
+            }
+            if (cookies.isBlank()) {
+                return@withContext LeaveParser.ParsedLeaveData(
+                    balance = LeaveStorage.loadBalance(context),
+                    profile = LeaveStorage.loadProfile(context),
+                    records = LeaveStorage.loadRecords(context)
+                )
+            }
 
             val client = OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)

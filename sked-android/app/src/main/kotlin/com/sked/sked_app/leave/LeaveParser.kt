@@ -33,40 +33,61 @@ object LeaveParser {
         var nightAvailed = 0
         var nightBalance = 60
 
-        try {
-            // Day Leave: RadGrid1
-            val grid1Pattern = Pattern.compile("ctl00_cphHeading_RadGrid1.*?<tbody>(.*?)</tbody>", Pattern.DOTALL)
-            val m1 = grid1Pattern.matcher(html)
-            if (m1.find()) {
-                val tbody = m1.group(1) ?: ""
-                val countPattern = Pattern.compile("<td>(\\d+)</td>\\s*<td>(Total|Availed|Balance)</td>\\s*<td>(\\d+)</td>")
-                val mc = countPattern.matcher(tbody)
-                while (mc.find()) {
-                    val type = mc.group(2) ?: ""
-                    val count = mc.group(3)?.toIntOrNull() ?: 0
-                    when (type.lowercase()) {
-                        "total" -> dayTotal = count
-                        "availed" -> dayAvailed = count
-                        "balance" -> dayBalance = count
-                    }
+        fun parseGrid(gridId: String): Triple<Int, Int, Int>? {
+            val gridPattern = Pattern.compile("$gridId.*?<tbody>(.*?)</tbody>", Pattern.DOTALL)
+            val m = gridPattern.matcher(html)
+            if (!m.find()) return null
+            val tbody = m.group(1) ?: return null
+
+            var tot = 0
+            var av = 0
+            var bal = 0
+
+            // Match ASP.NET RadGrid TypeLabel and CountLabel spans
+            val rowPattern = Pattern.compile("TypeLabel[^>]*>\\s*([^<]+)\\s*</span>.*?CountLabel[^>]*>\\s*(\\d+)\\s*</span>", Pattern.DOTALL)
+            val rm = rowPattern.matcher(tbody)
+            var foundAny = false
+            while (rm.find()) {
+                foundAny = true
+                val type = rm.group(1)?.trim()?.lowercase() ?: ""
+                val count = rm.group(2)?.toIntOrNull() ?: 0
+                when (type) {
+                    "total" -> tot = count
+                    "availed" -> av = count
+                    "balance" -> bal = count
                 }
             }
 
-            // Night Leave: RadGrid2
-            val grid2Pattern = Pattern.compile("ctl00_cphHeading_RadGrid2.*?<tbody>(.*?)</tbody>", Pattern.DOTALL)
-            val m2 = grid2Pattern.matcher(html)
-            if (m2.find()) {
-                val tbody = m2.group(1) ?: ""
-                val countPattern = Pattern.compile("<td>(\\d+)</td>\\s*<td>(Total|Availed|Balance)</td>\\s*<td>(\\d+)</td>")
-                val mc = countPattern.matcher(tbody)
-                while (mc.find()) {
-                    val type = mc.group(2) ?: ""
-                    val count = mc.group(3)?.toIntOrNull() ?: 0
-                    when (type.lowercase()) {
-                        "total" -> nightTotal = count
-                        "availed" -> nightAvailed = count
-                        "balance" -> nightBalance = count
+            // Fallback pattern if span structure differs
+            if (!foundAny) {
+                val fallback = Pattern.compile("(Total|Availed|Balance)[^\\d]*(\\d+)", Pattern.DOTALL or Pattern.CASE_INSENSITIVE)
+                val fm = fallback.matcher(tbody)
+                while (fm.find()) {
+                    val type = fm.group(1)?.trim()?.lowercase() ?: ""
+                    val count = fm.group(2)?.toIntOrNull() ?: 0
+                    when (type) {
+                        "total" -> tot = count
+                        "availed" -> av = count
+                        "balance" -> bal = count
                     }
+                }
+            }
+            return Triple(tot, av, bal)
+        }
+
+        try {
+            parseGrid("ctl00_cphHeading_RadGrid1")?.let { (tot, av, bal) ->
+                if (tot > 0) {
+                    dayTotal = tot
+                    dayAvailed = av
+                    dayBalance = bal
+                }
+            }
+            parseGrid("ctl00_cphHeading_RadGrid2")?.let { (tot, av, bal) ->
+                if (tot > 0) {
+                    nightTotal = tot
+                    nightAvailed = av
+                    nightBalance = bal
                 }
             }
         } catch (_: Exception) {}
@@ -93,7 +114,17 @@ object LeaveParser {
         val hostel = extractByPattern("Hostel\\s*[:\\-]?\\s*</td>\\s*<td[^>]*>\\s*([^<]+)")
         val roomNo = extractByPattern("Room\\s*No\\s*[:\\-]?\\s*</td>\\s*<td[^>]*>\\s*([^<]+)")
         val authority = extractByPattern("Sanctioning\\s*Authority\\s*[:\\-]?\\s*</td>\\s*<td[^>]*>\\s*([^<]+)")
-        val registeredMobile = extractByPattern("ctl00_cphHeading_txtContactNo[^>]*value=[\"'](\\d{10})[\"']")
+
+        // Extract registered mobile from txtContactNo input regardless of attribute ordering
+        var registeredMobile = ""
+        val contactNoMatcher = Pattern.compile("<input[^>]*ctl00_cphHeading_txtContactNo[^>]*>", Pattern.CASE_INSENSITIVE).matcher(html)
+        if (contactNoMatcher.find()) {
+            val tag = contactNoMatcher.group(0) ?: ""
+            val valMatcher = Pattern.compile("value=[\"'](\\d{10})[\"']").matcher(tag)
+            if (valMatcher.find()) {
+                registeredMobile = valMatcher.group(1) ?: ""
+            }
+        }
         val homeAddress = extractByPattern("ctl00_cphHeading_lblAddress[^>]*>([^<]+)<")
 
         return LeaveProfile(

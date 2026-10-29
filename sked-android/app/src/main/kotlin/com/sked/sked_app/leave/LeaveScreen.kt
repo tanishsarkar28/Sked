@@ -310,7 +310,7 @@ fun LeaveScreen(
                                         letterSpacing = 0.5.sp
                                     )
                                     Text(
-                                        text = "${balance.dayAvailed}/${balance.dayTotal} USED",
+                                        text = if (balance.isLoaded) "${balance.dayAvailed}/${balance.dayTotal} USED" else "--",
                                         fontSize = 10.sp,
                                         fontFamily = FontFamily.Monospace,
                                         color = Slate
@@ -319,7 +319,7 @@ fun LeaveScreen(
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Row(verticalAlignment = Alignment.Bottom) {
                                     Text(
-                                        text = "${balance.dayBalance}",
+                                        text = if (balance.isLoaded) "${balance.dayBalance}" else "--",
                                         fontFamily = BarlowCondensed,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 28.sp,
@@ -359,7 +359,7 @@ fun LeaveScreen(
                                         letterSpacing = 0.5.sp
                                     )
                                     Text(
-                                        text = "${balance.nightAvailed}/${balance.nightTotal} USED",
+                                        text = if (balance.isLoaded) "${balance.nightAvailed}/${balance.nightTotal} USED" else "--",
                                         fontSize = 10.sp,
                                         fontFamily = FontFamily.Monospace,
                                         color = Slate
@@ -368,7 +368,7 @@ fun LeaveScreen(
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Row(verticalAlignment = Alignment.Bottom) {
                                     Text(
-                                        text = "${balance.nightBalance}",
+                                        text = if (balance.isLoaded) "${balance.nightBalance}" else "--",
                                         fontFamily = BarlowCondensed,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 28.sp,
@@ -625,57 +625,6 @@ fun LeaveScreen(
                             }
                         }
 
-                        // Start Time Quick Chips
-                        Spacer(modifier = Modifier.height(6.dp))
-                        val startChips = remember {
-                            listOf(
-                                UmsTimeSlot(0, -1), // Represents "Now"
-                                UmsTimeSlot(6, 0),
-                                UmsTimeSlot(9, 0),
-                                UmsTimeSlot(13, 0),
-                                UmsTimeSlot(17, 0)
-                            )
-                        }
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(startChips) { chip ->
-                                val label = if (chip.minute == -1) "Now" else chip.display
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = SlabElevated,
-                                    border = BorderStroke(1.dp, Rule),
-                                    modifier = Modifier.clickable {
-                                        if (chip.minute != -1) {
-                                            startCal.set(Calendar.HOUR_OF_DAY, chip.hour)
-                                            startCal.set(Calendar.MINUTE, chip.minute)
-                                            startCal = (startCal.clone() as Calendar)
-                                        } else {
-                                            // Snap to next 15-min
-                                            val c = Calendar.getInstance()
-                                            val curM = c.get(Calendar.MINUTE)
-                                            val nextM = when {
-                                                curM < 15 -> 15
-                                                curM < 30 -> 30
-                                                curM < 45 -> 45
-                                                else -> {
-                                                    c.add(Calendar.HOUR_OF_DAY, 1)
-                                                    0
-                                                }
-                                            }
-                                            c.set(Calendar.MINUTE, nextM)
-                                            val h = c.get(Calendar.HOUR_OF_DAY)
-                                            if (h < 5) c.set(Calendar.HOUR_OF_DAY, 5)
-                                            if (h > 22 || (h == 22 && nextM > 45)) {
-                                                c.set(Calendar.HOUR_OF_DAY, 22)
-                                                c.set(Calendar.MINUTE, 45)
-                                            }
-                                            startCal = c
-                                        }
-                                    }
-                                ) {
-                                    Text(label, fontSize = 10.5.sp, color = Slate, modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp))
-                                }
-                            }
-                        }
 
                         Spacer(modifier = Modifier.height(16.dp))
 
@@ -751,42 +700,6 @@ fun LeaveScreen(
                             }
                         }
 
-                        // Return Time Quick Chips
-                        Spacer(modifier = Modifier.height(6.dp))
-                        data class QuickReturn(val label: String, val h: Int, val m: Int)
-                        val returnChips = remember(selectedType) {
-                            if (selectedType == LeaveTypeOption.DAY_STANDARD || selectedType == LeaveTypeOption.NIGHT_STANDARD) {
-                                listOf(
-                                    QuickReturn("8:00 PM (Curfew)", 20, 0),
-                                    QuickReturn("7:00 PM", 19, 0),
-                                    QuickReturn("7:30 PM", 19, 30),
-                                    QuickReturn("7:45 PM", 19, 45)
-                                )
-                            } else {
-                                listOf(
-                                    QuickReturn("10:45 PM (Curfew)", 22, 45),
-                                    QuickReturn("10:00 PM", 22, 0),
-                                    QuickReturn("9:30 PM", 21, 30),
-                                    QuickReturn("8:00 PM", 20, 0)
-                                )
-                            }
-                        }
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(returnChips) { chip ->
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = SlabElevated,
-                                    border = BorderStroke(1.dp, Rule),
-                                    modifier = Modifier.clickable {
-                                        endCal.set(Calendar.HOUR_OF_DAY, chip.h)
-                                        endCal.set(Calendar.MINUTE, chip.m)
-                                        endCal = (endCal.clone() as Calendar)
-                                    }
-                                ) {
-                                    Text(chip.label, fontSize = 10.5.sp, color = Slate, modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp))
-                                }
-                            }
-                        }
 
                         Spacer(modifier = Modifier.height(14.dp))
 
