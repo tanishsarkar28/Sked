@@ -61,6 +61,10 @@ dependencies {
     // WorkManager for background sync
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
+    // Biometrics & Fragment
+    implementation("androidx.biometric:biometric:1.2.0-alpha05")
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
+
     // Networking & WebKit
     implementation("androidx.webkit:webkit:1.12.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

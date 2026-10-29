@@ -163,7 +163,7 @@ val BarlowCondensed = FontFamily(
     Font(R.font.barlow_condensed_bold, FontWeight.Bold)
 )
 
-class MainActivity : ComponentActivity() {
+class MainActivity : androidx.fragment.app.FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -947,6 +947,8 @@ fun DashboardScreen(
 
     val examBadge = if (exams.isNotEmpty()) "${exams.size}" else null
     val timetableBadge = if (todayClasses.isNotEmpty()) "${todayClasses.size}" else null
+    val leaveBalance = remember(context) { com.sked.sked_app.leave.LeaveStorage.loadBalance(context) }
+    val leaveBadge = if (leaveBalance.dayBalance > 0) "${leaveBalance.dayBalance}" else null
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -1026,7 +1028,7 @@ fun DashboardScreen(
                                 text = "• " + when (activeTab) {
                                     "TIMETABLE" -> "TIMETABLE"
                                     "EXAMS" -> "EXAMS"
-                                    "GPA" -> "RESULT"
+                                    "LEAVE" -> "HOSTEL LEAVE"
                                     else -> activeTab
                                 },
                                 fontFamily = BarlowCondensed,
@@ -1094,12 +1096,10 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxSize()
                     )
                 }
-                "GPA" -> {
-                    GpaScreen(
-                        timetableEntries = weekClasses.values.flatten().ifEmpty { todayClasses },
-                        onSyncUms = onFullReSync,
-                        modifier = Modifier.fillMaxSize(),
-                        mode = GpaScreenMode.RESULT
+                "LEAVE" -> {
+                    com.sked.sked_app.leave.LeaveScreen(
+                        onBack = { activeTab = "HOME" },
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
                 "TIMETABLE" -> {
@@ -1708,7 +1708,7 @@ fun DashboardScreen(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                // Row: Timetable & Exams
+                                // Row: Timetable, Exams & Leave
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1729,6 +1729,14 @@ fun DashboardScreen(
                                         icon = Icons.Default.School,
                                         badgeText = examBadge,
                                         onClick = { activeTab = "EXAMS" },
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    QuickAccessFeatureBox(
+                                        title = "Leave",
+                                        icon = Icons.Default.ExitToApp,
+                                        badgeText = leaveBadge,
+                                        onClick = { activeTab = "LEAVE" },
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
