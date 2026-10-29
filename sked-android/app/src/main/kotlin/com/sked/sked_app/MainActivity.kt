@@ -1038,7 +1038,6 @@ fun DashboardScreen(
                                     "TIMETABLE" -> "TIMETABLE"
                                     "EXAMS" -> "EXAMS"
                                     "GPA" -> "RESULT"
-                                    "GPA_CALC" -> "GPA CALC"
                                     else -> activeTab
                                 },
                                 fontFamily = BarlowCondensed,
@@ -1106,12 +1105,12 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxSize()
                     )
                 }
-                "GPA", "GPA_CALC" -> {
+                "GPA" -> {
                     GpaScreen(
                         timetableEntries = weekClasses.values.flatten().ifEmpty { todayClasses },
                         onSyncUms = onFullReSync,
                         modifier = Modifier.fillMaxSize(),
-                        mode = if (activeTab == "GPA_CALC") GpaScreenMode.CALCULATOR else GpaScreenMode.RESULT
+                        mode = GpaScreenMode.RESULT
                     )
                 }
                 "TIMETABLE" -> {
@@ -1720,7 +1719,7 @@ fun DashboardScreen(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                // Row 1: Timetable & Exams
+                                // Row: Timetable, Exams & Result
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1743,28 +1742,12 @@ fun DashboardScreen(
                                         onClick = { activeTab = "EXAMS" },
                                         modifier = Modifier.weight(1f)
                                     )
-                                }
 
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                // Row 2: Result & GPA Calc
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
                                     QuickAccessFeatureBox(
                                         title = "Result",
                                         icon = Icons.Default.Assessment,
                                         badgeText = resultBadge,
                                         onClick = { activeTab = "GPA" },
-                                        modifier = Modifier.weight(1f)
-                                    )
-
-                                    QuickAccessFeatureBox(
-                                        title = "GPA Calc",
-                                        icon = Icons.Default.Calculate,
-                                        badgeText = "CALC",
-                                        onClick = { activeTab = "GPA_CALC" },
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
@@ -3926,7 +3909,7 @@ fun QuickAccessFeatureBox(
         color = Slab,
         border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
         modifier = modifier
-            .height(126.dp)
+            .height(140.dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() }
     ) {
