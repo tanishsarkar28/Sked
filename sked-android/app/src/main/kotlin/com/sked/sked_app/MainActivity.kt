@@ -2497,40 +2497,8 @@ fun UmsAuthBridgeDialog(
                                                                     statusText = "Syncing Examination Schedule..."
                                                                 }
 
-                                                                var seatingUrl = ""
-                                                                try {
-                                                                    val cm = CookieManager.getInstance()
-                                                                    val umsCookies = cm.getCookie("https://ums.lpu.in") ?: ""
-                                                                    val okClient = OkHttpClient.Builder()
-                                                                        .followRedirects(false)
-                                                                        .followSslRedirects(false)
-                                                                        .connectTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
-                                                                        .readTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
-                                                                        .build()
-
-                                                                    val req = Request.Builder()
-                                                                        .url("https://ums.lpu.in/lpuums/openapp.aspx?from=ums&toApp=nextproject&pagename=dashboard/examination/conduct/seatingplan")
-                                                                        .header("Cookie", umsCookies)
-                                                                        .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36")
-                                                                        .build()
-
-                                                                    val loc = okClient.newCall(req).execute().use { resp ->
-                                                                        val l = resp.header("Location") ?: ""
-                                                                        android.util.Log.i("SkedSync", "openapp.aspx code: ${resp.code}, Location: ${l.take(120)}")
-                                                                        l
-                                                                    }
-                                                                    if (loc.isNotBlank()) {
-                                                                        seatingUrl = if (loc.startsWith("http")) loc else "https://ums.lpu.in" + loc
-                                                                    }
-                                                                } catch (e: Exception) {
-                                                                    android.util.Log.w("SkedSync", "openapp.aspx query notice: ${e.message}")
-                                                                }
-
-                                                                if (seatingUrl.isBlank()) {
-                                                                    seatingUrl = "https://ums.lpu.in/lpuums/openapp.aspx?from=ums&toApp=nextproject&pagename=dashboard/examination/conduct/seatingplan"
-                                                                }
-
-                                                                android.util.Log.i("SkedSync", "Navigating WebView to authentic seatingUrl: $seatingUrl")
+                                                                val seatingUrl = "https://ums.lpu.in/lpuums/openapp.aspx?from=ums&toApp=nextproject&pagename=dashboard/examination/conduct/seatingplan"
+                                                                android.util.Log.i("SkedSync", "Navigating WebView to authentic seatingUrl via openapp.aspx: $seatingUrl")
                                                                 withContext(Dispatchers.Main) {
                                                                     wv.loadUrl(seatingUrl)
                                                                 }
@@ -2703,38 +2671,8 @@ fun UmsAuthBridgeDialog(
                                                                 statusText = "Syncing Result Summary & CGPA..."
                                                             }
 
-                                                            var resultUrl = ""
-                                                            try {
-                                                                val cm = CookieManager.getInstance()
-                                                                val umsCookies = cm.getCookie("https://ums.lpu.in") ?: ""
-                                                                val okClient = OkHttpClient.Builder()
-                                                                    .followRedirects(false)
-                                                                    .followSslRedirects(false)
-                                                                    .connectTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
-                                                                    .readTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
-                                                                    .build()
-
-                                                                val req = Request.Builder()
-                                                                    .url("https://ums.lpu.in/lpuums/openapp.aspx?from=ums&toApp=nextproject&pagename=dashboard/examination/result/resultsummary")
-                                                                    .header("Cookie", umsCookies)
-                                                                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36")
-                                                                    .build()
-
-                                                                val loc = okClient.newCall(req).execute().use { resp ->
-                                                                    resp.header("Location") ?: ""
-                                                                }
-                                                                if (loc.isNotBlank()) {
-                                                                    resultUrl = if (loc.startsWith("http")) loc else "https://ums.lpu.in" + loc
-                                                                }
-                                                            } catch (e: Exception) {
-                                                                android.util.Log.w("SkedSync", "openapp.aspx result query notice: ${e.message}")
-                                                            }
-
-                                                            if (resultUrl.isBlank()) {
-                                                                resultUrl = "https://studentums.lpu.in/dashboard/examination/result/resultsummary"
-                                                            }
-
-                                                            android.util.Log.i("SkedSync", "Navigating WebView to authentic resultUrl: $resultUrl")
+                                                            val resultUrl = "https://ums.lpu.in/lpuums/openapp.aspx?from=ums&toApp=nextproject&pagename=dashboard/examination/result/resultsummary"
+                                                            android.util.Log.i("SkedSync", "Navigating WebView to authentic resultUrl via openapp.aspx: $resultUrl")
                                                             withContext(Dispatchers.Main) {
                                                                 wv.loadUrl(resultUrl)
                                                             }
