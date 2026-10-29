@@ -837,6 +837,10 @@ fun LeaveScreen(
                                                 } else {
                                                     val err = res.exceptionOrNull()?.message ?: "Submission rejected by UMS"
                                                     errorMessageDialog = err
+                                                    if (err.contains("session expired", ignoreCase = true) || err.contains("re-authenticate", ignoreCase = true)) {
+                                                        Toast.makeText(context, "UMS session expired. Re-authenticating...", Toast.LENGTH_SHORT).show()
+                                                        onReSync?.invoke()
+                                                    }
                                                 }
                                             }
                                         },

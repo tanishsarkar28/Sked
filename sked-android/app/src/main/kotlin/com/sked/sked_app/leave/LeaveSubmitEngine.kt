@@ -109,6 +109,22 @@ object LeaveSubmitEngine {
             webView.settings.javaScriptEnabled = true
             webView.settings.domStorageEnabled = true
 
+            // Ensure CookieManager has the latest saved UMS session cookies
+            val cm = CookieManager.getInstance()
+            cm.setAcceptCookie(true)
+            cm.setAcceptThirdPartyCookies(webView, true)
+            val prefs = context.getSharedPreferences(com.sked.sked_app.widget.PREFS_NAME, Context.MODE_PRIVATE)
+            val savedCookies = prefs.getString(com.sked.sked_app.AutoSyncManager.KEY_UMS_COOKIES, "") ?: ""
+            if (savedCookies.isNotBlank()) {
+                for (cookie in savedCookies.split(";")) {
+                    val trimmed = cookie.trim()
+                    if (trimmed.isNotBlank()) {
+                        cm.setCookie("https://ums.lpu.in", trimmed)
+                    }
+                }
+                cm.flush()
+            }
+
             var capturedAlert: String? = null
             var capturedError: String? = null
             var stage = 0 // 0: initial load, 1: leaveType set postback, 2: visitPlace set postback, 3: submitted
@@ -168,6 +184,10 @@ object LeaveSubmitEngine {
             webView.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
+                    if (url != null && (url.contains("LoginNew.aspx", ignoreCase = true) || url.contains("Login.aspx", ignoreCase = true))) {
+                        finishWith(Result.failure(Exception("UMS session expired. Please re-authenticate.")))
+                        return
+                    }
                     if (url == null || !url.contains("frmStudentHostelLeaveApplicationTermWise")) return
 
                     // Check if an alert was captured on submission
