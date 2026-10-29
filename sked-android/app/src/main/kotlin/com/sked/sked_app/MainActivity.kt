@@ -2760,7 +2760,7 @@ fun UmsAuthBridgeDialog(
                                                                                     }
                                                                                     if (!window._skedResultHooked) {
                                                                                         window._skedResultHooked = true;
-                                                                                        window._skedCapturedResults = {};
+                                                                                        window._skedCapturedResults = { coursewiseList: [] };
                                                                                         var origLog = console.log;
                                                                                         console.log = function() {
                                                                                             try {
@@ -2774,7 +2774,14 @@ fun UmsAuthBridgeDialog(
                                                                                                                 window._skedCapturedResults['tgpaData'] = a;
                                                                                                             }
                                                                                                             if (label.indexOf('CoursewiseGrade') !== -1 || s.indexOf('CourseCode') !== -1 || s.indexOf('Assessment') !== -1) {
-                                                                                                                window._skedCapturedResults['coursewise'] = a;
+                                                                                                                if (Array.isArray(a)) {
+                                                                                                                    for (var k = 0; k < a.length; k++) {
+                                                                                                                        window._skedCapturedResults['coursewiseList'].push(a[k]);
+                                                                                                                    }
+                                                                                                                } else {
+                                                                                                                    window._skedCapturedResults['coursewiseList'].push(a);
+                                                                                                                }
+                                                                                                                window._skedCapturedResults['coursewise'] = window._skedCapturedResults['coursewiseList'];
                                                                                                             }
                                                                                                             if (s.indexOf('profileData') !== -1 || s.indexOf('cgpa') !== -1) {
                                                                                                                 window._skedCapturedResults['profile'] = a;
@@ -2786,6 +2793,21 @@ fun UmsAuthBridgeDialog(
                                                                                             return origLog.apply(console, arguments);
                                                                                         };
                                                                                     }
+
+                                                                                    // Cycle through clicking all semester tabs/accordions to trigger coursewise fetches
+                                                                                    try {
+                                                                                        var allClickables = Array.from(document.querySelectorAll('button, [role="tab"], [role="button"], a, div[class*="tab"], div[class*="accordion"]'));
+                                                                                        var semButtons = allClickables.filter(function(el) {
+                                                                                            var t = (el.innerText || el.textContent || '').trim();
+                                                                                            return /^(?:Semester|Term)\s*[:\-]?\s*(?:[IVX]+|\d+)$/i.test(t) ||
+                                                                                                   /(?:Semester|Term)\s*[:\-]?\s*(?:I|II|III|IV|V|VI|VII|VIII|\d+)\b/i.test(t);
+                                                                                        });
+                                                                                        if (semButtons.length > 0) {
+                                                                                            window._skedClickIdx = ((window._skedClickIdx || 0) + 1) % semButtons.length;
+                                                                                            semButtons[window._skedClickIdx].click();
+                                                                                        }
+                                                                                    } catch(e) {}
+
                                                                                     var txt = document.body ? document.body.innerText : '';
                                                                                     return JSON.stringify({
                                                                                         url: href,
@@ -2818,26 +2840,27 @@ fun UmsAuthBridgeDialog(
                                                                     android.util.Log.i("SkedSync", "Result attempt #$resAttempts [len=${resText.length}] snippet: ${resText.replace(Regex("""\s+"""), " ").take(140)}")
                                                                 }
 
-                                                                if (resText.isNotBlank()) {
-                                                                    val parsed = com.sked.sked_app.gpa.ResultParser.parse(resText)
-                                                                    if (parsed.terms.isNotEmpty() || parsed.cgpa != null) {
-                                                                        com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, parsed, entries)
-                                                                        android.util.Log.i("SkedSync", "Successfully synced ${parsed.terms.size} terms from Result DOM text! CGPA=${parsed.cgpa}")
-                                                                        break
-                                                                    }
-                                                                }
-
+                                                                var hasAllCourses = false
                                                                 if (resRawJson.isNotBlank() && resRawJson != "{}") {
                                                                     val parsed = com.sked.sked_app.gpa.ResultParser.parse(resRawJson)
                                                                     if (parsed.terms.isNotEmpty() || parsed.cgpa != null) {
                                                                         com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, parsed, entries)
-                                                                        android.util.Log.i("SkedSync", "Successfully synced ${parsed.terms.size} terms from Result JSON payload! CGPA=${parsed.cgpa}")
-                                                                        break
+                                                                        val termsWithSubs = parsed.terms.count { it.subjects.isNotEmpty() }
+                                                                        if (termsWithSubs >= 4 || (termsWithSubs > 0 && termsWithSubs >= parsed.terms.size)) {
+                                                                            hasAllCourses = true
+                                                                        }
                                                                     }
                                                                 }
 
-                                                                if (resAttempts >= 16 && (resText.contains("No Data Available", ignoreCase = true) || resText.contains("No record found", ignoreCase = true))) {
-                                                                    android.util.Log.i("SkedSync", "Result summary indicates no previous terms available")
+                                                                if (resText.isNotBlank()) {
+                                                                    val parsed = com.sked.sked_app.gpa.ResultParser.parse(resText)
+                                                                    if (parsed.terms.isNotEmpty() || parsed.cgpa != null) {
+                                                                        com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, parsed, entries)
+                                                                    }
+                                                                }
+
+                                                                if (hasAllCourses || (resAttempts >= 18 && (resRawJson.isNotBlank() || resText.isNotBlank()))) {
+                                                                    android.util.Log.i("SkedSync", "Result sync completed at attempt #$resAttempts (allCourses=$hasAllCourses)")
                                                                     break
                                                                 }
                                                             }

@@ -204,22 +204,23 @@ object ResultParser {
     }
 
     private fun parseTermsArray(arr: JSONArray): List<ParsedTerm> {
-        val result = mutableListOf<ParsedTerm>()
+        val termMap = mutableMapOf<Int, ParsedTerm>()
+
         for (i in 0 until arr.length()) {
             val item = arr.optJSONObject(i) ?: continue
 
-            val sem = item.optInt("Semester", item.optInt("semester", i + 1))
-            val termName = item.optString("TermTag", item.optString("termTag", "Semester : ${intToRoman(sem)}")).ifBlank { "Semester : ${intToRoman(sem)}" }
-            val tgpaVal = item.optDouble("Tgpa", item.optDouble("tgpa", item.optDouble("TGPA", Double.NaN)))
-            val parsedTgpa = tgpaVal.takeIf { !it.isNaN() && it in 1.0..10.0 }
-
-            val subjects = mutableListOf<GpaSubject>()
             val coursesArr = item.optJSONArray("Courses")
                 ?: item.optJSONArray("courses")
                 ?: item.optJSONArray("Subjects")
                 ?: item.optJSONArray("subjects")
 
             if (coursesArr != null) {
+                val sem = item.optInt("Semester", item.optInt("semester", i + 1))
+                val termName = item.optString("TermTag", item.optString("termTag", "Semester : ${intToRoman(sem)}")).ifBlank { "Semester : ${intToRoman(sem)}" }
+                val tgpaVal = item.optDouble("Tgpa", item.optDouble("tgpa", item.optDouble("TGPA", Double.NaN)))
+                val parsedTgpa = tgpaVal.takeIf { !it.isNaN() && it in 1.0..10.0 }
+
+                val subjects = mutableListOf<GpaSubject>()
                 for (j in 0 until coursesArr.length()) {
                     val cObj = coursesArr.optJSONObject(j) ?: continue
                     val code = cObj.optString("CourseCode", cObj.optString("courseCode", cObj.optString("code", ""))).trim().uppercase()
@@ -239,21 +240,51 @@ object ResultParser {
                         )
                     )
                 }
-            }
 
-            val totalCr = if (subjects.isNotEmpty() && subjects.sumOf { it.credits } > 0.0) subjects.sumOf { it.credits } else item.optDouble("totalCredits", 20.0)
+                val existing = termMap[sem]
+                val mergedSubjects = if (subjects.isNotEmpty()) subjects else (existing?.subjects ?: emptyList())
+                val totalCr = if (mergedSubjects.isNotEmpty() && mergedSubjects.sumOf { it.credits } > 0.0) mergedSubjects.sumOf { it.credits } else item.optDouble("totalCredits", existing?.totalCredits ?: 20.0)
 
-            result.add(
-                ParsedTerm(
+                termMap[sem] = ParsedTerm(
                     name = termName,
                     semester = sem,
-                    tgpa = parsedTgpa,
+                    tgpa = parsedTgpa ?: existing?.tgpa,
                     totalCredits = totalCr,
-                    subjects = subjects
+                    subjects = mergedSubjects
                 )
-            )
+            } else if (item.has("CourseCode") || item.has("courseCode") || item.has("code")) {
+                val code = item.optString("CourseCode", item.optString("courseCode", item.optString("code", ""))).trim().uppercase()
+                if (code.isNotBlank()) {
+                    val title = item.optString("CourseTitle", item.optString("courseTitle", item.optString("courseName", ""))).trim()
+                    val cr = item.optDouble("Credits", item.optDouble("credits", item.optDouble("credit", 0.0)))
+                    val gr = item.optString("Grade", item.optString("grade", "")).trim().uppercase().ifBlank { null }
+                    val sem = item.optInt("Semester", item.optInt("semester", item.optInt("term", 1)))
+
+                    val existing = termMap[sem]
+                    val currentSubs = (existing?.subjects ?: emptyList()).toMutableList()
+                    if (currentSubs.none { it.courseCode.equals(code, ignoreCase = true) }) {
+                        currentSubs.add(
+                            GpaSubject(
+                                courseCode = code,
+                                courseTitle = title,
+                                credits = if (cr > 0.0) cr else 0.0,
+                                selectedGrade = gr,
+                                isCustom = false,
+                                userEditedCredits = false
+                            )
+                        )
+                    }
+                    termMap[sem] = ParsedTerm(
+                        name = "Semester : ${intToRoman(sem)}",
+                        semester = sem,
+                        tgpa = existing?.tgpa,
+                        totalCredits = if (currentSubs.sumOf { it.credits } > 0.0) currentSubs.sumOf { it.credits } else 20.0,
+                        subjects = currentSubs
+                    )
+                }
+            }
         }
-        return result
+        return termMap.values.sortedBy { it.semester ?: 99 }
     }
 
     private fun parseFromDomText(text: String): ParsedResultSummary {
