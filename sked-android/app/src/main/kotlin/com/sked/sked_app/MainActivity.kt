@@ -1906,9 +1906,6 @@ fun UmsAuthBridgeDialog(
                         // BUG-19 FIX: Calculate elapsed seconds accurately from wall clock
                         // rather than assuming 800ms delay equals 1 second.
                         elapsedSeconds = ((android.os.SystemClock.elapsedRealtime() - startTime) / 1000L).toInt()
-                        if (elapsedSeconds >= 5 && statusText.contains("Turnstile", ignoreCase = true) && !showRawWebView) {
-                            showRawWebView = true
-                        }
                         val tickJs = """
                             (function() {
                                 try {
@@ -2894,7 +2891,66 @@ fun UmsAuthBridgeDialog(
                                 modifier = Modifier.padding(horizontal = 20.dp)
                             )
 
-                            Spacer(modifier = Modifier.height(28.dp))
+                            val targetProgress = when {
+                                statusText.contains("Ready", true) || statusText.contains("Synced", true) -> 1.0f
+                                isSyncing && (statusText.contains("CGPA", true) || statusText.contains("Result", true)) -> 0.90f
+                                isSyncing && (statusText.contains("Exam", true) || statusText.contains("Datesheet", true)) -> 0.78f
+                                isSyncing && (statusText.contains("schedule", true) || statusText.contains("timetable", true)) -> 0.65f
+                                isSyncing || statusText.contains("Authenticating", true) || statusText.contains("Submitting", true) -> 0.50f
+                                statusText.contains("verified", true) -> 0.40f
+                                statusText.contains("Turnstile", true) || statusText.contains("security", true) -> {
+                                    (0.18f + (elapsedSeconds.coerceAtMost(10) * 0.02f)).coerceAtMost(0.38f)
+                                }
+                                else -> 0.12f
+                            }
+                            val animatedProgress by animateFloatAsState(
+                                targetValue = targetProgress,
+                                animationSpec = tween(400, easing = LinearOutSlowInEasing),
+                                label = "umsSyncProgress"
+                            )
+
+                            Spacer(modifier = Modifier.height(18.dp))
+
+                            // Sync Progress Bar
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "SYNC PROGRESS",
+                                        fontFamily = BarlowCondensed,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        letterSpacing = 1.sp,
+                                        color = Slate
+                                    )
+                                    Text(
+                                        text = "${(animatedProgress * 100).toInt()}%",
+                                        fontFamily = BarlowCondensed,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = Blaze
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                LinearProgressIndicator(
+                                    progress = { animatedProgress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(3.dp)),
+                                    color = Blaze,
+                                    trackColor = Rule
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(20.dp))
 
                             // Steps milestone checklist
                             Surface(

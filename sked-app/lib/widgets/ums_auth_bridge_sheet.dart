@@ -68,9 +68,6 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
       if (mounted) {
         setState(() {
           _elapsedSeconds++;
-          if (_elapsedSeconds >= 5 && _statusText.contains('Turnstile') && !_showRawWebView) {
-            _showRawWebView = true;
-          }
         });
       }
     });
@@ -937,7 +934,75 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                             ),
                           ),
 
-                          const SizedBox(height: 28),
+                          const SizedBox(height: 18),
+
+                          // Sync Progress Bar
+                          Builder(
+                            builder: (context) {
+                              final st = _statusText.toLowerCase();
+                              double progress;
+                              if (st.contains('ready') || st.contains('synced')) {
+                                progress = 1.0;
+                              } else if (_isSyncing && (st.contains('cgpa') || st.contains('result'))) {
+                                progress = 0.90;
+                              } else if (_isSyncing && (st.contains('exam') || st.contains('datesheet'))) {
+                                progress = 0.78;
+                              } else if (_isSyncing && (st.contains('schedule') || st.contains('timetable'))) {
+                                progress = 0.65;
+                              } else if (_isSyncing || st.contains('authenticating') || st.contains('submitting')) {
+                                progress = 0.50;
+                              } else if (st.contains('verified')) {
+                                progress = 0.40;
+                              } else if (st.contains('turnstile') || st.contains('security')) {
+                                final extra = (_elapsedSeconds.clamp(0, 10)) * 0.02;
+                                progress = (0.18 + extra).clamp(0.18, 0.38);
+                              } else {
+                                progress = 0.12;
+                              }
+
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          'SYNC PROGRESS',
+                                          style: GoogleFonts.barlowCondensed(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 1.0,
+                                            color: SkedColors.slate,
+                                          ),
+                                        ),
+                                        Text(
+                                          '${(progress * 100).toInt()}%',
+                                          style: GoogleFonts.barlowCondensed(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: SkedColors.blaze,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(3),
+                                      child: LinearProgressIndicator(
+                                        value: progress,
+                                        minHeight: 6,
+                                        backgroundColor: SkedColors.rule,
+                                        valueColor: const AlwaysStoppedAnimation<Color>(SkedColors.blaze),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+
+                          const SizedBox(height: 20),
 
                           // Steps Milestone Checklist
                           Container(
