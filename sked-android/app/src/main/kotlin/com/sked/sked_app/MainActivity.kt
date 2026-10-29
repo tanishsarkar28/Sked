@@ -2866,8 +2866,10 @@ fun UmsAuthBridgeDialog(
                             Spacer(modifier = Modifier.height(28.dp))
 
                             val titleText = when {
-                                statusText.contains("Datesheet", true) || statusText.contains("schedule", true) || statusText.contains("classes", true) -> "SYNCING TIMETABLE"
-                                statusText.contains("Authenticating", true) || statusText.contains("Submitting", true) -> "LOGGING IN"
+                                statusText.contains("CGPA", true) || statusText.contains("Result", true) || statusText.contains("Grade", true) -> "SYNCING RESULTS & CGPA"
+                                statusText.contains("Exam", true) || statusText.contains("Datesheet", true) || statusText.contains("Seating", true) -> "SYNCING EXAMS"
+                                statusText.contains("schedule", true) || statusText.contains("timetable", true) || statusText.contains("classes", true) -> "SYNCING TIMETABLE"
+                                statusText.contains("Authenticating", true) || statusText.contains("Submitting", true) || statusText.contains("Logging", true) -> "LOGGING IN"
                                 statusText.contains("Turnstile", true) || statusText.contains("Verifying", true) || statusText.contains("security", true) -> "SECURITY CHECK"
                                 else -> "CONNECTING TO UMS"
                             }
@@ -2891,11 +2893,13 @@ fun UmsAuthBridgeDialog(
                                 modifier = Modifier.padding(horizontal = 20.dp)
                             )
 
-                            val targetProgress = when {
+                            // Monotonically increasing progress: progress NEVER drops backwards
+                            var maxProgressReached by remember { mutableFloatStateOf(0.12f) }
+                            val currentStageProgress = when {
                                 statusText.contains("Ready", true) || statusText.contains("Synced", true) -> 1.0f
-                                isSyncing && (statusText.contains("CGPA", true) || statusText.contains("Result", true)) -> 0.90f
-                                isSyncing && (statusText.contains("Exam", true) || statusText.contains("Datesheet", true)) -> 0.78f
-                                isSyncing && (statusText.contains("schedule", true) || statusText.contains("timetable", true)) -> 0.65f
+                                statusText.contains("CGPA", true) || statusText.contains("Result", true) || statusText.contains("Grade", true) -> 0.92f
+                                statusText.contains("Exam", true) || statusText.contains("Datesheet", true) || statusText.contains("Seating", true) -> 0.78f
+                                statusText.contains("schedule", true) || statusText.contains("timetable", true) || statusText.contains("classes", true) -> 0.65f
                                 isSyncing || statusText.contains("Authenticating", true) || statusText.contains("Submitting", true) -> 0.50f
                                 statusText.contains("verified", true) -> 0.40f
                                 statusText.contains("Turnstile", true) || statusText.contains("security", true) -> {
@@ -2903,8 +2907,12 @@ fun UmsAuthBridgeDialog(
                                 }
                                 else -> 0.12f
                             }
+                            if (currentStageProgress > maxProgressReached) {
+                                maxProgressReached = currentStageProgress
+                            }
+
                             val animatedProgress by animateFloatAsState(
-                                targetValue = targetProgress,
+                                targetValue = maxProgressReached,
                                 animationSpec = tween(400, easing = LinearOutSlowInEasing),
                                 label = "umsSyncProgress"
                             )
@@ -2964,10 +2972,13 @@ fun UmsAuthBridgeDialog(
                                         .fillMaxWidth()
                                         .padding(16.dp)
                                 ) {
+                                    val hasReachedAuth = maxProgressReached >= 0.40f || isSyncing || statusText.contains("verified", true) || statusText.contains("Authenticating", true)
+                                    val isComplete = maxProgressReached >= 0.98f || statusText.contains("Ready", true) || statusText.contains("Synced", true)
+
                                     val isStep1Done = true
-                                    val isStep2Active = !isSyncing && (statusText.contains("Turnstile", true) || statusText.contains("Loading", true) || statusText.contains("security", true) || statusText.contains("Connecting", true))
-                                    val isStep2Done = isSyncing || statusText.contains("verified", true) || statusText.contains("Authenticating", true) || statusText.contains("schedule", true)
-                                    val isStep3Active = isSyncing
+                                    val isStep2Done = hasReachedAuth
+                                    val isStep2Active = !isStep2Done && (statusText.contains("Turnstile", true) || statusText.contains("Loading", true) || statusText.contains("security", true) || statusText.contains("Connecting", true))
+                                    val isStep3Active = hasReachedAuth && !isComplete
 
                                     UmsSyncStepRow(
                                         title = "Connect to LPU Portal",
@@ -2983,7 +2994,7 @@ fun UmsAuthBridgeDialog(
                                     Spacer(modifier = Modifier.height(10.dp))
                                     UmsSyncStepRow(
                                         title = "Sync Schedule & Datesheet",
-                                        isDone = false,
+                                        isDone = isComplete,
                                         isActive = isStep3Active
                                     )
                                 }

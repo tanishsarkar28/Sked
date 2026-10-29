@@ -39,6 +39,7 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
   bool _isDone = false;
   bool _showRawWebView = false;
   int _elapsedSeconds = 0;
+  double _maxProgress = 0.12;
 
   Timer? _pollTimer;
   Timer? _secondTimer;
@@ -731,7 +732,13 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
 
   String _computeTitle() {
     final s = _statusText.toLowerCase();
-    if (s.contains('datesheet') || s.contains('schedule') || s.contains('classes') || s.contains('examination')) {
+    if (s.contains('cgpa') || s.contains('result') || s.contains('grade')) {
+      return 'SYNCING RESULTS & CGPA';
+    }
+    if (s.contains('exam') || s.contains('datesheet') || s.contains('seating')) {
+      return 'SYNCING EXAMS';
+    }
+    if (s.contains('schedule') || s.contains('classes') || s.contains('timetable')) {
       return 'SYNCING TIMETABLE';
     }
     if (s.contains('authenticating') || s.contains('submitting') || s.contains('logging')) {
@@ -940,24 +947,27 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                           Builder(
                             builder: (context) {
                               final st = _statusText.toLowerCase();
-                              double progress;
+                              double current;
                               if (st.contains('ready') || st.contains('synced')) {
-                                progress = 1.0;
-                              } else if (_isSyncing && (st.contains('cgpa') || st.contains('result'))) {
-                                progress = 0.90;
-                              } else if (_isSyncing && (st.contains('exam') || st.contains('datesheet'))) {
-                                progress = 0.78;
-                              } else if (_isSyncing && (st.contains('schedule') || st.contains('timetable'))) {
-                                progress = 0.65;
+                                current = 1.0;
+                              } else if (st.contains('cgpa') || st.contains('result') || st.contains('grade')) {
+                                current = 0.92;
+                              } else if (st.contains('exam') || st.contains('datesheet') || st.contains('seating')) {
+                                current = 0.78;
+                              } else if (st.contains('schedule') || st.contains('timetable') || st.contains('classes')) {
+                                current = 0.65;
                               } else if (_isSyncing || st.contains('authenticating') || st.contains('submitting')) {
-                                progress = 0.50;
+                                current = 0.50;
                               } else if (st.contains('verified')) {
-                                progress = 0.40;
+                                current = 0.40;
                               } else if (st.contains('turnstile') || st.contains('security')) {
                                 final extra = (_elapsedSeconds.clamp(0, 10)) * 0.02;
-                                progress = (0.18 + extra).clamp(0.18, 0.38);
+                                current = (0.18 + extra).clamp(0.18, 0.38);
                               } else {
-                                progress = 0.12;
+                                current = 0.12;
+                              }
+                              if (current > _maxProgress) {
+                                _maxProgress = current;
                               }
 
                               return Padding(
@@ -977,7 +987,7 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                                           ),
                                         ),
                                         Text(
-                                          '${(progress * 100).toInt()}%',
+                                          '${(_maxProgress * 100).toInt()}%',
                                           style: GoogleFonts.barlowCondensed(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w700,
@@ -990,7 +1000,7 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(3),
                                       child: LinearProgressIndicator(
-                                        value: progress,
+                                        value: _maxProgress,
                                         minHeight: 6,
                                         backgroundColor: SkedColors.rule,
                                         valueColor: const AlwaysStoppedAnimation<Color>(SkedColors.blaze),
@@ -1015,6 +1025,9 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                             ),
                             child: Column(
                               children: [
+                                final hasReachedAuth = _maxProgress >= 0.40 || _isSyncing || _statusText.toLowerCase().contains('verified') || _statusText.toLowerCase().contains('authenticating');
+                                final isComplete = _maxProgress >= 0.98 || _statusText.toLowerCase().contains('ready') || _statusText.toLowerCase().contains('synced');
+
                                 _buildSyncStepRow(
                                   title: 'Connect to LPU Portal',
                                   isDone: true,
@@ -1023,14 +1036,14 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                                 const SizedBox(height: 10),
                                 _buildSyncStepRow(
                                   title: 'Cloudflare Security Check',
-                                  isDone: _isSyncing || _statusText.toLowerCase().contains('verified') || _statusText.toLowerCase().contains('authenticating') || _statusText.toLowerCase().contains('schedule'),
-                                  isActive: !_isSyncing && (_statusText.toLowerCase().contains('turnstile') || _statusText.toLowerCase().contains('loading') || _statusText.toLowerCase().contains('security') || _statusText.toLowerCase().contains('connecting')),
+                                  isDone: hasReachedAuth,
+                                  isActive: !hasReachedAuth && (_statusText.toLowerCase().contains('turnstile') || _statusText.toLowerCase().contains('loading') || _statusText.toLowerCase().contains('security') || _statusText.toLowerCase().contains('connecting')),
                                 ),
                                 const SizedBox(height: 10),
                                 _buildSyncStepRow(
                                   title: 'Sync Schedule & Datesheet',
-                                  isDone: false,
-                                  isActive: _isSyncing,
+                                  isDone: isComplete,
+                                  isActive: hasReachedAuth && !isComplete,
                                 ),
                               ],
                             ),
