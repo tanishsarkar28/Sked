@@ -945,17 +945,6 @@ fun DashboardScreen(
         activeTab = "HOME"
     }
 
-    val gpaState = remember(context, weekClasses, todayClasses) {
-        try {
-            com.sked.sked_app.gpa.GpaStorage.load(context, weekClasses.values.flatten().ifEmpty { todayClasses })
-        } catch (_: Exception) {
-            null
-        }
-    }
-    val displayCgpa = gpaState?.displayCgpa
-    val resultBadge = if (displayCgpa != null && displayCgpa in 1.0..10.0) {
-        String.format(Locale.US, "%.2f", displayCgpa)
-    } else null
     val examBadge = if (exams.isNotEmpty()) "${exams.size}" else null
     val timetableBadge = if (todayClasses.isNotEmpty()) "${todayClasses.size}" else null
 
@@ -1719,7 +1708,7 @@ fun DashboardScreen(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                // Row: Timetable, Exams & Result
+                                // Row: Timetable & Exams
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1740,14 +1729,6 @@ fun DashboardScreen(
                                         icon = Icons.Default.School,
                                         badgeText = examBadge,
                                         onClick = { activeTab = "EXAMS" },
-                                        modifier = Modifier.weight(1f)
-                                    )
-
-                                    QuickAccessFeatureBox(
-                                        title = "Result",
-                                        icon = Icons.Default.Assessment,
-                                        badgeText = resultBadge,
-                                        onClick = { activeTab = "GPA" },
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
@@ -2274,16 +2255,10 @@ fun UmsAuthBridgeDialog(
                                                 '/frmSeatingPlan.aspx',
                                                 '/lpuums/frmStudentSeatingPlan.aspx',
                                                 '/frmStudentSeatingPlan.aspx',
-                                                '/lpuums/frmExamSeatingPlan.aspx',
-                                                '/frmStudentResult.aspx',
-                                                '/lpuums/frmStudentResult.aspx',
-                                                '/frmGradeCard.aspx',
-                                                '/lpuums/frmGradeCard.aspx',
-                                                '/frmResultSummary.aspx',
-                                                '/lpuums/frmResultSummary.aspx'
+                                                '/lpuums/frmExamSeatingPlan.aspx'
                                             ];
                                             try {
-                                                var regex = /href=["']([^"']*(?:datesheet|seating|exam|schedule|result|grade)[^"']*)["']/gi;
+                                                var regex = /href=["']([^"']*(?:datesheet|seating|exam|schedule)[^"']*)["']/gi;
                                                 var match;
                                                 while ((match = regex.exec(loginHtml)) !== null) {
                                                     var u = match[1];
@@ -2294,7 +2269,7 @@ fun UmsAuthBridgeDialog(
                                                 var links = document.querySelectorAll('a[href]');
                                                 for (var li = 0; li < links.length; li++) {
                                                     var href = links[li].getAttribute('href') || '';
-                                                    if (href && /(?:datesheet|seating|exam|result|grade)/i.test(href) && !href.startsWith('javascript:') && !href.startsWith('#') && href.indexOf('openapp.aspx') === -1 && dsUrls.indexOf(href) === -1) {
+                                                    if (href && /(?:datesheet|seating|exam)/i.test(href) && !href.startsWith('javascript:') && !href.startsWith('#') && href.indexOf('openapp.aspx') === -1 && dsUrls.indexOf(href) === -1) {
                                                         dsUrls.push(href);
                                                     }
                                                 }
@@ -2597,71 +2572,9 @@ fun UmsAuthBridgeDialog(
                                                             }
                                                             val exams = examsFound
 
-                                                            // 3. RESULT SUMMARY SYNC: Fetch CGPA & Past Semesters TGPA
-                                                            try {
-                                                                val cm = CookieManager.getInstance()
-                                                                val umsCookies = cm.getCookie("https://ums.lpu.in") ?: ""
-                                                                val okClient = OkHttpClient.Builder().connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS).build()
-
-                                                                // 3a. Direct JSON API for official CGPA
-                                                                try {
-                                                                    val basicReq = Request.Builder()
-                                                                        .url("https://ums.lpu.in/lpuums/StudentDashboard.aspx/GetStudentBasicInformation")
-                                                                        .header("Cookie", umsCookies)
-                                                                        .header("Content-Type", "application/json; charset=UTF-8")
-                                                                        .header("X-Requested-With", "XMLHttpRequest")
-                                                                        .post("{}".toRequestBody("application/json".toMediaType()))
-                                                                        .build()
-                                                                    okClient.newCall(basicReq).execute().use { resp ->
-                                                                        val jsonStr = resp.body?.string() ?: ""
-                                                                        val obj = try { JSONObject(jsonStr) } catch (_: Exception) { JSONObject() }
-                                                                        val d = obj.opt("d") ?: obj
-                                                                        val arr = if (d is JSONArray) d else (d as? JSONObject)?.optJSONArray("d")
-                                                                        val first = arr?.optJSONObject(0) ?: (d as? JSONObject)
-                                                                        val rawCgpa = first?.optDouble("CGPA", first.optDouble("cgpa", Double.NaN)) ?: Double.NaN
-                                                                        if (!rawCgpa.isNaN() && rawCgpa in 1.0..10.0) {
-                                                                            android.util.Log.i("SkedSync", "Fast path: Official CGPA from GetStudentBasicInformation: $rawCgpa")
-                                                                            com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, com.sked.sked_app.gpa.ParsedResultSummary(cgpa = rawCgpa), entries)
-                                                                        }
-                                                                    }
-                                                                } catch (e: Exception) {
-                                                                    android.util.Log.w("SkedSync", "GetStudentBasicInformation notice: ${e.message}")
-                                                                }
-
-                                                                // 3b. Classic Results page for past semesters
-                                                                try {
-                                                                    val resReq = Request.Builder()
-                                                                        .url("https://ums.lpu.in/lpuums/frmStudentResult.aspx")
-                                                                        .header("Cookie", umsCookies)
-                                                                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                                                                        .build()
-                                                                    okClient.newCall(resReq).execute().use { resp ->
-                                                                        val html = resp.body?.string() ?: ""
-                                                                        val classicResult = com.sked.sked_app.gpa.ResultParser.parse(html)
-                                                                        if (classicResult.terms.isNotEmpty() || classicResult.cgpa != null) {
-                                                                            com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, classicResult, entries)
-                                                                            android.util.Log.i("SkedSync", "Fast path: Synced ${classicResult.terms.size} terms from frmStudentResult.aspx (CGPA: ${classicResult.cgpa})")
-                                                                        }
-                                                                    }
-                                                                } catch (e: Exception) {
-                                                                    android.util.Log.w("SkedSync", "frmStudentResult notice: ${e.message}")
-                                                                }
-                                                            } catch (e: Exception) {
-                                                                android.util.Log.w("SkedSync", "Classic result fast path notice: ${e.message}")
-                                                            }
-
-                                                            withContext(Dispatchers.Main) {
-                                                                statusText = "Syncing Result Summary & CGPA..."
-                                                            }
-
-                                                            val resultUrl = "https://ums.lpu.in/lpuums/openapp.aspx?from=ums&toApp=nextproject&pagename=dashboard/examination/result/resultsummary"
-                                                            android.util.Log.i("SkedSync", "Navigating WebView to authentic resultUrl via openapp.aspx: $resultUrl")
-                                                            withContext(Dispatchers.Main) {
-                                                                wv.loadUrl(resultUrl)
-                                                            }
 
                                                             var resAttempts = 0
-                                                            val maxResAttempts = 36 // 18 seconds max
+                                                            val maxResAttempts = 0 // Result sync removed; bypass immediately
                                                             while (resAttempts < maxResAttempts) {
                                                                 delay(500)
                                                                 resAttempts++
@@ -2965,9 +2878,7 @@ fun UmsAuthBridgeDialog(
                                                                  statusText = "Sync complete!"
                                                                  delay(400)
                                                                  val examMsg = if (exams.isNotEmpty()) " & ${exams.size} exams" else ""
-                                                                 val gpaState = com.sked.sked_app.gpa.GpaStorage.load(context, entries)
-                                                                 val cgpaMsg = if (gpaState.displayCgpa != null) " • CGPA: ${String.format(java.util.Locale.US, "%.2f", gpaState.displayCgpa)}" else ""
-                                                                 Toast.makeText(context, "Synced timetable (${entries.size} classes$examMsg$cgpaMsg)", Toast.LENGTH_SHORT).show()
+                                                                 Toast.makeText(context, "Synced timetable (${entries.size} classes$examMsg)", Toast.LENGTH_SHORT).show()
                                                                  onSuccess(userId)
                                                              } else {
                                                                  isSyncing = false
