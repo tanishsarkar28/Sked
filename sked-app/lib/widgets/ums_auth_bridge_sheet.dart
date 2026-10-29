@@ -136,7 +136,7 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
         }
 
         if (window._skedTimetableResult) {
-            return JSON.stringify({ hasResult: true, status: 'Timetable ready' });
+            return JSON.stringify({ hasResult: true, status: 'Parsing timetable...' });
         }
 
         if (window._skedIsSyncing) {
@@ -696,6 +696,12 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
 
       if (mounted) {
         if (entries.isNotEmpty) {
+          setState(() {
+            _maxProgress = 1.0;
+            _statusText = 'Sync complete!';
+          });
+          await Future.delayed(const Duration(milliseconds: 400));
+          if (!mounted) return;
           final examSuffix = exams.isNotEmpty ? ' & ${exams.length} exams' : '';
           final gpaState = await GpaStorage.load(entries);
           final cgpaSuffix = gpaState.displayCgpa != null ? ' • CGPA: ${gpaState.displayCgpa!.toStringAsFixed(2)}' : '';
@@ -949,7 +955,7 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                             builder: (context) {
                               final st = _statusText.toLowerCase();
                               double current;
-                              if (st.contains('ready') || st.contains('synced')) {
+                              if (st.contains('complete') || _maxProgress >= 1.0) {
                                 current = 1.0;
                               } else if (st.contains('cgpa') || st.contains('result') || st.contains('grade')) {
                                 current = 0.92;
@@ -1019,7 +1025,7 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                             child: Builder(
                               builder: (context) {
                                 final hasReachedAuth = _maxProgress >= 0.40 || _isSyncing || _statusText.toLowerCase().contains('verified') || _statusText.toLowerCase().contains('authenticating');
-                                final isComplete = _maxProgress >= 0.98 || _statusText.toLowerCase().contains('ready') || _statusText.toLowerCase().contains('synced');
+                                final isComplete = _maxProgress >= 0.99 || _statusText.toLowerCase().contains('complete');
 
                                 return Column(
                                   children: [

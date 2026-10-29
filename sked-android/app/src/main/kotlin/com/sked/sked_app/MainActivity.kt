@@ -1876,6 +1876,8 @@ fun UmsAuthBridgeDialog(
     var consoleParsedExams by remember { mutableStateOf<String?>(null) }
     var showRawWebView by remember { mutableStateOf(false) }
     var elapsedSeconds by remember { mutableIntStateOf(0) }
+    var isAllDone by remember { mutableStateOf(false) }
+    var maxProgressReached by remember { mutableFloatStateOf(0.12f) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -1924,7 +1926,7 @@ fun UmsAuthBridgeDialog(
                                     }
 
                                     if (window._skedTimetableResult) {
-                                        return JSON.stringify({ hasResult: true, status: 'Timetable ready' });
+                                        return JSON.stringify({ hasResult: true, status: 'Parsing timetable...' });
                                     }
 
                                     if (window._skedIsSyncing) {
@@ -2582,6 +2584,10 @@ fun UmsAuthBridgeDialog(
 
                                                         withContext(Dispatchers.Main) {
                                                              if (entries.isNotEmpty()) {
+                                                                 isAllDone = true
+                                                                 maxProgressReached = 1.0f
+                                                                 statusText = "Sync complete!"
+                                                                 delay(400)
                                                                  val examMsg = if (exams.isNotEmpty()) " & ${exams.size} exams" else ""
                                                                  val gpaState = com.sked.sked_app.gpa.GpaStorage.load(context, entries)
                                                                  val cgpaMsg = if (gpaState.displayCgpa != null) " • CGPA: ${String.format(java.util.Locale.US, "%.2f", gpaState.displayCgpa)}" else ""
@@ -2864,6 +2870,7 @@ fun UmsAuthBridgeDialog(
                             Spacer(modifier = Modifier.height(28.dp))
 
                             val titleText = when {
+                                isAllDone || statusText.contains("Complete", true) -> "SYNC COMPLETE"
                                 statusText.contains("CGPA", true) || statusText.contains("Result", true) || statusText.contains("Grade", true) -> "SYNCING RESULTS & CGPA"
                                 statusText.contains("Exam", true) || statusText.contains("Datesheet", true) || statusText.contains("Seating", true) -> "SYNCING EXAMS"
                                 statusText.contains("schedule", true) || statusText.contains("timetable", true) || statusText.contains("classes", true) -> "SYNCING TIMETABLE"
@@ -2892,9 +2899,8 @@ fun UmsAuthBridgeDialog(
                             )
 
                             // Monotonically increasing progress: progress NEVER drops backwards
-                            var maxProgressReached by remember { mutableFloatStateOf(0.12f) }
                             val currentStageProgress = when {
-                                statusText.contains("Ready", true) || statusText.contains("Synced", true) -> 1.0f
+                                isAllDone || statusText.contains("Complete", true) -> 1.0f
                                 statusText.contains("CGPA", true) || statusText.contains("Result", true) || statusText.contains("Grade", true) -> 0.92f
                                 statusText.contains("Exam", true) || statusText.contains("Datesheet", true) || statusText.contains("Seating", true) -> 0.78f
                                 statusText.contains("schedule", true) || statusText.contains("timetable", true) || statusText.contains("classes", true) -> 0.65f
@@ -3014,7 +3020,7 @@ fun UmsAuthBridgeDialog(
                                         .padding(16.dp)
                                 ) {
                                     val hasReachedAuth = maxProgressReached >= 0.40f || isSyncing || statusText.contains("verified", true) || statusText.contains("Authenticating", true)
-                                    val isComplete = maxProgressReached >= 0.98f || statusText.contains("Ready", true) || statusText.contains("Synced", true)
+                                    val isComplete = isAllDone || maxProgressReached >= 0.99f || statusText.contains("Complete", true)
 
                                     val isStep1Done = true
                                     val isStep2Done = hasReachedAuth
