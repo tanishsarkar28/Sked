@@ -47,7 +47,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _isLoading = false;
   bool _showWebViewBridge = false;
   String _resyncPassword = '';
-  bool _hasAuthFailed = false;
   int _lastSyncTimestamp = 0;
 
   String _formatLastSyncTime() {
@@ -101,19 +100,12 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _runAutoSyncCheck({bool force = false}) async {
-    final authFailed = await SyncService.hasAuthFailed();
-    if (mounted) {
-      setState(() => _hasAuthFailed = authFailed);
-    }
-
     final event = await SyncService.performSync(force: force);
     if (!mounted) return;
 
-    final updatedAuthFailed = await SyncService.hasAuthFailed();
     final prefs = await SharedPreferences.getInstance();
     final updatedTs = prefs.getInt(SyncService.keyLastSyncTimestamp) ?? 0;
     setState(() {
-      _hasAuthFailed = updatedAuthFailed;
       _lastSyncTimestamp = updatedTs;
     });
 
@@ -677,36 +669,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
       body: Column(
         children: [
-          if (_hasAuthFailed)
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: SkedColors.slab,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: SkedColors.blaze.withOpacity(0.5)),
-              ),
-              child: InkWell(
-                onTap: _triggerReSync,
-                child: Row(
-                  children: [
-                    const Icon(Icons.sync_problem, color: SkedColors.blaze, size: 16),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'UMS session expired • Tap to reconnect auto-sync',
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: SkedColors.chalk,
-                        ),
-                      ),
-                    ),
-                    const Icon(Icons.arrow_forward_ios, color: SkedColors.slate, size: 12),
-                  ],
-                ),
-              ),
-            ),
 
           // Header Bar
           Padding(

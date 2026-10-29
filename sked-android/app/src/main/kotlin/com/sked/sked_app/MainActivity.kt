@@ -1043,52 +1043,6 @@ fun DashboardScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // BUG-08 FIX: Offload SharedPreferences query from composition thread to IO
-            var hasAuthFailed by remember { mutableStateOf(false) }
-            LaunchedEffect(isLoading) {
-                hasAuthFailed = withContext(Dispatchers.IO) {
-                    AutoSyncManager.hasAuthFailed(context)
-                }
-            }
-            if (hasAuthFailed) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = Slab,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Blaze.copy(alpha = 0.5f)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                        .clickable { onReSync() }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = Blaze,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "UMS session expired • Tap to reconnect auto-sync",
-                            fontFamily = BarlowCondensed,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp,
-                            color = Chalk,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = null,
-                            tint = Slate,
-                            modifier = Modifier.size(12.dp)
-                        )
-                    }
-                }
-            }
-
             // Header row — flat, rule-separated, no card wrapper
             Column(
                 modifier = Modifier
