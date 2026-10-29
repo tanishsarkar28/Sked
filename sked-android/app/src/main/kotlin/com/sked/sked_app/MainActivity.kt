@@ -18,11 +18,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -2913,6 +2917,17 @@ fun UmsAuthBridgeDialog(
 
                             Spacer(modifier = Modifier.height(18.dp))
 
+                            val shimmerTransition = rememberInfiniteTransition(label = "umsShimmer")
+                            val shimmerPercent by shimmerTransition.animateFloat(
+                                initialValue = 0f,
+                                targetValue = 1f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(durationMillis = 1500, easing = LinearEasing),
+                                    repeatMode = RepeatMode.Restart
+                                ),
+                                label = "umsShimmerPercent"
+                            )
+
                             // Sync Progress Bar
                             Column(
                                 modifier = Modifier
@@ -2941,15 +2956,47 @@ fun UmsAuthBridgeDialog(
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(6.dp))
-                                LinearProgressIndicator(
-                                    progress = { animatedProgress },
+                                Canvas(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(6.dp)
-                                        .clip(RoundedCornerShape(3.dp)),
-                                    color = Blaze,
-                                    trackColor = Rule
-                                )
+                                        .clip(RoundedCornerShape(3.dp))
+                                ) {
+                                    val barHeight = size.height
+                                    val cornerRadius = CornerRadius(barHeight / 2f, barHeight / 2f)
+
+                                    // 1. Inactive background track
+                                    drawRoundRect(
+                                        color = Rule,
+                                        size = size,
+                                        cornerRadius = cornerRadius
+                                    )
+
+                                    // 2. Filled progress with continuous light stream
+                                    val progressWidth = size.width * animatedProgress.coerceIn(0f, 1f)
+                                    if (progressWidth > 0f) {
+                                        val beamWidth = (progressWidth * 0.40f).coerceIn(40.dp.toPx(), 120.dp.toPx())
+                                        val startX = -beamWidth + (progressWidth + 2f * beamWidth) * shimmerPercent
+
+                                        val shimmerBrush = Brush.linearGradient(
+                                            colors = listOf(
+                                                Blaze,                   // #FF6B1A Base Blaze Orange
+                                                Color(0xFFFF8533),       // Warm amber accent
+                                                Color(0xFFFFE0B2),       // Luminous amber-white highlight beam
+                                                Color(0xFFFF8533),       // Warm amber accent
+                                                Blaze                    // #FF6B1A Base Blaze Orange
+                                            ),
+                                            start = Offset(startX, 0f),
+                                            end = Offset(startX + beamWidth, 0f)
+                                        )
+
+                                        drawRoundRect(
+                                            brush = shimmerBrush,
+                                            size = Size(progressWidth, barHeight),
+                                            cornerRadius = cornerRadius
+                                        )
+                                    }
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(20.dp))

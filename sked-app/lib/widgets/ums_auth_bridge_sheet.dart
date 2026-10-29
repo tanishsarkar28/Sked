@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -997,15 +998,7 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                                       ],
                                     ),
                                     const SizedBox(height: 6),
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(3),
-                                      child: LinearProgressIndicator(
-                                        value: _maxProgress,
-                                        minHeight: 6,
-                                        backgroundColor: SkedColors.rule,
-                                        valueColor: const AlwaysStoppedAnimation<Color>(SkedColors.blaze),
-                                      ),
-                                    ),
+                                    _ShimmerProgressBar(progress: _maxProgress),
                                   ],
                                 ),
                               );
@@ -1023,29 +1016,33 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                               borderRadius: BorderRadius.circular(6),
                               border: Border.all(color: SkedColors.rule),
                             ),
-                            child: Column(
-                              children: [
+                            child: Builder(
+                              builder: (context) {
                                 final hasReachedAuth = _maxProgress >= 0.40 || _isSyncing || _statusText.toLowerCase().contains('verified') || _statusText.toLowerCase().contains('authenticating');
                                 final isComplete = _maxProgress >= 0.98 || _statusText.toLowerCase().contains('ready') || _statusText.toLowerCase().contains('synced');
 
-                                _buildSyncStepRow(
-                                  title: 'Connect to LPU Portal',
-                                  isDone: true,
-                                  isActive: false,
-                                ),
-                                const SizedBox(height: 10),
-                                _buildSyncStepRow(
-                                  title: 'Cloudflare Security Check',
-                                  isDone: hasReachedAuth,
-                                  isActive: !hasReachedAuth && (_statusText.toLowerCase().contains('turnstile') || _statusText.toLowerCase().contains('loading') || _statusText.toLowerCase().contains('security') || _statusText.toLowerCase().contains('connecting')),
-                                ),
-                                const SizedBox(height: 10),
-                                _buildSyncStepRow(
-                                  title: 'Sync Schedule & Datesheet',
-                                  isDone: isComplete,
-                                  isActive: hasReachedAuth && !isComplete,
-                                ),
-                              ],
+                                return Column(
+                                  children: [
+                                    _buildSyncStepRow(
+                                      title: 'Connect to LPU Portal',
+                                      isDone: true,
+                                      isActive: false,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    _buildSyncStepRow(
+                                      title: 'Cloudflare Security Check',
+                                      isDone: hasReachedAuth,
+                                      isActive: !hasReachedAuth && (_statusText.toLowerCase().contains('turnstile') || _statusText.toLowerCase().contains('loading') || _statusText.toLowerCase().contains('security') || _statusText.toLowerCase().contains('connecting')),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    _buildSyncStepRow(
+                                      title: 'Sync Schedule & Datesheet',
+                                      isDone: isComplete,
+                                      isActive: hasReachedAuth && !isComplete,
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
                           ),
 
@@ -1170,3 +1167,115 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
     );
   }
 }
+
+class _ShimmerProgressBar extends StatefulWidget {
+  final double progress;
+
+  const _ShimmerProgressBar({required this.progress});
+
+  @override
+  State<_ShimmerProgressBar> createState() => _ShimmerProgressBarState();
+}
+
+class _ShimmerProgressBarState extends State<_ShimmerProgressBar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: CustomPaint(
+            size: const Size(double.infinity, 6),
+            painter: _ShimmerProgressPainter(
+              progress: widget.progress.clamp(0.0, 1.0),
+              shimmerValue: _controller.value,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ShimmerProgressPainter extends CustomPainter {
+  final double progress;
+  final double shimmerValue;
+
+  _ShimmerProgressPainter({
+    required this.progress,
+    required this.shimmerValue,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final trackRadius = Radius.circular(size.height / 2);
+    final trackRRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      trackRadius,
+    );
+
+    // 1. Inactive background track
+    final trackPaint = Paint()
+      ..color = SkedColors.rule
+      ..style = PaintingStyle.fill;
+    canvas.drawRRect(trackRRect, trackPaint);
+
+    // 2. Filled progress with continuous light stream
+    final progressWidth = size.width * progress;
+    if (progressWidth > 0) {
+      final progressRRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, 0, progressWidth, size.height),
+        trackRadius,
+      );
+
+      final beamWidth = (progressWidth * 0.40).clamp(40.0, 120.0);
+      final startX = -beamWidth + (progressWidth + 2 * beamWidth) * shimmerValue;
+
+      final gradient = ui.Gradient.linear(
+        Offset(startX, 0),
+        Offset(startX + beamWidth, 0),
+        [
+          SkedColors.blaze,
+          const Color(0xFFFF8533),
+          const Color(0xFFFFE0B2),
+          const Color(0xFFFF8533),
+          SkedColors.blaze,
+        ],
+        [0.0, 0.25, 0.5, 0.75, 1.0],
+        TileMode.clamp,
+      );
+
+      final progressPaint = Paint()
+        ..shader = gradient
+        ..style = PaintingStyle.fill;
+
+      canvas.drawRRect(progressRRect, progressPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ShimmerProgressPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.shimmerValue != shimmerValue;
+  }
+}
+
