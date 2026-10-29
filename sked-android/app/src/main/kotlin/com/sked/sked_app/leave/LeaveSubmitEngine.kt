@@ -14,6 +14,12 @@ import okhttp3.Request
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 
+sealed class LeaveSyncResult {
+    data class Success(val data: LeaveParser.ParsedLeaveData) : LeaveSyncResult()
+    object SessionExpired : LeaveSyncResult()
+    data class Error(val message: String) : LeaveSyncResult()
+}
+
 object LeaveSubmitEngine {
 
     const val LEAVE_URL = "https://ums.lpu.in/lpuums/frmStudentHostelLeaveApplicationTermWise.aspx"
@@ -22,25 +28,22 @@ object LeaveSubmitEngine {
      * Fast-path: Fetches leave balance & past history via OkHttpClient with session cookies.
      * Takes ~300ms, completely invisible.
      */
-    suspend fun fetchLatestData(context: Context): LeaveParser.ParsedLeaveData = withContext(Dispatchers.IO) {
+    suspend fun fetchLatestData(context: Context): LeaveSyncResult = withContext(Dispatchers.IO) {
         try {
             val cm = CookieManager.getInstance()
             var cookies = cm.getCookie("https://ums.lpu.in") ?: ""
             if (cookies.isBlank()) {
-                val prefs = context.getSharedPreferences("sked_prefs", Context.MODE_PRIVATE)
+                val prefs = context.getSharedPreferences(com.sked.sked_app.widget.PREFS_NAME, Context.MODE_PRIVATE)
                 cookies = prefs.getString(com.sked.sked_app.AutoSyncManager.KEY_UMS_COOKIES, "") ?: ""
             }
             if (cookies.isBlank()) {
-                return@withContext LeaveParser.ParsedLeaveData(
-                    balance = LeaveStorage.loadBalance(context),
-                    profile = LeaveStorage.loadProfile(context),
-                    records = LeaveStorage.loadRecords(context)
-                )
+                return@withContext LeaveSyncResult.SessionExpired
             }
 
             val client = OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(10, TimeUnit.SECONDS)
+                .followRedirects(false)
                 .build()
 
             val req = Request.Builder()
@@ -50,23 +53,31 @@ object LeaveSubmitEngine {
                 .build()
 
             client.newCall(req).execute().use { resp ->
-                val html = resp.body?.string() ?: ""
-                if (html.isNotBlank() && !html.contains("LoginNew.aspx")) {
-                    val parsed = LeaveParser.parse(html)
-                    LeaveStorage.saveBalance(context, parsed.balance)
-                    LeaveStorage.saveProfile(context, parsed.profile)
-                    LeaveStorage.saveRecords(context, parsed.records)
-                    return@withContext parsed
+                if (resp.code in 300..399) {
+                    val location = resp.header("Location") ?: ""
+                    if (location.contains("Login", ignoreCase = true)) {
+                        return@withContext LeaveSyncResult.SessionExpired
+                    }
                 }
+                val html = resp.body?.string() ?: ""
+                if (html.contains("LoginNew.aspx", ignoreCase = true) || html.contains("Login.aspx", ignoreCase = true)) {
+                    return@withContext LeaveSyncResult.SessionExpired
+                }
+                if (html.isNotBlank()) {
+                    val parsed = LeaveParser.parse(html)
+                    if (parsed.balance.dayTotal > 0 || parsed.records.isNotEmpty()) {
+                        LeaveStorage.saveBalance(context, parsed.balance)
+                        LeaveStorage.saveProfile(context, parsed.profile)
+                        LeaveStorage.saveRecords(context, parsed.records)
+                        return@withContext LeaveSyncResult.Success(parsed)
+                    }
+                }
+                return@withContext LeaveSyncResult.Error("Could not parse leave portal data")
             }
         } catch (e: Exception) {
             android.util.Log.w("SkedLeave", "fetchLatestData error: ${e.message}")
+            return@withContext LeaveSyncResult.Error(e.message ?: "Network error")
         }
-        return@withContext LeaveParser.ParsedLeaveData(
-            balance = LeaveStorage.loadBalance(context),
-            profile = LeaveStorage.loadProfile(context),
-            records = LeaveStorage.loadRecords(context)
-        )
     }
 
     /**

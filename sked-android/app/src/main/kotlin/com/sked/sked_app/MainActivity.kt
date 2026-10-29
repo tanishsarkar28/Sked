@@ -1099,6 +1099,7 @@ fun DashboardScreen(
                 "LEAVE" -> {
                     com.sked.sked_app.leave.LeaveScreen(
                         onBack = { activeTab = "HOME" },
+                        onReSync = onFullReSync,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -2878,6 +2879,9 @@ fun UmsAuthBridgeDialog(
                                                             }
                                                         } catch (_: Exception) {}
                                                         TimetableRefreshWorker.runNow(context)
+                                                        try {
+                                                            com.sked.sked_app.leave.LeaveSubmitEngine.fetchLatestData(context)
+                                                        } catch (_: Exception) {}
 
                                                         withContext(Dispatchers.Main) {
                                                              if (entries.isNotEmpty()) {

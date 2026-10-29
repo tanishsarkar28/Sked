@@ -91,6 +91,7 @@ val returnTimeSlots: List<UmsTimeSlot> by lazy {
 @Composable
 fun LeaveScreen(
     onBack: () -> Unit,
+    onReSync: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -198,23 +199,44 @@ fun LeaveScreen(
         }
     }
 
-    fun refreshLeaveData() {
+    fun refreshLeaveData(isUserInitiated: Boolean = false) {
         if (isRefreshing) return
         isRefreshing = true
         coroutineScope.launch {
-            val res = LeaveSubmitEngine.fetchLatestData(context)
-            balance = res.balance
-            profile = res.profile
-            records = res.records
-            if (relativeMobile.isBlank() && res.profile.registeredMobile.isNotBlank()) {
-                relativeMobile = res.profile.registeredMobile
+            when (val res = LeaveSubmitEngine.fetchLatestData(context)) {
+                is LeaveSyncResult.Success -> {
+                    balance = res.data.balance
+                    profile = res.data.profile
+                    records = res.data.records
+                    if (relativeMobile.isBlank() && res.data.profile.registeredMobile.isNotBlank()) {
+                        relativeMobile = res.data.profile.registeredMobile
+                    }
+                    if (isUserInitiated) {
+                        Toast.makeText(context, "Hostel leave balances updated", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                is LeaveSyncResult.SessionExpired -> {
+                    if (isUserInitiated) {
+                        if (onReSync != null) {
+                            Toast.makeText(context, "UMS session expired. Re-authenticating...", Toast.LENGTH_SHORT).show()
+                            onReSync.invoke()
+                        } else {
+                            Toast.makeText(context, "UMS session expired. Please re-authenticate.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+                is LeaveSyncResult.Error -> {
+                    if (isUserInitiated) {
+                        Toast.makeText(context, "Sync failed: ${res.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
             isRefreshing = false
         }
     }
 
     LaunchedEffect(Unit) {
-        refreshLeaveData()
+        refreshLeaveData(isUserInitiated = false)
     }
 
     val refreshRotation by rememberInfiniteTransition(label = "refresh").animateFloat(
@@ -260,7 +282,7 @@ fun LeaveScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .clickable(enabled = !isRefreshing) { refreshLeaveData() }
+                                .clickable(enabled = !isRefreshing) { refreshLeaveData(isUserInitiated = true) }
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Icon(
