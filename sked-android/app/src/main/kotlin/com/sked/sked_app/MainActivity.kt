@@ -1857,122 +1857,13 @@ fun DashboardScreen(
                             }
                         }
 
-                        // 4. "Today's Schedule" Section Header
+                        // 4. Developer Footer Card
                         item {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                            ) {
-                                HorizontalDivider(color = Rule, thickness = 1.dp)
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "TODAY'S SCHEDULE",
-                                        fontFamily = BarlowCondensed,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
-                                        color = Slate,
-                                        letterSpacing = 0.8.sp
-                                    )
-
-                                    Text(
-                                        text = "View Week",
-                                        fontFamily = BarlowCondensed,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
-                                        color = Blaze,
-                                        modifier = Modifier.clickable {
-                                            onSelectDay(todayName)
-                                            activeTab = "TIMETABLE"
-                                        }
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                            }
-                        }
-
-                        // 5. Today's Class items (Vertical timeline)
-                        if (todayClasses.isNotEmpty()) {
-                            val nowCal = Calendar.getInstance()
-                            val nowM = nowCal.get(Calendar.HOUR_OF_DAY) * 60 + nowCal.get(Calendar.MINUTE)
-                            val todayAllDone = todayClasses.all { item ->
-                                val sM = parseTimeInMinutes(item.start)
-                                val eEnd = parseTimeInMinutes(item.end)
-                                val eM = if (eEnd > 0) eEnd else if (sM > 0) sM + 50 else 0
-                                eM > 0 && nowM > eM
-                            }
-
-                            if (todayAllDone) {
-                                item {
-                                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                                        CelebrationCard(count = todayClasses.size)
-                                    }
-                                }
-                            }
-
-                            itemsIndexed(todayClasses) { index, item ->
-                                val sM = parseTimeInMinutes(item.start)
-                                val eEnd = parseTimeInMinutes(item.end)
-                                val eM = if (eEnd > 0) eEnd else if (sM > 0) sM + 50 else 0
-
-                                val isLive = (sM > 0 && eM > 0 && nowM in sM..eM)
-                                val isOver = (eM > 0 && nowM > eM)
-                                val isUpcoming = !isLive && !isOver && (sM > nowM)
-
-                                val timingState = when {
-                                    isLive -> ClassTimingState.ON_GOING
-                                    isUpcoming -> ClassTimingState.UPCOMING
-                                    isOver -> ClassTimingState.OVER
-                                    else -> ClassTimingState.PENDING
-                                }
-
-                                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                                    StaggeredClassCard(
-                                        item = item,
-                                        index = index,
-                                        timingState = timingState
-                                    )
-                                }
-                            }
-                        } else {
-                            item {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(32.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(
-                                            text = "Nothing today.",
-                                            fontFamily = BarlowCondensed,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 26.sp,
-                                            color = Chalk
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Text(
-                                            text = "You're clear • Free day.",
-                                            fontSize = 14.sp,
-                                            color = Slate
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // 6. Developer Footer Card
-                        item {
-                            Spacer(modifier = Modifier.height(14.dp))
+                            Spacer(modifier = Modifier.height(20.dp))
                             Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                                 DeveloperFooterCard(onClick = { showAboutDialog = true })
                             }
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(24.dp))
                         }
                     }
                 }
