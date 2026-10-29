@@ -297,13 +297,72 @@ object LeaveSubmitEngine {
                                         var mob = document.getElementById('ctl00_cphHeading_txtVisitingMobile');
                                         if (mob) { mob.value = $safeMobile; mob.dispatchEvent(new Event('input')); }
 
-                                        // Stay Address (if textarea or input present)
-                                        var addrInputs = document.querySelectorAll('textarea, input[type="text"]');
-                                        for (var i = 0; i < addrInputs.length; i++) {
-                                            var id = addrInputs[i].id || '';
-                                            if (id.indexOf('txtStay') !== -1 || id.indexOf('Address') !== -1 || id.indexOf('Stay') !== -1) {
-                                                addrInputs[i].value = $safeStayAddr;
-                                                addrInputs[i].dispatchEvent(new Event('input'));
+                                        // Stay Address: Multiple robust matching strategies
+                                        // 1. Check all validators for any mentioning 'stay' or 'address'
+                                        if (typeof Page_Validators !== 'undefined') {
+                                            for (var vi = 0; vi < Page_Validators.length; vi++) {
+                                                var vItem = Page_Validators[vi];
+                                                if (vItem && vItem.controltovalidate) {
+                                                    var vMsg = (vItem.errormessage || '').toLowerCase();
+                                                    if (vMsg.indexOf('stay') !== -1 || vMsg.indexOf('address') !== -1 || vMsg.indexOf('place') !== -1) {
+                                                        var targetEl = document.getElementById(vItem.controltovalidate);
+                                                        if (targetEl) {
+                                                            targetEl.value = $safeStayAddr;
+                                                            targetEl.dispatchEvent(new Event('input', { bubbles: true }));
+                                                            targetEl.dispatchEvent(new Event('change', { bubbles: true }));
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // 2. Check any input/textarea in rows between ddlVisitDay and txtVisitingMobile
+                                        var vpEl = document.getElementById('ctl00_cphHeading_ddlVisitDay');
+                                        var mobEl = document.getElementById('ctl00_cphHeading_txtVisitingMobile');
+                                        if (vpEl && mobEl) {
+                                            var tableEl = vpEl.closest('table') || document;
+                                            var allTrs = tableEl.querySelectorAll('tr');
+                                            var inRange = false;
+                                            for (var trI = 0; trI < allTrs.length; trI++) {
+                                                var rowEl = allTrs[trI];
+                                                if (rowEl.contains(vpEl)) { inRange = true; continue; }
+                                                if (inRange) {
+                                                    if (rowEl.contains(mobEl)) break;
+                                                    var rowInps = rowEl.querySelectorAll('input[type="text"], textarea');
+                                                    for (var rk = 0; rk < rowInps.length; rk++) {
+                                                        rowInps[rk].value = $safeStayAddr;
+                                                        rowInps[rk].dispatchEvent(new Event('input', { bubbles: true }));
+                                                        rowInps[rk].dispatchEvent(new Event('change', { bubbles: true }));
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // 3. Fallback: Check all inputs for common address keywords (case-insensitive)
+                                        var allTextEls = document.querySelectorAll('input[type="text"], textarea');
+                                        for (var ti = 0; ti < allTextEls.length; ti++) {
+                                            var elId = (allTextEls[ti].id || '').toLowerCase();
+                                            var elName = (allTextEls[ti].name || '').toLowerCase();
+                                            if (elId.indexOf('mobile') === -1 && elId.indexOf('reason') === -1 && 
+                                                elId.indexOf('date') === -1 && elId.indexOf('otp') === -1) {
+                                                if (elId.indexOf('stay') !== -1 || elId.indexOf('address') !== -1 ||
+                                                    elId.indexOf('place') !== -1 || elId.indexOf('location') !== -1 ||
+                                                    elId.indexOf('city') !== -1 || elName.indexOf('stay') !== -1 ||
+                                                    elName.indexOf('address') !== -1 || elName.indexOf('place') !== -1) {
+                                                    allTextEls[ti].value = $safeStayAddr;
+                                                    allTextEls[ti].dispatchEvent(new Event('input', { bubbles: true }));
+                                                    allTextEls[ti].dispatchEvent(new Event('change', { bubbles: true }));
+                                                }
+                                            }
+                                        }
+
+                                        // Re-run validation on validators to clear client errors
+                                        if (typeof Page_Validators !== 'undefined') {
+                                            for (var vi = 0; vi < Page_Validators.length; vi++) {
+                                                var valItem = Page_Validators[vi];
+                                                if (valItem && typeof ValidatorValidate === 'function') {
+                                                    ValidatorValidate(valItem);
+                                                }
                                             }
                                         }
 
