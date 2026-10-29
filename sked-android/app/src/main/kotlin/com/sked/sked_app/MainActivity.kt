@@ -2758,61 +2758,163 @@ fun UmsAuthBridgeDialog(
                                                                                     if (href.indexOf('studentdashboard') !== -1 && href.indexOf('resultsummary') === -1) {
                                                                                         window.location.href = 'https://studentums.lpu.in/dashboard/examination/result/resultsummary';
                                                                                     }
+
+                                                                                    var romanMap = { 'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5, 'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10 };
+
                                                                                     if (!window._skedResultHooked) {
                                                                                         window._skedResultHooked = true;
-                                                                                        window._skedCapturedResults = { coursewiseList: [] };
+                                                                                        window._skedCapturedResults = {
+                                                                                            coursewiseList: [],
+                                                                                            capturedSemesters: {}
+                                                                                        };
+
+                                                                                        // 1. Hook console.log
                                                                                         var origLog = console.log;
                                                                                         console.log = function() {
                                                                                             try {
                                                                                                 var label = typeof arguments[0] === 'string' ? arguments[0] : '';
+                                                                                                var detectedSem = null;
+                                                                                                for (var m = 0; m < arguments.length; m++) {
+                                                                                                    var arg = arguments[m];
+                                                                                                    if (typeof arg === 'number' && arg >= 1 && arg <= 10) detectedSem = arg;
+                                                                                                    if (typeof arg === 'string') {
+                                                                                                        var match = arg.match(/(?:Semester|Term|Sem)\s*[:\-]?\s*(VIII|VII|III|VI|IV|IX|II|V|I|X|\d+)/i);
+                                                                                                        if (match) {
+                                                                                                            detectedSem = romanMap[match[1].toUpperCase()] || parseInt(match[1]);
+                                                                                                        }
+                                                                                                    }
+                                                                                                }
+                                                                                                if (!detectedSem && window._currentClickSem) {
+                                                                                                    detectedSem = window._currentClickSem;
+                                                                                                }
+
                                                                                                 for (var i = 0; i < arguments.length; i++) {
                                                                                                     var a = arguments[i];
                                                                                                     if (typeof a === 'object' && a !== null) {
-                                                                                                        try {
-                                                                                                            var s = JSON.stringify(a);
-                                                                                                            if (label.indexOf('TGPA Data') !== -1 || s.indexOf('TGPASem') !== -1 || s.indexOf('Tgpa') !== -1) {
-                                                                                                                window._skedCapturedResults['tgpaData'] = a;
-                                                                                                            }
-                                                                                                            if (label.indexOf('CoursewiseGrade') !== -1 || s.indexOf('CourseCode') !== -1 || s.indexOf('Assessment') !== -1) {
-                                                                                                                if (Array.isArray(a)) {
-                                                                                                                    for (var k = 0; k < a.length; k++) {
-                                                                                                                        window._skedCapturedResults['coursewiseList'].push(a[k]);
+                                                                                                        var s = JSON.stringify(a);
+                                                                                                        if (label.indexOf('TGPA Data') !== -1 || s.indexOf('TGPASem') !== -1 || s.indexOf('Tgpa') !== -1) {
+                                                                                                            window._skedCapturedResults['tgpaData'] = a;
+                                                                                                        }
+                                                                                                        if (label.indexOf('CoursewiseGrade') !== -1 || s.indexOf('CourseCode') !== -1 || s.indexOf('Assessment') !== -1) {
+                                                                                                            var items = Array.isArray(a) ? a : [a];
+                                                                                                            for (var k = 0; k < items.length; k++) {
+                                                                                                                var item = items[k];
+                                                                                                                if (typeof item === 'object' && item !== null) {
+                                                                                                                    if (detectedSem && !item.Semester && !item.semester && !item.sem && !item.Sem) {
+                                                                                                                        item.semester = detectedSem;
                                                                                                                     }
-                                                                                                                } else {
-                                                                                                                    window._skedCapturedResults['coursewiseList'].push(a);
+                                                                                                                    window._skedCapturedResults['coursewiseList'].push(item);
                                                                                                                 }
-                                                                                                                window._skedCapturedResults['coursewise'] = window._skedCapturedResults['coursewiseList'];
                                                                                                             }
-                                                                                                            if (s.indexOf('profileData') !== -1 || s.indexOf('cgpa') !== -1) {
-                                                                                                                window._skedCapturedResults['profile'] = a;
-                                                                                                            }
-                                                                                                        } catch(e) {}
+                                                                                                            window._skedCapturedResults['coursewise'] = window._skedCapturedResults['coursewiseList'];
+                                                                                                        }
+                                                                                                        if (s.indexOf('profileData') !== -1 || s.indexOf('cgpa') !== -1) {
+                                                                                                            window._skedCapturedResults['profile'] = a;
+                                                                                                        }
                                                                                                     }
                                                                                                 }
                                                                                             } catch(e) {}
                                                                                             return origLog.apply(console, arguments);
                                                                                         };
+
+                                                                                        // 2. Hook window.fetch
+                                                                                        var origFetch = window.fetch;
+                                                                                        window.fetch = function() {
+                                                                                            var args = arguments;
+                                                                                            var p = origFetch.apply(this, args);
+                                                                                            try {
+                                                                                                p.then(function(res) {
+                                                                                                    try {
+                                                                                                        var clone = res.clone();
+                                                                                                        clone.text().then(function(t) {
+                                                                                                            try {
+                                                                                                                if (t && (t.indexOf('CourseCode') !== -1 || t.indexOf('Grade') !== -1)) {
+                                                                                                                    var parsed = JSON.parse(t);
+                                                                                                                    var curSem = window._currentClickSem;
+                                                                                                                    var items = Array.isArray(parsed) ? parsed : (parsed.CoursewiseGrade || []);
+                                                                                                                    for (var j = 0; j < items.length; j++) {
+                                                                                                                        if (curSem && !items[j].semester && !items[j].Semester) {
+                                                                                                                            items[j].semester = curSem;
+                                                                                                                        }
+                                                                                                                        window._skedCapturedResults['coursewiseList'].push(items[j]);
+                                                                                                                    }
+                                                                                                                    window._skedCapturedResults['coursewise'] = window._skedCapturedResults['coursewiseList'];
+                                                                                                                }
+                                                                                                            } catch(e) {}
+                                                                                                        });
+                                                                                                    } catch(e) {}
+                                                                                                });
+                                                                                            } catch(e) {}
+                                                                                            return p;
+                                                                                        };
                                                                                     }
 
-                                                                                    // Cycle through clicking all semester tabs/accordions to trigger coursewise fetches
+                                                                                    // 3. Extract Next.js script data if available
+                                                                                    var nextScript = document.getElementById('__NEXT_DATA__');
+                                                                                    if (nextScript && nextScript.textContent && !window._skedCapturedResults['nextData']) {
+                                                                                        try {
+                                                                                            window._skedCapturedResults['nextData'] = JSON.parse(nextScript.textContent);
+                                                                                        } catch(e) {}
+                                                                                    }
+
+                                                                                    // 4. Find all semester clickable tabs/buttons
+                                                                                    var allClickables = Array.from(document.querySelectorAll('button, [role="tab"], [role="button"], a, div[class*="tab"], div[class*="accordion"], li[class*="tab"], span[class*="tab"]'));
+                                                                                    var semTabs = [];
+                                                                                    for (var c = 0; c < allClickables.length; c++) {
+                                                                                        var el = allClickables[c];
+                                                                                        var txt = (el.innerText || el.textContent || '').trim();
+                                                                                        var m = txt.match(/^(?:Semester|Term|Sem)\s*[:\-]?\s*(VIII|VII|III|VI|IV|IX|II|V|I|X|\d+)$/i) ||
+                                                                                                txt.match(/\b(?:Semester|Term|Sem)\s*[:\-]?\s*(VIII|VII|III|VI|IV|IX|II|V|I|X|\d+)\b/i);
+                                                                                        if (m) {
+                                                                                            var semNum = romanMap[m[1].toUpperCase()] || parseInt(m[1]);
+                                                                                            if (semNum >= 1 && semNum <= 10 && !semTabs.some(function(x) { return x.sem === semNum; })) {
+                                                                                                semTabs.push({ sem: semNum, el: el, txt: txt });
+                                                                                            }
+                                                                                        }
+                                                                                    }
+                                                                                    semTabs.sort(function(a, b) { return a.sem - b.sem; });
+
+                                                                                    // Cycle through clicking the tabs every 2 ticks (1 second per tab)
+                                                                                    window._skedTick = (window._skedTick || 0) + 1;
+                                                                                    if (semTabs.length > 0 && window._skedTick % 2 === 0) {
+                                                                                        window._skedTabIdx = (window._skedTabIdx || 0) % semTabs.length;
+                                                                                        var targetTab = semTabs[window._skedTabIdx];
+                                                                                        window._currentClickSem = targetTab.sem;
+                                                                                        targetTab.el.click();
+                                                                                        targetTab.el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                                                                                        window._skedTabIdx++;
+                                                                                    }
+
+                                                                                    // 5. Extract visible courses currently in the DOM
                                                                                     try {
-                                                                                        var allClickables = Array.from(document.querySelectorAll('button, [role="tab"], [role="button"], a, div[class*="tab"], div[class*="accordion"]'));
-                                                                                        var semButtons = allClickables.filter(function(el) {
-                                                                                            var t = (el.innerText || el.textContent || '').trim();
-                                                                                            return /^(?:Semester|Term)\s*[:\-]?\s*(?:[IVX]+|\d+)$/i.test(t) ||
-                                                                                                   /(?:Semester|Term)\s*[:\-]?\s*(?:I|II|III|IV|V|VI|VII|VIII|\d+)\b/i.test(t);
-                                                                                        });
-                                                                                        if (semButtons.length > 0) {
-                                                                                            window._skedClickIdx = ((window._skedClickIdx || 0) + 1) % semButtons.length;
-                                                                                            semButtons[window._skedClickIdx].click();
+                                                                                        var rows = Array.from(document.querySelectorAll('tr, div[class*="course-item"], div[class*="courseRow"]'));
+                                                                                        var curSem = window._currentClickSem || 1;
+                                                                                        var domList = [];
+                                                                                        for (var r = 0; r < rows.length; r++) {
+                                                                                            var rowTxt = rows[r].innerText || rows[r].textContent || '';
+                                                                                            var cMatch = rowTxt.match(/\b([A-Z]{2,5}\d{3,4})\b/);
+                                                                                            if (cMatch) {
+                                                                                                var gMatch = rowTxt.match(/\b(A\+|B\+|O|A|B|C|D|E|F|S|U)\b/);
+                                                                                                if (gMatch) {
+                                                                                                    domList.push({
+                                                                                                        CourseCode: cMatch[1],
+                                                                                                        Grade: gMatch[1],
+                                                                                                        Semester: curSem
+                                                                                                    });
+                                                                                                }
+                                                                                            }
+                                                                                        }
+                                                                                        if (domList.length > 0) {
+                                                                                            window._skedCapturedResults['domCourses_' + curSem] = domList;
                                                                                         }
                                                                                     } catch(e) {}
 
-                                                                                    var txt = document.body ? document.body.innerText : '';
+                                                                                    var bodyTxt = document.body ? document.body.innerText : '';
                                                                                     return JSON.stringify({
                                                                                         url: href,
-                                                                                        len: txt.length,
-                                                                                        txt: txt,
+                                                                                        len: bodyTxt.length,
+                                                                                        txt: bodyTxt,
+                                                                                        tabsFound: semTabs.length,
                                                                                         rawJson: JSON.stringify(window._skedCapturedResults || {})
                                                                                     });
                                                                                 } catch(e) {
@@ -2846,7 +2948,8 @@ fun UmsAuthBridgeDialog(
                                                                     if (parsed.terms.isNotEmpty() || parsed.cgpa != null) {
                                                                         com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, parsed, entries)
                                                                         val termsWithSubs = parsed.terms.count { it.subjects.isNotEmpty() }
-                                                                        if (termsWithSubs >= 4 || (termsWithSubs > 0 && termsWithSubs >= parsed.terms.size)) {
+                                                                        val totalTerms = parsed.terms.size
+                                                                        if (termsWithSubs >= 4 || (termsWithSubs >= totalTerms && totalTerms > 1)) {
                                                                             hasAllCourses = true
                                                                         }
                                                                     }
@@ -2859,7 +2962,7 @@ fun UmsAuthBridgeDialog(
                                                                     }
                                                                 }
 
-                                                                if (hasAllCourses || (resAttempts >= 18 && (resRawJson.isNotBlank() || resText.isNotBlank()))) {
+                                                                if (hasAllCourses || (resAttempts >= 36 && (resRawJson.isNotBlank() || resText.isNotBlank()))) {
                                                                     android.util.Log.i("SkedSync", "Result sync completed at attempt #$resAttempts (allCourses=$hasAllCourses)")
                                                                     break
                                                                 }

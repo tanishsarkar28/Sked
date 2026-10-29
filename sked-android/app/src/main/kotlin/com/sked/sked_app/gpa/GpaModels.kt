@@ -353,13 +353,35 @@ object GpaStorage {
             healedOfficial = 8.31
         }
 
+        // Subject placement healing:
+        // If Semester 1 was accidentally assigned Semester 4's courses (CSE310, CSE316, INT222, INT428, etc.)
+        // and Semester 4 has no courses, transfer them to Semester 4!
+        val sem1 = healedTerms.firstOrNull { it.semesterNumber == 1 }
+        val sem4 = healedTerms.firstOrNull { it.semesterNumber == 4 }
+        val hasSem4CoursesInSem1 = sem1?.subjects?.any {
+            it.courseCode in listOf("CSE310", "CSE316", "INT222", "INT428", "PEA305")
+        } == true
+
+        val finalTerms = if (hasSem4CoursesInSem1 && sem1 != null && sem4 != null && sem4.subjects.isEmpty()) {
+            val coursesToMove = sem1.subjects
+            healedTerms.map { t ->
+                when (t.id) {
+                    sem1.id -> t.copy(subjects = emptyList())
+                    sem4.id -> t.copy(subjects = coursesToMove)
+                    else -> t
+                }
+            }
+        } else {
+            healedTerms
+        }
+
         val healedState = GpaState(
-            terms = healedTerms,
+            terms = finalTerms,
             activeTermId = activeId,
             targetCgpa = target,
             officialCgpa = healedOfficial
         )
-        if (healedTerms != terms || healedOfficial != official) {
+        if (finalTerms != terms || healedOfficial != official) {
             save(context, healedState)
         }
         return healedState

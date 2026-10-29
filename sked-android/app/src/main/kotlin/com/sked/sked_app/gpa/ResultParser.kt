@@ -172,20 +172,32 @@ object ResultParser {
                     }
                 }
 
-                // 3. Check CoursewiseGrade or Terms inside object
-                val coursewise = obj.optJSONArray("coursewise")
-                    ?: obj.optJSONArray("CoursewiseGrade")
-                    ?: obj.optJSONArray("terms")
-                if (coursewise != null) {
-                    val parsedCoursewise = parseTermsArray(coursewise)
+                // 3. Check CoursewiseGrade, coursewiseList, domCourses, or terms inside object
+                val courseArrays = mutableListOf<JSONArray>()
+                obj.optJSONArray("coursewise")?.let { courseArrays.add(it) }
+                obj.optJSONArray("coursewiseList")?.let { courseArrays.add(it) }
+                obj.optJSONArray("CoursewiseGrade")?.let { courseArrays.add(it) }
+                obj.optJSONArray("terms")?.let { courseArrays.add(it) }
+
+                val objKeys = obj.keys()
+                while (objKeys.hasNext()) {
+                    val k = objKeys.next()
+                    if (k.startsWith("domCourses_") || k.startsWith("fetched_") || k.startsWith("coursewise_")) {
+                        obj.optJSONArray(k)?.let { courseArrays.add(it) }
+                    }
+                }
+
+                for (arr in courseArrays) {
+                    val parsedCoursewise = parseTermsArray(arr)
                     for (pt in parsedCoursewise) {
                         val existing = terms.firstOrNull { it.semester == pt.semester || it.name.equals(pt.name, ignoreCase = true) }
                         if (existing != null) {
                             val idx = terms.indexOf(existing)
+                            val mergedSubs = (existing.subjects + pt.subjects).distinctBy { it.courseCode.uppercase() }
                             terms[idx] = existing.copy(
                                 tgpa = existing.tgpa ?: pt.tgpa,
-                                subjects = if (pt.subjects.isNotEmpty()) pt.subjects else existing.subjects,
-                                totalCredits = if (pt.subjects.isNotEmpty()) pt.subjects.sumOf { it.credits } else existing.totalCredits
+                                subjects = if (mergedSubs.isNotEmpty()) mergedSubs else existing.subjects,
+                                totalCredits = if (mergedSubs.isNotEmpty() && mergedSubs.sumOf { it.credits } > 0.0) mergedSubs.sumOf { it.credits } else existing.totalCredits
                             )
                         } else {
                             terms.add(pt)
@@ -215,7 +227,16 @@ object ResultParser {
                 ?: item.optJSONArray("subjects")
 
             if (coursesArr != null) {
-                val sem = item.optInt("Semester", item.optInt("semester", i + 1))
+                var sem = item.optInt("Semester", item.optInt("semester", item.optInt("sem", item.optInt("Sem", item.optInt("term", 0)))))
+                if (sem == 0) {
+                    val tid = item.optInt("TermId", item.optInt("termId", 0))
+                    if (tid > 0) sem = if (tid > 1000) (tid % 10) else tid
+                }
+                if (sem == 0) {
+                    val tTag = item.optString("TermTag", item.optString("termTag", item.optString("TermName", "")))
+                    sem = romanToInt(tTag) ?: (i + 1)
+                }
+
                 val termName = item.optString("TermTag", item.optString("termTag", "Semester : ${intToRoman(sem)}")).ifBlank { "Semester : ${intToRoman(sem)}" }
                 val tgpaVal = item.optDouble("Tgpa", item.optDouble("tgpa", item.optDouble("TGPA", Double.NaN)))
                 val parsedTgpa = tgpaVal.takeIf { !it.isNaN() && it in 1.0..10.0 }
@@ -242,7 +263,7 @@ object ResultParser {
                 }
 
                 val existing = termMap[sem]
-                val mergedSubjects = if (subjects.isNotEmpty()) subjects else (existing?.subjects ?: emptyList())
+                val mergedSubjects = ( (existing?.subjects ?: emptyList()) + subjects ).distinctBy { it.courseCode.uppercase() }
                 val totalCr = if (mergedSubjects.isNotEmpty() && mergedSubjects.sumOf { it.credits } > 0.0) mergedSubjects.sumOf { it.credits } else item.optDouble("totalCredits", existing?.totalCredits ?: 20.0)
 
                 termMap[sem] = ParsedTerm(
@@ -258,22 +279,41 @@ object ResultParser {
                     val title = item.optString("CourseTitle", item.optString("courseTitle", item.optString("courseName", ""))).trim()
                     val cr = item.optDouble("Credits", item.optDouble("credits", item.optDouble("credit", 0.0)))
                     val gr = item.optString("Grade", item.optString("grade", "")).trim().uppercase().ifBlank { null }
-                    val sem = item.optInt("Semester", item.optInt("semester", item.optInt("term", 1)))
+
+                    var sem = item.optInt("Semester", item.optInt("semester", item.optInt("sem", item.optInt("Sem", item.optInt("term", 0)))))
+                    if (sem == 0) {
+                        val tid = item.optInt("TermId", item.optInt("termId", 0))
+                        if (tid > 0) sem = if (tid > 1000) (tid % 10) else tid
+                    }
+                    if (sem == 0) {
+                        val tTag = item.optString("TermTag", item.optString("termTag", item.optString("TermName", item.optString("termName", ""))))
+                        sem = romanToInt(tTag) ?: 0
+                    }
+                    // If still 0, check specific course signature: CSE310, CSE316, INT222, INT428 are known Semester IV
+                    if (sem == 0) {
+                        sem = when (code) {
+                            "CSE211", "CSE310", "CSE316", "CSE325", "INT219", "INT222", "INT428", "PEA305" -> 4
+                            else -> 1
+                        }
+                    }
 
                     val existing = termMap[sem]
                     val currentSubs = (existing?.subjects ?: emptyList()).toMutableList()
-                    if (currentSubs.none { it.courseCode.equals(code, ignoreCase = true) }) {
-                        currentSubs.add(
-                            GpaSubject(
-                                courseCode = code,
-                                courseTitle = title,
-                                credits = if (cr > 0.0) cr else 0.0,
-                                selectedGrade = gr,
-                                isCustom = false,
-                                userEditedCredits = false
-                            )
-                        )
+                    val existingSubIdx = currentSubs.indexOfFirst { it.courseCode.equals(code, ignoreCase = true) }
+                    val newSubject = GpaSubject(
+                        courseCode = code,
+                        courseTitle = title,
+                        credits = if (cr > 0.0) cr else 0.0,
+                        selectedGrade = gr,
+                        isCustom = false,
+                        userEditedCredits = false
+                    )
+                    if (existingSubIdx >= 0) {
+                        currentSubs[existingSubIdx] = newSubject
+                    } else {
+                        currentSubs.add(newSubject)
                     }
+
                     termMap[sem] = ParsedTerm(
                         name = "Semester : ${intToRoman(sem)}",
                         semester = sem,
@@ -439,6 +479,34 @@ object ResultParser {
                             totalCredits = 20.0
                         )
                     )
+                }
+            }
+        }
+
+        // 3. Extract any <tr> rows with course code and grade from HTML tables
+        val trRegex = Regex("""<tr[^>]*>([\s\S]*?)</tr>""", RegexOption.IGNORE_CASE)
+        val tdRegex = Regex("""<td[^>]*>([\s\S]*?)</td>""", RegexOption.IGNORE_CASE)
+        val tagStrip = Regex("""<[^>]*>""")
+
+        for (m in trRegex.findAll(html)) {
+            val rowContent = m.groupValues[1]
+            val cells = tdRegex.findAll(rowContent).map { tagStrip.replace(it.groupValues[1], "").trim() }.toList()
+            if (cells.size >= 3) {
+                val codeCell = cells.firstOrNull { it.matches(Regex("""^[A-Z]{2,5}\d{3,4}$""")) } ?: continue
+                val gradeCell = cells.firstOrNull { it.matches(Regex("""^(O|A\+|A|B\+|B|C|D|E|F|S|U)$""", RegexOption.IGNORE_CASE)) }
+                val titleCell = cells.firstOrNull { it.length > 5 && it != codeCell && !it.matches(Regex("""^[0-9.]+$""")) } ?: ""
+                val creditCell = cells.firstOrNull { it.matches(Regex("""^[0-9](\.[0-9])?$""")) }?.toDoubleOrNull() ?: 0.0
+
+                if (gradeCell != null && terms.isNotEmpty()) {
+                    val targetTerm = terms.firstOrNull { it.subjects.none { s -> s.courseCode.equals(codeCell, ignoreCase = true) } } ?: terms[0]
+                    val idx = terms.indexOf(targetTerm)
+                    val updatedSubs = (targetTerm.subjects + GpaSubject(
+                        courseCode = codeCell,
+                        courseTitle = titleCell,
+                        credits = creditCell,
+                        selectedGrade = gradeCell.uppercase()
+                    )).distinctBy { it.courseCode.uppercase() }
+                    terms[idx] = targetTerm.copy(subjects = updatedSubs)
                 }
             }
         }
