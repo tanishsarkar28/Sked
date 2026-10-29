@@ -60,7 +60,7 @@ object ResultParser {
 
     fun romanToInt(raw: String): Int? {
         val clean = raw.trim().uppercase()
-        return when (clean) {
+        val direct = when (clean) {
             "I" -> 1
             "II" -> 2
             "III" -> 3
@@ -73,6 +73,27 @@ object ResultParser {
             "X" -> 10
             else -> clean.toIntOrNull()
         }
+        if (direct != null && direct in 1..10) return direct
+
+        val match = Regex("""(?:SEMESTER|TERM|SEM)?\s*[:\-]?\s*(VIII|VII|III|VI|IV|IX|II|V|I|X|\d+)""").find(clean)
+        if (match != null) {
+            val token = match.groupValues[1]
+            val tokenNum = when (token) {
+                "I" -> 1
+                "II" -> 2
+                "III" -> 3
+                "IV" -> 4
+                "V" -> 5
+                "VI" -> 6
+                "VII" -> 7
+                "VIII" -> 8
+                "IX" -> 9
+                "X" -> 10
+                else -> token.toIntOrNull()
+            }
+            if (tokenNum != null && tokenNum in 1..10) return tokenNum
+        }
+        return null
     }
 
     fun intToRoman(n: Int): String {
@@ -186,6 +207,9 @@ object ResultParser {
                         obj.optJSONArray(k)?.let { courseArrays.add(it) }
                     }
                 }
+
+                // Also search nextData or nested objects recursively
+                obj.optJSONObject("nextData")?.let { findCourseArraysRecursively(it, courseArrays) }
 
                 for (arr in courseArrays) {
                     val parsedCoursewise = parseTermsArray(arr)
@@ -538,7 +562,7 @@ object ResultParser {
                 it.name.equals(pt.name, ignoreCase = true)
             }
             val mergedSubjects = if (pt.subjects.isNotEmpty()) {
-                pt.subjects
+                (existing?.subjects.orEmpty() + pt.subjects).distinctBy { it.courseCode.uppercase() }
             } else {
                 existing?.subjects ?: emptyList()
             }
@@ -576,5 +600,45 @@ object ResultParser {
         GpaStorage.save(context, newState)
         Log.i(TAG, "Merged result summary: ${newState.terms.size} total terms (CGPA: ${newState.officialCgpa ?: newState.cumulativeCgpa})")
         return newState
+    }
+
+    private fun findCourseArraysRecursively(json: Any, out: MutableList<JSONArray>, depth: Int = 0) {
+        if (depth > 6) return
+        when (json) {
+            is JSONObject -> {
+                val keys = json.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val v = json.opt(k) ?: continue
+                    if (v is JSONArray) {
+                        if (v.length() > 0 && isCourseArray(v)) {
+                            out.add(v)
+                        } else {
+                            findCourseArraysRecursively(v, out, depth + 1)
+                        }
+                    } else if (v is JSONObject) {
+                        findCourseArraysRecursively(v, out, depth + 1)
+                    }
+                }
+            }
+            is JSONArray -> {
+                for (i in 0 until json.length()) {
+                    val item = json.opt(i) ?: continue
+                    if (item is JSONObject || item is JSONArray) {
+                        findCourseArraysRecursively(item, out, depth + 1)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun isCourseArray(arr: JSONArray): Boolean {
+        for (i in 0 until minOf(3, arr.length())) {
+            val o = arr.optJSONObject(i) ?: continue
+            if (o.has("CourseCode") || o.has("courseCode") || o.has("code") || o.has("CourseTitle") || o.has("courseTitle")) {
+                return true
+            }
+        }
+        return false
     }
 }

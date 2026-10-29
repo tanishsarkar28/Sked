@@ -2796,17 +2796,50 @@ fun UmsAuthBridgeDialog(
                                                                                     }
 
                                                                                     // 4. Find all semester clickable tabs/buttons
-                                                                                    var allClickables = Array.from(document.querySelectorAll('button, [role="tab"], [role="button"], a, div[class*="tab"], div[class*="accordion"], li[class*="tab"], span[class*="tab"]'));
+                                                                                    function simClick(node) {
+                                                                                        if (!node) return;
+                                                                                        try {
+                                                                                            var opts = { bubbles: true, cancelable: true, view: window };
+                                                                                            node.dispatchEvent(new MouseEvent('pointerdown', opts));
+                                                                                            node.dispatchEvent(new MouseEvent('mousedown', opts));
+                                                                                            node.dispatchEvent(new MouseEvent('pointerup', opts));
+                                                                                            node.dispatchEvent(new MouseEvent('mouseup', opts));
+                                                                                            node.click();
+                                                                                        } catch(e) {
+                                                                                            try { node.click(); } catch(e2) {}
+                                                                                        }
+                                                                                    }
+
+                                                                                    var allClickables = Array.from(document.querySelectorAll('button, a, [role="tab"], [role="button"], div, span, li, p'));
                                                                                     var semTabs = [];
                                                                                     for (var c = 0; c < allClickables.length; c++) {
                                                                                         var el = allClickables[c];
+                                                                                        if (el.childElementCount > 4) continue;
                                                                                         var txt = (el.innerText || el.textContent || '').trim();
-                                                                                        var m = txt.match(/^(?:Semester|Term|Sem)\s*[:\-]?\s*(VIII|VII|III|VI|IV|IX|II|V|I|X|\d+)$/i) ||
-                                                                                                txt.match(/\b(?:Semester|Term|Sem)\s*[:\-]?\s*(VIII|VII|III|VI|IV|IX|II|V|I|X|\d+)\b/i);
+                                                                                        if (txt.length > 50) continue;
+                                                                                        var m = txt.match(/\b(?:Semester|Term|Sem)\s*[:\-]?\s*(VIII|VII|III|VI|IV|IX|II|V|I|X|\d+)\b/i) ||
+                                                                                                txt.match(/^(?:Semester|Term|Sem)\s*[:\-]?\s*(VIII|VII|III|VI|IV|IX|II|V|I|X|\d+)$/i);
                                                                                         if (m) {
                                                                                             var semNum = romanMap[m[1].toUpperCase()] || parseInt(m[1]);
                                                                                             if (semNum >= 1 && semNum <= 10 && !semTabs.some(function(x) { return x.sem === semNum; })) {
                                                                                                 semTabs.push({ sem: semNum, el: el, txt: txt });
+                                                                                            }
+                                                                                        }
+                                                                                    }
+
+                                                                                    // Also check dropdowns
+                                                                                    var selects = Array.from(document.querySelectorAll('select'));
+                                                                                    for (var s = 0; s < selects.length; s++) {
+                                                                                        var sel = selects[s];
+                                                                                        for (var o = 0; o < sel.options.length; o++) {
+                                                                                            var opt = sel.options[o];
+                                                                                            var oTxt = opt.text || '';
+                                                                                            var oM = oTxt.match(/\b(?:Semester|Term|Sem)\s*[:\-]?\s*(VIII|VII|III|VI|IV|IX|II|V|I|X|\d+)\b/i);
+                                                                                            if (oM) {
+                                                                                                var sNum = romanMap[oM[1].toUpperCase()] || parseInt(oM[1]);
+                                                                                                if (sNum && !semTabs.some(function(x) { return x.sem === sNum; })) {
+                                                                                                    semTabs.push({ sem: sNum, el: sel, optIdx: o, txt: oTxt });
+                                                                                                }
                                                                                             }
                                                                                         }
                                                                                     }
@@ -2818,24 +2851,48 @@ fun UmsAuthBridgeDialog(
                                                                                         window._skedTabIdx = (window._skedTabIdx || 0) % semTabs.length;
                                                                                         var targetTab = semTabs[window._skedTabIdx];
                                                                                         window._currentClickSem = targetTab.sem;
-                                                                                        targetTab.el.click();
-                                                                                        targetTab.el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                                                                                        if (targetTab.el.tagName === 'SELECT') {
+                                                                                            if (targetTab.optIdx !== undefined) targetTab.el.selectedIndex = targetTab.optIdx;
+                                                                                            targetTab.el.dispatchEvent(new Event('change', { bubbles: true }));
+                                                                                        } else {
+                                                                                            simClick(targetTab.el);
+                                                                                        }
                                                                                         window._skedTabIdx++;
                                                                                     }
 
                                                                                     // 5. Extract visible courses currently in the DOM
                                                                                     try {
-                                                                                        var rows = Array.from(document.querySelectorAll('tr, div[class*="course-item"], div[class*="courseRow"]'));
-                                                                                        var curSem = window._currentClickSem || 1;
+                                                                                        var curSem = window._currentClickSem;
+                                                                                        if (!curSem) {
+                                                                                            var activeEl = document.querySelector('[aria-selected="true"], [data-state="active"], [data-selected="true"], [class*="active"], [class*="selected"]');
+                                                                                            if (activeEl) {
+                                                                                                var aTxt = (activeEl.innerText || activeEl.textContent || '').trim();
+                                                                                                var aM = aTxt.match(/\b(?:Semester|Term|Sem)\s*[:\-]?\s*(VIII|VII|III|VI|IV|IX|II|V|I|X|\d+)\b/i);
+                                                                                                if (aM) curSem = romanMap[aM[1].toUpperCase()] || parseInt(aM[1]);
+                                                                                            }
+                                                                                            if (!curSem && semTabs.length > 0) {
+                                                                                                curSem = semTabs[semTabs.length - 1].sem;
+                                                                                            }
+                                                                                            if (!curSem) curSem = 4;
+                                                                                        }
+
+                                                                                        var potentialRows = Array.from(document.querySelectorAll('tr, div, li'));
                                                                                         var domList = [];
-                                                                                        for (var r = 0; r < rows.length; r++) {
-                                                                                            var rowTxt = rows[r].innerText || rows[r].textContent || '';
+                                                                                        var seenCodes = {};
+                                                                                        for (var r = 0; r < potentialRows.length; r++) {
+                                                                                            var rowEl = potentialRows[r];
+                                                                                            if (rowEl.childElementCount > 8) continue;
+                                                                                            var rowTxt = (rowEl.innerText || rowEl.textContent || '').trim();
+                                                                                            if (rowTxt.length > 250) continue;
                                                                                             var cMatch = rowTxt.match(/\b([A-Z]{2,5}\d{3,4})\b/);
                                                                                             if (cMatch) {
+                                                                                                var cCode = cMatch[1];
+                                                                                                if (seenCodes[cCode]) continue;
                                                                                                 var gMatch = rowTxt.match(/\b(A\+|B\+|O|A|B|C|D|E|F|S|U)\b/);
                                                                                                 if (gMatch) {
+                                                                                                    seenCodes[cCode] = true;
                                                                                                     domList.push({
-                                                                                                        CourseCode: cMatch[1],
+                                                                                                        CourseCode: cCode,
                                                                                                         Grade: gMatch[1],
                                                                                                         Semester: curSem
                                                                                                     });
@@ -2844,6 +2901,10 @@ fun UmsAuthBridgeDialog(
                                                                                         }
                                                                                         if (domList.length > 0) {
                                                                                             window._skedCapturedResults['domCourses_' + curSem] = domList;
+                                                                                            for (var d = 0; d < domList.length; d++) {
+                                                                                                window._skedCapturedResults['coursewiseList'].push(domList[d]);
+                                                                                            }
+                                                                                            window._skedCapturedResults['coursewise'] = window._skedCapturedResults['coursewiseList'];
                                                                                         }
                                                                                     } catch(e) {}
 
@@ -2875,9 +2936,10 @@ fun UmsAuthBridgeDialog(
                                                                 val resObj = try { JSONObject(cleanResInfo) } catch (_: Exception) { JSONObject() }
                                                                 val resText = resObj.optString("txt")
                                                                 val resRawJson = resObj.optString("rawJson")
+                                                                val tabsCount = resObj.optInt("tabsFound", 0)
 
-                                                                if (resAttempts % 4 == 0 || resAttempts == 1) {
-                                                                    android.util.Log.i("SkedSync", "Result attempt #$resAttempts [len=${resText.length}] snippet: ${resText.replace(Regex("""\s+"""), " ").take(140)}")
+                                                                if (resAttempts % 2 == 0 || resAttempts == 1) {
+                                                                    android.util.Log.i("SkedSync", "Result attempt #$resAttempts [len=${resText.length}, tabs=$tabsCount] snippet: ${resText.replace(Regex("""\s+"""), " ").take(120)}")
                                                                 }
 
                                                                 var hasAllCourses = false
