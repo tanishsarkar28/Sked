@@ -3779,19 +3779,19 @@ fun QuickAccessFeatureBox(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(12.dp),
         color = Slab,
         border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
         modifier = modifier
-            .height(112.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .height(140.dp)
+            .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // Badge in top-right corner if provided (matching Image 2)
             if (!badgeText.isNullOrBlank()) {
                 Surface(
-                    shape = RoundedCornerShape(topStart = 0.dp, topEnd = 9.dp, bottomStart = 8.dp, bottomEnd = 0.dp),
+                    shape = RoundedCornerShape(topStart = 0.dp, topEnd = 11.dp, bottomStart = 8.dp, bottomEnd = 0.dp),
                     color = Blaze,
                     modifier = Modifier.align(Alignment.TopEnd)
                 ) {
@@ -3799,9 +3799,9 @@ fun QuickAccessFeatureBox(
                         text = badgeText,
                         fontFamily = BarlowCondensed,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         color = Ink,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
                     )
                 }
             }
@@ -3809,7 +3809,7 @@ fun QuickAccessFeatureBox(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                    .padding(horizontal = 8.dp, vertical = 14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
@@ -3818,7 +3818,7 @@ fun QuickAccessFeatureBox(
                 // Icon in circular highlight
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(50.dp)
                         .clip(CircleShape)
                         .background(Blaze.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
@@ -3827,7 +3827,7 @@ fun QuickAccessFeatureBox(
                         imageVector = icon,
                         contentDescription = title,
                         tint = Blaze,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(26.dp)
                     )
                 }
 
@@ -3842,12 +3842,12 @@ fun QuickAccessFeatureBox(
                         text = title,
                         fontFamily = BarlowCondensed,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
                         color = Chalk,
                         textAlign = TextAlign.Center,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 3.dp)
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
                     )
                 }
             }
