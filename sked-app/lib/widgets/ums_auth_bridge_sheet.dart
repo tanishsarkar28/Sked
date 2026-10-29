@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -44,6 +45,9 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
 
   Timer? _pollTimer;
   Timer? _secondTimer;
+  Timer? _crawlTimer;
+  int _lastStage = -1;
+  int _stageStartTime = 0;
 
   late final AnimationController _pulseController;
   late final Animation<double> _pulseScale;
@@ -71,6 +75,12 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
         setState(() {
           _elapsedSeconds++;
         });
+      }
+    });
+
+    _crawlTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
+      if (mounted && _maxProgress < 1.0) {
+        setState(() {});
       }
     });
 
@@ -733,6 +743,7 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
   void dispose() {
     _pollTimer?.cancel();
     _secondTimer?.cancel();
+    _crawlTimer?.cancel();
     _pulseController.dispose();
     super.dispose();
   }
@@ -954,25 +965,53 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                           Builder(
                             builder: (context) {
                               final st = _statusText.toLowerCase();
-                              double current;
+                              int stage;
                               if (st.contains('complete') || _maxProgress >= 1.0) {
-                                current = 1.0;
+                                stage = 6;
                               } else if (st.contains('cgpa') || st.contains('result') || st.contains('grade')) {
-                                current = 0.92;
+                                stage = 5;
                               } else if (st.contains('exam') || st.contains('datesheet') || st.contains('seating')) {
-                                current = 0.78;
+                                stage = 4;
                               } else if (st.contains('schedule') || st.contains('timetable') || st.contains('classes')) {
-                                current = 0.65;
+                                stage = 3;
                               } else if (_isSyncing || st.contains('authenticating') || st.contains('submitting')) {
-                                current = 0.50;
+                                stage = 2;
                               } else if (st.contains('verified')) {
-                                current = 0.40;
+                                stage = 1;
                               } else if (st.contains('turnstile') || st.contains('security')) {
-                                final extra = (_elapsedSeconds.clamp(0, 10)) * 0.02;
-                                current = (0.18 + extra).clamp(0.18, 0.38);
+                                stage = 1;
                               } else {
-                                current = 0.12;
+                                stage = 0;
                               }
+
+                              final now = DateTime.now().millisecondsSinceEpoch;
+                              if (stage != _lastStage) {
+                                _lastStage = stage;
+                                _stageStartTime = now;
+                              }
+                              final stageElapsed = (_stageStartTime > 0 ? (now - _stageStartTime) / 1000.0 : 0.0).clamp(0.0, 60.0);
+
+                              double floor;
+                              double ceiling;
+                              double timeConstant;
+                              switch (stage) {
+                                case 6: floor = 1.0; ceiling = 1.0; timeConstant = 1.0; break;
+                                case 5: floor = 0.88; ceiling = 0.98; timeConstant = 7.0; break;
+                                case 4: floor = 0.70; ceiling = 0.88; timeConstant = 8.0; break;
+                                case 3: floor = 0.55; ceiling = 0.70; timeConstant = 4.0; break;
+                                case 2: floor = 0.42; ceiling = 0.55; timeConstant = 4.0; break;
+                                case 1:
+                                  floor = st.contains('verified') ? 0.38 : 0.20;
+                                  ceiling = st.contains('verified') ? 0.42 : 0.38;
+                                  timeConstant = st.contains('verified') ? 2.0 : 6.0;
+                                  break;
+                                default: floor = 0.10; ceiling = 0.20; timeConstant = 4.0; break;
+                              }
+
+                              final current = stage == 6
+                                  ? 1.0
+                                  : floor + (ceiling - floor) * (1.0 - math.exp(-stageElapsed / timeConstant));
+
                               if (current > _maxProgress) {
                                 _maxProgress = current;
                               }

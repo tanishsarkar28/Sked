@@ -1877,7 +1877,16 @@ fun UmsAuthBridgeDialog(
     var showRawWebView by remember { mutableStateOf(false) }
     var elapsedSeconds by remember { mutableIntStateOf(0) }
     var isAllDone by remember { mutableStateOf(false) }
-    var maxProgressReached by remember { mutableFloatStateOf(0.12f) }
+    var maxProgressReached by remember { mutableFloatStateOf(0.10f) }
+    val syncStartTime = remember { android.os.SystemClock.elapsedRealtime() }
+    var currentTime by remember { mutableLongStateOf(syncStartTime) }
+
+    LaunchedEffect(isAllDone) {
+        while (!isAllDone) {
+            kotlinx.coroutines.delay(150)
+            currentTime = android.os.SystemClock.elapsedRealtime()
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -2898,26 +2907,51 @@ fun UmsAuthBridgeDialog(
                                 modifier = Modifier.padding(horizontal = 20.dp)
                             )
 
-                            // Monotonically increasing progress: progress NEVER drops backwards
-                            val currentStageProgress = when {
-                                isAllDone || statusText.contains("Complete", true) -> 1.0f
-                                statusText.contains("CGPA", true) || statusText.contains("Result", true) || statusText.contains("Grade", true) -> 0.92f
-                                statusText.contains("Exam", true) || statusText.contains("Datesheet", true) || statusText.contains("Seating", true) -> 0.78f
-                                statusText.contains("schedule", true) || statusText.contains("timetable", true) || statusText.contains("classes", true) -> 0.65f
-                                isSyncing || statusText.contains("Authenticating", true) || statusText.contains("Submitting", true) -> 0.50f
-                                statusText.contains("verified", true) -> 0.40f
-                                statusText.contains("Turnstile", true) || statusText.contains("security", true) -> {
-                                    (0.18f + (elapsedSeconds.coerceAtMost(10) * 0.02f)).coerceAtMost(0.38f)
-                                }
-                                else -> 0.12f
+                            // Smooth continuous asymptotic trickle progress: NEVER pauses or freezes at any percent
+                            val currentStage = when {
+                                isAllDone || statusText.contains("Complete", true) -> 6
+                                statusText.contains("CGPA", true) || statusText.contains("Result", true) || statusText.contains("Grade", true) -> 5
+                                statusText.contains("Exam", true) || statusText.contains("Datesheet", true) || statusText.contains("Seating", true) -> 4
+                                statusText.contains("schedule", true) || statusText.contains("timetable", true) || statusText.contains("classes", true) -> 3
+                                isSyncing || statusText.contains("Authenticating", true) || statusText.contains("Submitting", true) || statusText.contains("Logging", true) -> 2
+                                statusText.contains("verified", true) -> 1
+                                statusText.contains("Turnstile", true) || statusText.contains("security", true) -> 1
+                                else -> 0
                             }
-                            if (currentStageProgress > maxProgressReached) {
-                                maxProgressReached = currentStageProgress
+
+                            var lastStage by remember { mutableIntStateOf(-1) }
+                            var stageStartTime by remember { mutableLongStateOf(currentTime) }
+
+                            if (currentStage != lastStage) {
+                                lastStage = currentStage
+                                stageStartTime = currentTime
+                            }
+
+                            val stageElapsed = ((currentTime - stageStartTime) / 1000.0).coerceAtLeast(0.0)
+
+                            val (floor, ceiling, timeConstant) = when (currentStage) {
+                                6 -> Triple(1.00f, 1.00f, 1.0)
+                                5 -> Triple(0.88f, 0.98f, 7.0)
+                                4 -> Triple(0.70f, 0.88f, 8.0)
+                                3 -> Triple(0.55f, 0.70f, 4.0)
+                                2 -> Triple(0.42f, 0.55f, 4.0)
+                                1 -> if (statusText.contains("verified", true)) Triple(0.38f, 0.42f, 2.0) else Triple(0.20f, 0.38f, 6.0)
+                                else -> Triple(0.10f, 0.20f, 4.0)
+                            }
+
+                            val calculatedProgress = if (currentStage == 6) {
+                                1.0f
+                            } else {
+                                floor + (ceiling - floor) * (1.0 - kotlin.math.exp(-stageElapsed / timeConstant)).toFloat()
+                            }
+
+                            if (calculatedProgress > maxProgressReached) {
+                                maxProgressReached = calculatedProgress
                             }
 
                             val animatedProgress by animateFloatAsState(
                                 targetValue = maxProgressReached,
-                                animationSpec = tween(400, easing = LinearOutSlowInEasing),
+                                animationSpec = tween(200, easing = LinearEasing),
                                 label = "umsSyncProgress"
                             )
 
