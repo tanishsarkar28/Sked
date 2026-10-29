@@ -77,7 +77,6 @@ fun GpaScreen(
     var showAddTermDialog by remember { mutableStateOf(false) }
     var showAddCustomSubjectDialog by remember { mutableStateOf(false) }
     var showTargetSimulator by remember { mutableStateOf(false) }
-    var selectedSemesterDetail by remember { mutableStateOf<TermData?>(null) }
     var termToDelete by remember { mutableStateOf<TermData?>(null) }
 
     fun updateState(newState: GpaState) {
@@ -186,7 +185,6 @@ fun GpaScreen(
                             pair.forEach { term ->
                                 SemesterResultCard(
                                     term = term,
-                                    onClick = { selectedSemesterDetail = term },
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -476,20 +474,6 @@ fun GpaScreen(
             }
         )
     }
-
-    // ── SEMESTER DETAIL SHEET ───────────────────────────────────────────────
-    if (selectedSemesterDetail != null) {
-        SemesterDetailSheet(
-            term = selectedSemesterDetail!!,
-            onDismiss = { selectedSemesterDetail = null },
-            onAddCourse = {
-                val term = selectedSemesterDetail!!
-                updateState(gpaState.copy(activeTermId = term.id))
-                selectedSemesterDetail = null
-                showAddCustomSubjectDialog = true
-            }
-        )
-    }
 }
 
 // ── CIRCULAR GPA GAUGE (RING WITH GREEN PROGRESS ARC) ───────────────────────
@@ -658,7 +642,6 @@ fun OverallPerformanceHeroCard(
 @Composable
 fun SemesterResultCard(
     term: TermData,
-    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -666,9 +649,7 @@ fun SemesterResultCard(
         color = Slab,
         shadowElevation = 0.dp,
         border = BorderStroke(1.dp, Rule),
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { onClick() }
+        modifier = modifier.clip(RoundedCornerShape(12.dp))
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),

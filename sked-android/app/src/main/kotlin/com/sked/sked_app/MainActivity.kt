@@ -2947,9 +2947,7 @@ fun UmsAuthBridgeDialog(
                                                                     val parsed = com.sked.sked_app.gpa.ResultParser.parse(resRawJson)
                                                                     if (parsed.terms.isNotEmpty() || parsed.cgpa != null) {
                                                                         com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, parsed, entries)
-                                                                        val termsWithSubs = parsed.terms.count { it.subjects.isNotEmpty() }
-                                                                        val totalTerms = parsed.terms.size
-                                                                        if (termsWithSubs >= 4 || (termsWithSubs >= totalTerms && totalTerms > 1)) {
+                                                                        if (parsed.terms.isNotEmpty() && parsed.cgpa != null) {
                                                                             hasAllCourses = true
                                                                         }
                                                                     }
