@@ -127,9 +127,18 @@ object LeaveSubmitEngine {
 
             var capturedAlert: String? = null
             var capturedError: String? = null
+            var initialTopLeaveId: String? = null
             var stage = 0 // 0: initial load, 1: leaveType set postback, 2: visitPlace set postback, 3: submitted
 
             class LeaveJsBridge {
+                @JavascriptInterface
+                fun onInitialTopLeaveId(id: String) {
+                    if (initialTopLeaveId == null && id.isNotBlank()) {
+                        initialTopLeaveId = id.trim()
+                        android.util.Log.i("SkedLeave", "Recorded initial top leave ID: '$initialTopLeaveId'")
+                    }
+                }
+
                 @JavascriptInterface
                 fun onAlert(msg: String) {
                     android.util.Log.i("SkedLeave", "Intercepted UMS Alert via bridge: $msg")
@@ -204,7 +213,7 @@ object LeaveSubmitEngine {
 
                     when (stage) {
                         0 -> {
-                            // Step 1: Set Leave Type dropdown and trigger ASP.NET postback
+                            // Step 1: Record initial top leave ID, set Leave Type dropdown and trigger ASP.NET postback
                             onStatus("Configuring leave type...")
                             stage = 1
                             val jsSetType = """
@@ -212,6 +221,14 @@ object LeaveSubmitEngine {
                                     try {
                                         window.alert = function(msg) { window.SkedLeaveBridge.onAlert(msg); };
                                         window.confirm = function() { return true; };
+
+                                        // Capture existing top leave ID
+                                        try {
+                                            var fr = document.querySelector('#ctl00_cphHeading_grdLeaveDetail tr:nth-child(2)');
+                                            if (fr && fr.cells[0]) {
+                                                window.SkedLeaveBridge.onInitialTopLeaveId(fr.cells[0].innerText.trim());
+                                            }
+                                        } catch(e) {}
 
                                         var sel = document.getElementById('ctl00_cphHeading_drpLeaveType');
                                         if (sel) {
@@ -443,60 +460,115 @@ object LeaveSubmitEngine {
                         }
 
                         3 -> {
-                            // Step 4: After submit postback, check table or error messages
-                            val jsCheckResult = """
-                                (function() {
+                            // Step 4: After submit postback, wait for DOM and alert events to settle, then verify table
+                            onStatus("Verifying leave submission...")
+                            webView.postDelayed({
+                                val jsCheckResult = """
+                                    (function() {
+                                        try {
+                                            // 1. Check for server error message span
+                                            var lblErr = document.getElementById('ctl00_cphHeading_lblerror') ||
+                                                          document.getElementById('ctl00_cphHeading_lblError');
+                                            if (lblErr && lblErr.innerText && lblErr.innerText.trim().length > 0) {
+                                                return JSON.stringify({ status: 'error', message: lblErr.innerText.trim() });
+                                            }
+
+                                            // 2. Check for OTP modal (RadToolTip1)
+                                            var otpTip = document.getElementById('ctl00_cphHeading_RadToolTip1');
+                                            var txtOtp = document.getElementById('ctl00_cphHeading_txtOTP');
+                                            var isOtpVisible = false;
+                                            if (otpTip && (otpTip.style.display !== 'none' && otpTip.style.visibility !== 'hidden')) {
+                                                isOtpVisible = true;
+                                            }
+                                            if (txtOtp && txtOtp.offsetParent !== null) {
+                                                isOtpVisible = true;
+                                            }
+                                            if (isOtpVisible) {
+                                                return JSON.stringify({ status: 'error', message: 'UMS requires OTP validation for this leave. Please apply directly through UMS portal.' });
+                                            }
+
+                                            // 3. Check for ASP.NET validation summary
+                                            var valSummary = document.getElementById('ctl00_cphHeading_ValidationSummary1');
+                                            if (valSummary && valSummary.innerText && valSummary.innerText.trim().length > 0 && valSummary.style.display !== 'none') {
+                                                return JSON.stringify({ status: 'error', message: valSummary.innerText.trim() });
+                                            }
+
+                                            // 4. Check for top row in leave table
+                                            var firstRow = document.querySelector('#ctl00_cphHeading_grdLeaveDetail tr:nth-child(2)');
+                                            if (firstRow) {
+                                                var leaveId = firstRow.cells[0] ? firstRow.cells[0].innerText.trim() : '';
+                                                var leaveType = firstRow.cells[1] ? firstRow.cells[1].innerText.trim() : '';
+                                                var applyDate = firstRow.cells[2] ? firstRow.cells[2].innerText.trim() : '';
+                                                var status = firstRow.cells[6] ? firstRow.cells[6].innerText.trim() : 'Approved';
+                                                return JSON.stringify({
+                                                    status: 'table_check',
+                                                    leaveId: leaveId,
+                                                    leaveType: leaveType,
+                                                    applyDate: applyDate,
+                                                    leaveStatus: status
+                                                });
+                                            }
+
+                                            return JSON.stringify({ status: 'unknown' });
+                                        } catch(e) {
+                                            return JSON.stringify({ status: 'error', message: e.toString() });
+                                        }
+                                    })();
+                                """.trimIndent()
+
+                                webView.evaluateJavascript(jsCheckResult) { res ->
                                     try {
-                                        // 1. Check for server error message spans or validation summaries
-                                        var errSpan = document.getElementById('ctl00_cphHeading_lblerror') ||
-                                                      document.getElementById('ctl00_cphHeading_lblError') ||
-                                                      document.getElementById('ctl00_cphHeading_ValidationSummary1') ||
-                                                      document.querySelector('.error, .alert-danger, [style*="color:Red"], [style*="color: red"]');
-                                        if (errSpan && errSpan.innerText && errSpan.innerText.trim().length > 0) {
-                                            return JSON.stringify({ status: 'error', message: errSpan.innerText.trim() });
-                                        }
+                                        val cleanJson = if (res.startsWith("\"") && res.endsWith("\"")) {
+                                            org.json.JSONObject("{\"v\":$res}").getString("v")
+                                        } else res
+                                        val obj = org.json.JSONObject(cleanJson)
+                                        val status = obj.optString("status")
 
-                                        // 2. Check for latest leave ID in history table
-                                        var firstRow = document.querySelector('#ctl00_cphHeading_grdLeaveDetail tr:nth-child(2)');
-                                        if (firstRow) {
-                                            var leaveId = firstRow.cells[0] ? firstRow.cells[0].innerText.trim() : '';
-                                            var leaveType = firstRow.cells[1] ? firstRow.cells[1].innerText.trim() : '';
-                                            var status = firstRow.cells[6] ? firstRow.cells[6].innerText.trim() : 'Approved';
-                                            return JSON.stringify({ status: 'success', leaveId: leaveId, leaveType: leaveType, leaveStatus: status });
-                                        }
+                                        when (status) {
+                                            "error" -> {
+                                                val msg = obj.optString("message", "Submission rejected by UMS")
+                                                finishWith(Result.failure(Exception(msg)))
+                                            }
+                                            "table_check" -> {
+                                                val leaveId = obj.optString("leaveId")
+                                                val isDifferentId = initialTopLeaveId != null && leaveId.isNotBlank() && leaveId != initialTopLeaveId
+                                                val isFirstEverLeave = initialTopLeaveId.isNullOrBlank() && leaveId.isNotBlank()
 
-                                        return JSON.stringify({ status: 'unknown' });
-                                    } catch(e) {
-                                        return JSON.stringify({ status: 'error', message: e.toString() });
+                                                if (isDifferentId || isFirstEverLeave) {
+                                                    // New leave ID successfully posted to UMS
+                                                    finishWith(Result.success("Leave ID #$leaveId"))
+                                                } else {
+                                                    // Leave ID is unchanged: submission was NOT accepted by UMS
+                                                    val alertMsg = capturedAlert
+                                                    if (!alertMsg.isNullOrBlank()) {
+                                                        finishWith(Result.failure(Exception(alertMsg)))
+                                                    } else {
+                                                        finishWith(Result.failure(Exception(
+                                                            "Leave was not applied by UMS. Please verify departure and return timings are valid and within permissible hostel curfew hours."
+                                                        )))
+                                                    }
+                                                }
+                                            }
+                                            else -> {
+                                                val alertMsg = capturedAlert
+                                                if (!alertMsg.isNullOrBlank()) {
+                                                    if (alertMsg.contains("success", ignoreCase = true) || alertMsg.contains("applied", ignoreCase = true)) {
+                                                        finishWith(Result.success(alertMsg))
+                                                    } else {
+                                                        finishWith(Result.failure(Exception(alertMsg)))
+                                                    }
+                                                } else {
+                                                    finishWith(Result.failure(Exception(
+                                                        "Leave submission could not be confirmed by UMS. Please check your leave history."
+                                                    )))
+                                                }
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        finishWith(Result.failure(Exception("Failed to verify submission: ${e.message}")))
                                     }
-                                })();
-                            """.trimIndent()
-
-                            webView.evaluateJavascript(jsCheckResult) { res ->
-                                try {
-                                    val cleanJson = if (res.startsWith("\"") && res.endsWith("\"")) {
-                                        org.json.JSONObject("{\"v\":$res}").getString("v")
-                                    } else res
-                                    val obj = org.json.JSONObject(cleanJson)
-                                    val status = obj.optString("status")
-                                    if (status == "success") {
-                                        val id = obj.optString("leaveId")
-                                        finishWith(Result.success(if (id.isNotBlank()) "Leave ID #$id" else "Leave submitted"))
-                                    } else if (status == "error") {
-                                        val msg = obj.optString("message", "Submission rejected by UMS")
-                                        finishWith(Result.failure(Exception(msg)))
-                                    } else {
-                                        // If an alert was captured, use it
-                                        if (capturedAlert != null) {
-                                            finishWith(Result.success(capturedAlert!!))
-                                        } else {
-                                            finishWith(Result.success("Leave application submitted!"))
-                                        }
-                                    }
-                                } catch (e: Exception) {
-                                    finishWith(Result.success("Leave application submitted!"))
                                 }
-                            }
+                            }, 600)
                         }
                     }
                 }

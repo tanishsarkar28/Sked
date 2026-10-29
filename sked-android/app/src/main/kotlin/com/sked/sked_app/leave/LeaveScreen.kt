@@ -126,26 +126,34 @@ fun LeaveScreen(
     // Initial snapped Start & End Calendars
     var startCal by remember {
         mutableStateOf(Calendar.getInstance().apply {
-            val currentMin = get(Calendar.MINUTE)
-            val snappedMin = when {
-                currentMin < 15 -> 15
-                currentMin < 30 -> 30
-                currentMin < 45 -> 45
-                else -> {
-                    add(Calendar.HOUR_OF_DAY, 1)
-                    0
-                }
-            }
-            set(Calendar.MINUTE, snappedMin)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-            val h = get(Calendar.HOUR_OF_DAY)
-            if (h < 5) {
-                set(Calendar.HOUR_OF_DAY, 5)
+            val nowH = get(Calendar.HOUR_OF_DAY)
+            // If it's already 8:30 PM (20:30) or later, day leave for today has passed curfew.
+            // Intelligently default to tomorrow 08:00 AM!
+            if (nowH >= 20) {
+                add(Calendar.DAY_OF_YEAR, 1)
+                set(Calendar.HOUR_OF_DAY, 8)
                 set(Calendar.MINUTE, 0)
-            } else if (h > 22 || (h == 22 && snappedMin > 45)) {
-                set(Calendar.HOUR_OF_DAY, 22)
-                set(Calendar.MINUTE, 45)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            } else {
+                val currentMin = get(Calendar.MINUTE)
+                val snappedMin = when {
+                    currentMin < 15 -> 15
+                    currentMin < 30 -> 30
+                    currentMin < 45 -> 45
+                    else -> {
+                        add(Calendar.HOUR_OF_DAY, 1)
+                        0
+                    }
+                }
+                set(Calendar.MINUTE, snappedMin)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+                val h = get(Calendar.HOUR_OF_DAY)
+                if (h < 5) {
+                    set(Calendar.HOUR_OF_DAY, 5)
+                    set(Calendar.MINUTE, 0)
+                }
             }
         })
     }
@@ -798,6 +806,14 @@ fun LeaveScreen(
                                 }
                                 if (reason.isBlank()) {
                                     Toast.makeText(context, "Please enter a reason for leaving", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                if (endCal.timeInMillis <= startCal.timeInMillis) {
+                                    Toast.makeText(context, "Return date & time must be after departure time", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                if (startCal.timeInMillis < System.currentTimeMillis() - 15 * 60 * 1000) {
+                                    Toast.makeText(context, "Departure time cannot be in the past. Please select an upcoming slot.", Toast.LENGTH_SHORT).show()
                                     return@Button
                                 }
                                 if (!declarationAccepted) {
