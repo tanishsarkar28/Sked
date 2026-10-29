@@ -43,11 +43,17 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.sked.sked_app.*
 
+enum class GpaScreenMode {
+    RESULT,
+    CALCULATOR
+}
+
 @Composable
 fun GpaScreen(
     timetableEntries: List<ClassItem>,
     onSyncUms: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    mode: GpaScreenMode = GpaScreenMode.RESULT
 ) {
     val context = LocalContext.current
     var gpaState by remember {
@@ -84,6 +90,8 @@ fun GpaScreen(
         .filter { !it.isCurrent }
         .sortedBy { it.semesterNumber ?: 99 }
 
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -93,47 +101,138 @@ fun GpaScreen(
         Spacer(modifier = Modifier.height(10.dp))
 
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(bottom = 80.dp)
         ) {
-            // ── TOP RESULT TITLE & SYNC BAR ─────────────────────────────────
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Result",
-                        fontFamily = BarlowCondensed,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
-                        color = Chalk
-                    )
+            if (mode == GpaScreenMode.RESULT) {
+                // ── TOP RESULT TITLE & SYNC BAR ─────────────────────────────────
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Result",
+                            fontFamily = BarlowCondensed,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            color = Chalk
+                        )
 
-                    if (onSyncUms != null) {
+                        if (onSyncUms != null) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Slab,
+                                border = BorderStroke(1.dp, Rule),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .clickable { onSyncUms() }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        tint = Blaze,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "SYNC UMS",
+                                        fontFamily = BarlowCondensed,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = Blaze
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── OVERALL PERFORMANCE HERO CARD ───────────────────────────────
+                item {
+                    OverallPerformanceHeroCard(
+                        cgpa = gpaState.displayCgpa ?: 8.31,
+                        onToggleSimulator = { showTargetSimulator = !showTargetSimulator },
+                        isSimulatorActive = showTargetSimulator
+                    )
+                }
+
+                // ── TARGET CGPA SIMULATOR (EXPANDABLE) ──────────────────────────
+                if (showTargetSimulator) {
+                    item {
+                        TargetSimulatorCard(
+                            state = gpaState,
+                            onSetTarget = { target ->
+                                updateState(gpaState.copy(targetCgpa = target))
+                            }
+                        )
+                    }
+                }
+
+                // ── 2-COLUMN SEMESTER CARDS GRID ────────────────────────────────
+                if (pastSemesters.isNotEmpty()) {
+                    items(pastSemesters.chunked(2)) { pair ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            pair.forEach { term ->
+                                SemesterResultCard(
+                                    term = term,
+                                    onClick = { selectedSemesterDetail = term },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (pair.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            } else {
+                // ── GPA CALCULATOR MODE ─────────────────────────────────────────
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "GPA Calculator",
+                            fontFamily = BarlowCondensed,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            color = Chalk
+                        )
+
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = Slab,
-                            border = BorderStroke(1.dp, Rule),
+                            color = if (showTargetSimulator) Blaze.copy(alpha = 0.2f) else Slab,
+                            border = BorderStroke(1.dp, if (showTargetSimulator) Blaze else Rule),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
-                                .clickable { onSyncUms() }
+                                .clickable { showTargetSimulator = !showTargetSimulator }
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    Icons.Default.Refresh,
+                                    Icons.Default.TrackChanges,
                                     contentDescription = null,
                                     tint = Blaze,
                                     modifier = Modifier.size(13.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "SYNC UMS",
+                                    text = if (showTargetSimulator) "CLOSE TARGET" else "TARGET GOAL",
                                     fontFamily = BarlowCondensed,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 11.sp,
@@ -143,91 +242,41 @@ fun GpaScreen(
                         }
                     }
                 }
-            }
 
-            // ── OVERALL PERFORMANCE HERO CARD ───────────────────────────────
-            item {
-                OverallPerformanceHeroCard(
-                    cgpa = gpaState.displayCgpa ?: 8.31,
-                    onToggleSimulator = { showTargetSimulator = !showTargetSimulator },
-                    isSimulatorActive = showTargetSimulator
-                )
-            }
+                // ── TARGET CGPA SIMULATOR (EXPANDABLE) ──────────────────────────
+                if (showTargetSimulator) {
+                    item {
+                        TargetSimulatorCard(
+                            state = gpaState,
+                            onSetTarget = { target ->
+                                updateState(gpaState.copy(targetCgpa = target))
+                            }
+                        )
+                    }
+                }
 
-            // ── TARGET CGPA SIMULATOR (EXPANDABLE) ──────────────────────────
-            if (showTargetSimulator) {
+                // ── TERM TABS STRIP ─────────────────────────────────────────────
                 item {
-                    TargetSimulatorCard(
-                        state = gpaState,
-                        onSetTarget = { target ->
-                            updateState(gpaState.copy(targetCgpa = target))
+                    TermTabsStrip(
+                        terms = gpaState.terms,
+                        activeTermId = gpaState.activeTermId,
+                        onSelectTerm = { termId ->
+                            updateState(gpaState.copy(activeTermId = termId))
+                        },
+                        onAddTerm = { showAddTermDialog = true },
+                        onDeleteTerm = { term ->
+                            if (term.isDeletable) {
+                                termToDelete = term
+                            }
                         }
                     )
                 }
-            }
 
-            // ── 2-COLUMN SEMESTER CARDS GRID ────────────────────────────────
-            if (pastSemesters.isNotEmpty()) {
-                items(pastSemesters.chunked(2)) { pair ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        pair.forEach { term ->
-                            SemesterResultCard(
-                                term = term,
-                                onClick = { selectedSemesterDetail = term },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        if (pair.size == 1) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
-                    }
-                }
-            }
-
-            // ── GPA CALCULATOR & SIMULATOR SECTION ──────────────────────────
-            item {
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "GPA SIMULATOR & CALCULATOR",
-                        fontFamily = BarlowCondensed,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = Slate,
-                        letterSpacing = 0.5.sp
-                    )
-                }
-            }
-
-            // ── TERM TABS STRIP ─────────────────────────────────────────────
-            item {
-                TermTabsStrip(
-                    terms = gpaState.terms,
-                    activeTermId = gpaState.activeTermId,
-                    onSelectTerm = { termId ->
-                        updateState(gpaState.copy(activeTermId = termId))
-                    },
-                    onAddTerm = { showAddTermDialog = true },
-                    onDeleteTerm = { term ->
-                        if (term.isDeletable) {
-                            termToDelete = term
-                        }
-                    }
-                )
-            }
-
-            // ── ACTIVE TERM HEADER & METRICS ────────────────────────────────
-            if (activeTerm != null) {
-                item {
-                    ActiveTermHeaderCard(
-                        term = activeTerm,
+                // ── ACTIVE TERM HEADER & METRICS ────────────────────────────────
+                if (activeTerm != null) {
+                    item {
+                        ActiveTermHeaderCard(
+                            term = activeTerm,
                         isMarksMode = globalModeMarks,
                         onToggleMode = {
                             globalModeMarks = it
@@ -347,6 +396,7 @@ fun GpaScreen(
             }
         }
     }
+}
 
     // ── ADD TERM DIALOG ─────────────────────────────────────────────────────
     if (showAddTermDialog) {
@@ -905,9 +955,9 @@ fun SemesterSubjectRow(subject: GpaSubject) {
                         else -> Color(0xFFEF4444)
                     })
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Box(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = grade.letter,
@@ -915,13 +965,6 @@ fun SemesterSubjectRow(subject: GpaSubject) {
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
                             color = Chalk
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "(${grade.points.toInt()} GP)",
-                            fontFamily = BarlowCondensed,
-                            fontSize = 11.sp,
-                            color = Slate
                         )
                     }
                 }

@@ -1038,6 +1038,7 @@ fun DashboardScreen(
                                     "TIMETABLE" -> "TIMETABLE"
                                     "EXAMS" -> "EXAMS"
                                     "GPA" -> "RESULT"
+                                    "GPA_CALC" -> "GPA CALC"
                                     else -> activeTab
                                 },
                                 fontFamily = BarlowCondensed,
@@ -1105,11 +1106,12 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxSize()
                     )
                 }
-                "GPA" -> {
+                "GPA", "GPA_CALC" -> {
                     GpaScreen(
                         timetableEntries = weekClasses.values.flatten().ifEmpty { todayClasses },
                         onSyncUms = onFullReSync,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        mode = if (activeTab == "GPA_CALC") GpaScreenMode.CALCULATOR else GpaScreenMode.RESULT
                     )
                 }
                 "TIMETABLE" -> {
@@ -1718,6 +1720,7 @@ fun DashboardScreen(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
+                                // Row 1: Timetable & Exams
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1740,12 +1743,28 @@ fun DashboardScreen(
                                         onClick = { activeTab = "EXAMS" },
                                         modifier = Modifier.weight(1f)
                                     )
+                                }
 
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // Row 2: Result & GPA Calc
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
                                     QuickAccessFeatureBox(
                                         title = "Result",
-                                        icon = Icons.Default.Calculate,
+                                        icon = Icons.Default.Assessment,
                                         badgeText = resultBadge,
                                         onClick = { activeTab = "GPA" },
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    QuickAccessFeatureBox(
+                                        title = "GPA Calc",
+                                        icon = Icons.Default.Calculate,
+                                        badgeText = "CALC",
+                                        onClick = { activeTab = "GPA_CALC" },
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
@@ -3783,7 +3802,7 @@ fun QuickAccessFeatureBox(
         color = Slab,
         border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
         modifier = modifier
-            .height(140.dp)
+            .height(126.dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() }
     ) {
@@ -3799,9 +3818,9 @@ fun QuickAccessFeatureBox(
                         text = badgeText,
                         fontFamily = BarlowCondensed,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         color = Ink,
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }
@@ -3809,16 +3828,16 @@ fun QuickAccessFeatureBox(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 8.dp, vertical = 14.dp),
+                    .padding(horizontal = 8.dp, vertical = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(1.dp))
 
                 // Icon in circular highlight
                 Box(
                     modifier = Modifier
-                        .size(50.dp)
+                        .size(46.dp)
                         .clip(CircleShape)
                         .background(Blaze.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
@@ -3827,7 +3846,7 @@ fun QuickAccessFeatureBox(
                         imageVector = icon,
                         contentDescription = title,
                         tint = Blaze,
-                        modifier = Modifier.size(26.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                 }
 
