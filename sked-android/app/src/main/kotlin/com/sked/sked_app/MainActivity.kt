@@ -15,6 +15,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
@@ -38,6 +39,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
@@ -62,6 +64,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -933,9 +936,28 @@ fun DashboardScreen(
     onLogoutClick: () -> Unit
 ) {
     val context = LocalContext.current
-    var activeTab by remember { mutableStateOf("CLASSES") }
+    var activeTab by remember { mutableStateOf("HOME") }
     var showAboutDialog by remember { mutableStateOf(false) }
     var pendingUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
+
+    // Intercept back button when inside a subview to return to HOME
+    BackHandler(enabled = activeTab != "HOME") {
+        activeTab = "HOME"
+    }
+
+    val gpaState = remember(context, weekClasses, todayClasses) {
+        try {
+            com.sked.sked_app.gpa.GpaStorage.load(context, weekClasses.values.flatten().ifEmpty { todayClasses })
+        } catch (_: Exception) {
+            null
+        }
+    }
+    val displayCgpa = gpaState?.displayCgpa
+    val resultBadge = if (displayCgpa != null && displayCgpa in 1.0..10.0) {
+        String.format(Locale.US, "%.2f", displayCgpa)
+    } else null
+    val examBadge = if (exams.isNotEmpty()) "${exams.size}" else null
+    val timetableBadge = if (todayClasses.isNotEmpty()) "${todayClasses.size}" else null
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -988,15 +1010,43 @@ fun DashboardScreen(
         containerColor = Ink,
         topBar = {
             TopAppBar(
+                navigationIcon = {
+                    if (activeTab != "HOME") {
+                        IconButton(onClick = { activeTab = "HOME" }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back to Home",
+                                tint = Chalk
+                            )
+                        }
+                    }
+                },
                 title = {
-                    Text(
-                        text = "SKED.",
-                        fontFamily = BarlowCondensed,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
-                        color = Blaze,
-                        letterSpacing = 0.5.sp
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (activeTab == "HOME") "SKED." else "SKED",
+                            fontFamily = BarlowCondensed,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            color = Blaze,
+                            letterSpacing = 0.5.sp
+                        )
+                        if (activeTab != "HOME") {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "• " + when (activeTab) {
+                                    "TIMETABLE" -> "TIMETABLE"
+                                    "EXAMS" -> "EXAMS"
+                                    "GPA" -> "RESULT"
+                                    else -> activeTab
+                                },
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = Chalk
+                            )
+                        }
+                    }
                 },
                 actions = {
                     IconButton(onClick = { showAboutDialog = true }) {
@@ -1047,480 +1097,885 @@ fun DashboardScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Header row — flat, rule-separated, no card wrapper
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "REG: $userId",
-                                fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                color = Slate
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = currentDayDate,
-                                fontSize = 12.sp,
-                                color = Slate
-                            )
+            when (activeTab) {
+                "EXAMS" -> {
+                    ExamScreen(
+                        exams = exams,
+                        onRefresh = onFullReSync,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                "GPA" -> {
+                    GpaScreen(
+                        timetableEntries = weekClasses.values.flatten().ifEmpty { todayClasses },
+                        onSyncUms = onFullReSync,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                "TIMETABLE" -> {
+                    // Weekly Timetable View (with day selector and class list)
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Header row (flat, rule-separated)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "REG: $userId",
+                                            fontSize = 12.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Slate
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = currentDayDate,
+                                            fontSize = 12.sp,
+                                            color = Slate
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    val isTodaySelected = selectedDay.equals(todayName, ignoreCase = true)
+                                    val displayCount = if (isTodaySelected) todayClasses.size else (weekClasses.entries.find { it.key.equals(selectedDay, ignoreCase = true) }?.value?.size ?: 0)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = if (isTodaySelected) {
+                                                if (displayCount > 0) "$displayCount classes today." else "Nothing today."
+                                            } else {
+                                                if (displayCount > 0) "$displayCount classes on $selectedDay." else "No classes on $selectedDay."
+                                            },
+                                            fontSize = 16.sp,
+                                            fontFamily = BarlowCondensed,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Chalk
+                                        )
+
+                                        val makeupCountThisWeek = remember(weekClasses) {
+                                            weekClasses.values.flatten().count { it.isMakeup }
+                                        }
+                                        if (makeupCountThisWeek > 0) {
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Surface(
+                                                shape = RoundedCornerShape(3.dp),
+                                                color = Blaze.copy(alpha = 0.18f),
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, Blaze.copy(alpha = 0.5f))
+                                            ) {
+                                                Text(
+                                                    text = "$makeupCountThisWeek MAKEUP",
+                                                    fontFamily = BarlowCondensed,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 10.sp,
+                                                    color = Blaze,
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Re-sync
+                                Column(horizontalAlignment = Alignment.End) {
+                                    OutlinedButton(
+                                        onClick = { onFullReSync() },
+                                        enabled = !isLoading,
+                                        shape = RoundedCornerShape(4.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isLoading) Blaze else Rule),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Chalk),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Sync,
+                                            contentDescription = null,
+                                            tint = Blaze,
+                                            modifier = Modifier
+                                                .size(14.dp)
+                                                .then(if (isLoading) Modifier.rotate(refreshRotation) else Modifier)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = if (isLoading) "SYNCING..." else "RE-SYNC",
+                                            fontSize = 11.sp,
+                                            fontFamily = BarlowCondensed,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isLoading) Blaze else Chalk
+                                        )
+                                    }
+
+                                    if (lastSyncText.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = lastSyncText,
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = Slate
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                            HorizontalDivider(color = Rule, thickness = 1.dp)
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            // Compact Mode Switcher (CLASSES, EXAMS, RESULT)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 2.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = Blaze,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Blaze),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(34.dp)
+                                        .clickable { activeTab = "TIMETABLE" }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxSize(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.CalendarToday,
+                                            contentDescription = null,
+                                            tint = Ink,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = "CLASSES",
+                                            fontSize = 12.sp,
+                                            fontFamily = BarlowCondensed,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Ink,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = Slab,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(34.dp)
+                                        .clickable { activeTab = "EXAMS" }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxSize(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.School,
+                                            contentDescription = null,
+                                            tint = Slate,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = "EXAMS (${exams.size})",
+                                            fontSize = 12.sp,
+                                            fontFamily = BarlowCondensed,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Slate,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = Slab,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(34.dp)
+                                        .clickable { activeTab = "GPA" }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxSize(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Calculate,
+                                            contentDescription = null,
+                                            tint = Slate,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = if (resultBadge != null) "RESULT ($resultBadge)" else "RESULT",
+                                            fontSize = 12.sp,
+                                            fontFamily = BarlowCondensed,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Slate,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
+                                }
+                            }
                         }
 
-                        Spacer(modifier = Modifier.height(4.dp))
+                        // Day selector — distributed evenly across screen width
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            days.forEach { day ->
+                                val isSelected = selectedDay.equals(day, ignoreCase = true)
+                                val isCurrentDay = todayName.equals(day, ignoreCase = true)
+                                val count = weekClasses.entries.find { it.key.equals(day, ignoreCase = true) }?.value?.size
+                                    ?: if (isCurrentDay) todayClasses.size else 0
+                                val label = day.uppercase().take(3)
 
-                        val isTodaySelected = selectedDay.equals(todayName, ignoreCase = true)
-                        val displayCount = if (isTodaySelected) todayClasses.size else (weekClasses.entries.find { it.key.equals(selectedDay, ignoreCase = true) }?.value?.size ?: 0)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = if (isTodaySelected) {
-                                    if (displayCount > 0) "$displayCount classes today." else "Nothing today."
-                                } else {
-                                    if (displayCount > 0) "$displayCount classes on $selectedDay." else "No classes on $selectedDay."
-                                },
-                                fontSize = 16.sp,
-                                fontFamily = BarlowCondensed,
-                                fontWeight = FontWeight.Bold,
-                                color = Chalk
-                            )
-
-                            val makeupCountThisWeek = remember(weekClasses) {
-                                weekClasses.values.flatten().count { it.isMakeup }
-                            }
-                            if (makeupCountThisWeek > 0) {
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(3.dp),
-                                    color = Blaze.copy(alpha = 0.18f),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Blaze.copy(alpha = 0.5f))
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { onSelectDay(day) }
+                                        .padding(vertical = 4.dp)
                                 ) {
-                                    Text(
-                                        text = "$makeupCountThisWeek MAKEUP",
-                                        fontFamily = BarlowCondensed,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 10.sp,
-                                        color = Blaze,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            fontFamily = BarlowCondensed,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = if (isSelected) Blaze else if (isCurrentDay) Chalk else Slate
+                                        )
+                                        if (isCurrentDay) {
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(4.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Blaze)
+                                            )
+                                        }
+                                    }
+                                    if (count > 0) {
+                                        Text(
+                                            text = "$count",
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = if (isSelected) Blaze else Slate
+                                        )
+                                    } else {
+                                        Spacer(modifier = Modifier.height(13.dp))
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .width(22.dp)
+                                            .height(2.dp)
+                                            .background(if (isSelected) Blaze else Color.Transparent)
                                     )
                                 }
                             }
                         }
-                    }
 
-                    // Re-sync — sharp, utilitarian with timestamp
-                    Column(horizontalAlignment = Alignment.End) {
-                        OutlinedButton(
-                            onClick = { onFullReSync() },
-                            enabled = !isLoading,
-                            shape = RoundedCornerShape(4.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, if (isLoading) Blaze else Rule),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Chalk),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Sync,
-                                contentDescription = null,
-                                tint = Blaze,
-                                modifier = Modifier
-                                    .size(14.dp)
-                                    .then(if (isLoading) Modifier.rotate(refreshRotation) else Modifier)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = if (isLoading) "SYNCING..." else "RE-SYNC",
-                                fontSize = 11.sp,
-                                fontFamily = BarlowCondensed,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isLoading) Blaze else Chalk
-                            )
-                        }
+                        HorizontalDivider(color = Rule, thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
 
-                        if (lastSyncText.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = lastSyncText,
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = Slate
-                            )
-                        }
-                    }
-                }
+                        // Class list with crossfade
+                        AnimatedContent(
+                            targetState = selectedDay,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(220, easing = LinearOutSlowInEasing)) togetherWith
+                                fadeOut(animationSpec = tween(140))
+                            },
+                            label = "daySwitch"
+                        ) { targetDay ->
+                            val isToday = targetDay.equals(todayName, ignoreCase = true)
+                            val listForDay = weekClasses.entries.find { it.key.equals(targetDay, ignoreCase = true) }?.value
+                                ?: if (isToday) todayClasses else emptyList()
 
-                Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider(color = Rule, thickness = 1.dp)
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // ── Mode Switcher: CLASSES vs EXAMS vs GPA ──────────────────
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = if (activeTab == "CLASSES") Blaze else Slab,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, if (activeTab == "CLASSES") Blaze else Rule),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(34.dp)
-                            .clickable { activeTab = "CLASSES" }
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.CalendarToday,
-                                contentDescription = null,
-                                tint = if (activeTab == "CLASSES") Ink else Slate,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = "CLASSES",
-                                fontSize = 12.sp,
-                                fontFamily = BarlowCondensed,
-                                fontWeight = FontWeight.Bold,
-                                color = if (activeTab == "CLASSES") Ink else Slate,
-                                letterSpacing = 0.5.sp
-                            )
-                        }
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = if (activeTab == "EXAMS") Blaze else Slab,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, if (activeTab == "EXAMS") Blaze else Rule),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(34.dp)
-                            .clickable { activeTab = "EXAMS" }
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.School,
-                                contentDescription = null,
-                                tint = if (activeTab == "EXAMS") Ink else Slate,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = "EXAMS (${exams.size})",
-                                fontSize = 12.sp,
-                                fontFamily = BarlowCondensed,
-                                fontWeight = FontWeight.Bold,
-                                color = if (activeTab == "EXAMS") Ink else Slate,
-                                letterSpacing = 0.5.sp
-                            )
-                        }
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = if (activeTab == "GPA") Blaze else Slab,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, if (activeTab == "GPA") Blaze else Rule),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(34.dp)
-                            .clickable { activeTab = "GPA" }
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.Calculate,
-                                contentDescription = null,
-                                tint = if (activeTab == "GPA") Ink else Slate,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = "GPA",
-                                fontSize = 12.sp,
-                                fontFamily = BarlowCondensed,
-                                fontWeight = FontWeight.Bold,
-                                color = if (activeTab == "GPA") Ink else Slate,
-                                letterSpacing = 0.5.sp
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (activeTab == "EXAMS") {
-                ExamScreen(
-                    exams = exams,
-                    onRefresh = onFullReSync,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else if (activeTab == "GPA") {
-                GpaScreen(
-                    timetableEntries = weekClasses.values.flatten().ifEmpty { todayClasses },
-                    onSyncUms = onFullReSync,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                // Day selector — distributed evenly across screen width, filling available space
-                Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                days.forEach { day ->
-                    val isSelected = selectedDay.equals(day, ignoreCase = true)
-                    val isCurrentDay = todayName.equals(day, ignoreCase = true)
-                    val count = weekClasses.entries.find { it.key.equals(day, ignoreCase = true) }?.value?.size
-                        ?: if (isCurrentDay) todayClasses.size else 0
-                    val label = day.uppercase().take(3)
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { onSelectDay(day) }
-                            .padding(vertical = 4.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Text(
-                                text = label,
-                                fontFamily = BarlowCondensed,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                color = if (isSelected) Blaze else if (isCurrentDay) Chalk else Slate
-                            )
-                            if (isCurrentDay) {
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Box(
+                            if (isLoading && listForDay.isEmpty()) {
+                                Column(
                                     modifier = Modifier
-                                        .size(4.dp)
-                                        .clip(CircleShape)
-                                        .background(Blaze)
-                                )
-                            }
-                        }
-                        if (count > 0) {
-                            Text(
-                                text = "$count",
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = if (isSelected) Blaze else Slate
-                            )
-                        } else {
-                            Spacer(modifier = Modifier.height(13.dp))
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Box(
-                            modifier = Modifier
-                                .width(22.dp)
-                                .height(2.dp)
-                                .background(if (isSelected) Blaze else Color.Transparent)
-                        )
-                    }
-                }
-            }
+                                        .fillMaxSize()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    SkeletonClassCard()
+                                    SkeletonClassCard()
+                                    SkeletonClassCard()
+                                }
+                            } else if (listForDay.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Column(
+                                        modifier = Modifier.padding(32.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = if (isToday) "Nothing today." else "No classes scheduled.",
+                                            fontFamily = BarlowCondensed,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 28.sp,
+                                            color = Chalk
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = if (isToday) "You're clear." else "Free day.",
+                                            fontSize = 14.sp,
+                                            color = Slate
+                                        )
+                                        Spacer(modifier = Modifier.height(24.dp))
+                                        DeveloperFooterCard(onClick = { showAboutDialog = true })
+                                    }
+                                }
+                            } else {
+                                val nowCal = Calendar.getInstance()
+                                val nowM = nowCal.get(Calendar.HOUR_OF_DAY) * 60 + nowCal.get(Calendar.MINUTE)
 
-            HorizontalDivider(color = Rule, thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
+                                val todayIndex = days.indexOfFirst { it.equals(todayName, ignoreCase = true) }
+                                val targetDayIndex = days.indexOfFirst { it.equals(targetDay, ignoreCase = true) }
 
-            // Class list with crossfade
-            AnimatedContent(
-                targetState = selectedDay,
-                transitionSpec = {
-                    fadeIn(animationSpec = tween(220, easing = LinearOutSlowInEasing)) togetherWith
-                    fadeOut(animationSpec = tween(140))
-                },
-                label = "daySwitch"
-            ) { targetDay ->
-                val isToday = targetDay.equals(todayName, ignoreCase = true)
-                val listForDay = weekClasses.entries.find { it.key.equals(targetDay, ignoreCase = true) }?.value
-                    ?: if (isToday) todayClasses else emptyList()
+                                val todayList = if (todayIndex >= 0) {
+                                    weekClasses.entries.find { it.key.equals(todayName, ignoreCase = true) }?.value
+                                        ?: if (isToday) todayClasses else emptyList()
+                                } else emptyList()
 
-                if (isLoading && listForDay.isEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        SkeletonClassCard()
-                        SkeletonClassCard()
-                        SkeletonClassCard()
-                    }
-                } else if (listForDay.isEmpty()) {
-                    // Empty state — text only, no card wrapper, no icon
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(
-                            modifier = Modifier.padding(32.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = if (isToday) "Nothing today." else "No classes scheduled.",
-                                fontFamily = BarlowCondensed,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 28.sp,
-                                color = Chalk
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = if (isToday) "You're clear." else "Free day.",
-                                fontSize = 14.sp,
-                                color = Slate
-                            )
-                            Spacer(modifier = Modifier.height(24.dp))
-                            DeveloperFooterCard(onClick = { showAboutDialog = true })
-                        }
-                    }
-                } else {
-                    val nowCal = Calendar.getInstance()
-                    val nowM = nowCal.get(Calendar.HOUR_OF_DAY) * 60 + nowCal.get(Calendar.MINUTE)
+                                val todayAllDone = todayList.isNotEmpty() && todayList.all { item ->
+                                    val sM = parseTimeInMinutes(item.start)
+                                    val eEnd = parseTimeInMinutes(item.end)
+                                    val eM = if (eEnd > 0) eEnd else if (sM > 0) sM + 50 else 0
+                                    eM > 0 && nowM > eM
+                                }
 
-                    val todayIndex = days.indexOfFirst { it.equals(todayName, ignoreCase = true) }
-                    val targetDayIndex = days.indexOfFirst { it.equals(targetDay, ignoreCase = true) }
+                                var upcomingDayName: String? = null
+                                var upcomingClassItem: ClassItem? = null
 
-                    val todayList = if (todayIndex >= 0) {
-                        weekClasses.entries.find { it.key.equals(todayName, ignoreCase = true) }?.value
-                            ?: if (isToday) todayClasses else emptyList()
-                    } else emptyList()
+                                if (todayIndex >= 0 && !todayAllDone) {
+                                    val live = todayList.firstOrNull { item ->
+                                        val sM = parseTimeInMinutes(item.start)
+                                        val eEnd = parseTimeInMinutes(item.end)
+                                        val eM = if (eEnd > 0) eEnd else if (sM > 0) sM + 50 else 0
+                                        sM > 0 && eM > 0 && nowM in sM..eM
+                                    }
+                                    if (live != null) {
+                                        upcomingDayName = todayName
+                                        upcomingClassItem = live
+                                    } else {
+                                        val nextToday = todayList.firstOrNull { item ->
+                                            val sM = parseTimeInMinutes(item.start)
+                                            sM > nowM
+                                        }
+                                        if (nextToday != null) {
+                                            upcomingDayName = todayName
+                                            upcomingClassItem = nextToday
+                                        }
+                                    }
+                                }
 
-                    val todayAllDone = todayList.isNotEmpty() && todayList.all { item ->
-                        val sM = parseTimeInMinutes(item.start)
-                        val eEnd = parseTimeInMinutes(item.end)
-                        val eM = if (eEnd > 0) eEnd else if (sM > 0) sM + 50 else 0
-                        eM > 0 && nowM > eM
-                    }
+                                if (upcomingClassItem == null) {
+                                    if (todayIndex < 0) {
+                                        val isPast2359 = (nowCal.get(Calendar.HOUR_OF_DAY) == 23 && nowCal.get(Calendar.MINUTE) >= 59)
+                                        if (isPast2359) {
+                                            for (dName in days) {
+                                                val dList = weekClasses.entries.find { it.key.equals(dName, ignoreCase = true) }?.value ?: emptyList()
+                                                if (dList.isNotEmpty()) {
+                                                    upcomingDayName = dName
+                                                    upcomingClassItem = dList.first()
+                                                    break
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        for (checkIndex in (todayIndex + 1) until days.size) {
+                                            val dName = days[checkIndex]
+                                            val dList = weekClasses.entries.find { it.key.equals(dName, ignoreCase = true) }?.value ?: emptyList()
+                                            if (dList.isNotEmpty()) {
+                                                upcomingDayName = dName
+                                                upcomingClassItem = dList.first()
+                                                break
+                                            }
+                                        }
+                                    }
+                                }
 
-                    // Find the single next upcoming class across the timetable
-                    var upcomingDayName: String? = null
-                    var upcomingClassItem: ClassItem? = null
+                                val allDone = isToday && todayAllDone
 
-                    if (todayIndex >= 0 && !todayAllDone) {
-                        // 1. Is there an active live class today?
-                        val live = todayList.firstOrNull { item ->
-                            val sM = parseTimeInMinutes(item.start)
-                            val eEnd = parseTimeInMinutes(item.end)
-                            val eM = if (eEnd > 0) eEnd else if (sM > 0) sM + 50 else 0
-                            sM > 0 && eM > 0 && nowM in sM..eM
-                        }
-                        if (live != null) {
-                            upcomingDayName = todayName
-                            upcomingClassItem = live
-                        } else {
-                            // 2. Next class starting later today
-                            val nextToday = todayList.firstOrNull { item ->
-                                val sM = parseTimeInMinutes(item.start)
-                                sM > nowM
-                            }
-                            if (nextToday != null) {
-                                upcomingDayName = todayName
-                                upcomingClassItem = nextToday
-                            }
-                        }
-                    }
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    if (allDone) {
+                                        item {
+                                            CelebrationCard(count = listForDay.size)
+                                        }
+                                    }
 
-                    // 3. If no upcoming class found today (all classes over or today is Sunday/free day):
-                    if (upcomingClassItem == null) {
-                        if (todayIndex < 0) {
-                            val isPast2359 = (nowCal.get(Calendar.HOUR_OF_DAY) == 23 && nowCal.get(Calendar.MINUTE) >= 59)
-                            if (isPast2359) {
-                                // After Sunday 23:59 reset: next upcoming class is the first scheduled class of the upcoming week
-                                for (dName in days) {
-                                    val dList = weekClasses.entries.find { it.key.equals(dName, ignoreCase = true) }?.value ?: emptyList()
-                                    if (dList.isNotEmpty()) {
-                                        upcomingDayName = dName
-                                        upcomingClassItem = dList.first()
-                                        break
+                                    itemsIndexed(listForDay) { index, item ->
+                                        val sM = parseTimeInMinutes(item.start)
+                                        val eEnd = parseTimeInMinutes(item.end)
+                                        val eM = if (eEnd > 0) eEnd else if (sM > 0) sM + 50 else 0
+
+                                        val isLive = isToday && (sM > 0 && eM > 0 && nowM in sM..eM)
+                                        val isUpcoming = if (todayIndex < 0) false else targetDay.equals(upcomingDayName, ignoreCase = true) && (item == upcomingClassItem)
+
+                                        val isSunday = todayIndex < 0
+                                        val isPastSunday2359 = isSunday && (nowCal.get(Calendar.HOUR_OF_DAY) == 23 && nowCal.get(Calendar.MINUTE) >= 59)
+
+                                        val isOver = when {
+                                            isSunday -> !isPastSunday2359
+                                            targetDayIndex < todayIndex -> true
+                                            targetDayIndex == todayIndex -> (eM > 0 && nowM > eM)
+                                            else -> false
+                                        }
+
+                                        val timingState = when {
+                                            isLive -> ClassTimingState.ON_GOING
+                                            isUpcoming -> ClassTimingState.UPCOMING
+                                            isOver -> ClassTimingState.OVER
+                                            else -> ClassTimingState.PENDING
+                                        }
+
+                                        StaggeredClassCard(
+                                            item = item,
+                                            index = index,
+                                            timingState = timingState
+                                        )
+                                    }
+
+                                    item {
+                                        DeveloperFooterCard(onClick = { showAboutDialog = true })
+                                        Spacer(modifier = Modifier.height(24.dp))
                                     }
                                 }
                             }
-                            // Before Sunday 23:59: active week has concluded; upcomingClassItem remains null
-                        } else {
-                            // Monday to Saturday: only look forward to future days in this week
-                            for (checkIndex in (todayIndex + 1) until days.size) {
-                                val dName = days[checkIndex]
-                                val dList = weekClasses.entries.find { it.key.equals(dName, ignoreCase = true) }?.value ?: emptyList()
-                                if (dList.isNotEmpty()) {
-                                    upcomingDayName = dName
-                                    upcomingClassItem = dList.first()
-                                    break
-                                }
-                            }
-                        }
-                    }
-
-                    val allDone = isToday && todayAllDone
-
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        if (allDone) {
-                            item {
-                                CelebrationCard(count = listForDay.size)
-                            }
-                        }
-
-                        itemsIndexed(listForDay) { index, item ->
-                            val sM = parseTimeInMinutes(item.start)
-                            val eEnd = parseTimeInMinutes(item.end)
-                            val eM = if (eEnd > 0) eEnd else if (sM > 0) sM + 50 else 0
-
-                            val isLive = isToday && (sM > 0 && eM > 0 && nowM in sM..eM)
-                            val isUpcoming = if (todayIndex < 0) false else targetDay.equals(upcomingDayName, ignoreCase = true) && (item == upcomingClassItem)
-
-                            val isSunday = todayIndex < 0
-                            val isPastSunday2359 = isSunday && (nowCal.get(Calendar.HOUR_OF_DAY) == 23 && nowCal.get(Calendar.MINUTE) >= 59)
-
-                            val isOver = when {
-                                isSunday -> !isPastSunday2359
-                                targetDayIndex < todayIndex -> true
-                                targetDayIndex == todayIndex -> (eM > 0 && nowM > eM)
-                                else -> false
-                            }
-
-                            val timingState = when {
-                                isLive -> ClassTimingState.ON_GOING
-                                isUpcoming -> ClassTimingState.UPCOMING
-                                isOver -> ClassTimingState.OVER
-                                else -> ClassTimingState.PENDING
-                            }
-
-                            StaggeredClassCard(
-                                item = item,
-                                index = index,
-                                timingState = timingState
-                            )
-                        }
-
-                        item {
-                            DeveloperFooterCard(onClick = { showAboutDialog = true })
-                            Spacer(modifier = Modifier.height(24.dp))
                         }
                     }
                 }
-            }
+                else -> {
+                    // "HOME" Dashboard View:
+                    // 1. Header (Reg No, Date, Re-sync)
+                    // 2. Today's Timetable (Horizontal Carousel)
+                    // 3. Quick Access Boxes ([Timetable] [Exams] [Result])
+                    // 4. Today's Schedule (Vertical Timeline)
+                    // 5. Developer Footer Card
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
+                        // 1. Header row
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = "REG: $userId",
+                                                fontSize = 12.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Slate
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text(
+                                                text = currentDayDate,
+                                                fontSize = 12.sp,
+                                                color = Slate
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                        val displayCount = todayClasses.size
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = if (displayCount > 0) "$displayCount classes today." else "Nothing today.",
+                                                fontSize = 16.sp,
+                                                fontFamily = BarlowCondensed,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Chalk
+                                            )
+
+                                            val makeupCountThisWeek = remember(weekClasses) {
+                                                weekClasses.values.flatten().count { it.isMakeup }
+                                            }
+                                            if (makeupCountThisWeek > 0) {
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Surface(
+                                                    shape = RoundedCornerShape(3.dp),
+                                                    color = Blaze.copy(alpha = 0.18f),
+                                                    border = androidx.compose.foundation.BorderStroke(1.dp, Blaze.copy(alpha = 0.5f))
+                                                ) {
+                                                    Text(
+                                                        text = "$makeupCountThisWeek MAKEUP",
+                                                        fontFamily = BarlowCondensed,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 10.sp,
+                                                        color = Blaze,
+                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Re-sync
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        OutlinedButton(
+                                            onClick = { onFullReSync() },
+                                            enabled = !isLoading,
+                                            shape = RoundedCornerShape(4.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, if (isLoading) Blaze else Rule),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Chalk),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Sync,
+                                                contentDescription = null,
+                                                tint = Blaze,
+                                                modifier = Modifier
+                                                    .size(14.dp)
+                                                    .then(if (isLoading) Modifier.rotate(refreshRotation) else Modifier)
+                                            )
+                                            Spacer(modifier = Modifier.width(5.dp))
+                                            Text(
+                                                text = if (isLoading) "SYNCING..." else "RE-SYNC",
+                                                fontSize = 11.sp,
+                                                fontFamily = BarlowCondensed,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isLoading) Blaze else Chalk
+                                            )
+                                        }
+
+                                        if (lastSyncText.isNotBlank()) {
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = lastSyncText,
+                                                fontSize = 10.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = Slate
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+                                HorizontalDivider(color = Rule, thickness = 1.dp)
+                            }
+                        }
+
+                        // 2. "Today's Timetable" Horizontal Carousel
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp, bottom = 4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "TODAY'S TIMETABLE",
+                                        fontFamily = BarlowCondensed,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        color = Chalk,
+                                        letterSpacing = 0.5.sp
+                                    )
+
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = SlabElevated,
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Rule)
+                                    ) {
+                                        Text(
+                                            text = if (todayClasses.isNotEmpty()) "${todayClasses.size} CLASSES" else "FREE DAY",
+                                            fontSize = 10.sp,
+                                            fontFamily = BarlowCondensed,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (todayClasses.isNotEmpty()) Blaze else Slate,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                if (isLoading && todayClasses.isEmpty()) {
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        items(3) {
+                                            SkeletonHorizontalClassCard()
+                                        }
+                                    }
+                                } else if (todayClasses.isEmpty()) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Slab,
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp)
+                                            .height(86.dp)
+                                    ) {
+                                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text(
+                                                    text = "No classes scheduled today",
+                                                    fontFamily = BarlowCondensed,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 15.sp,
+                                                    color = Chalk
+                                                )
+                                                Spacer(modifier = Modifier.height(3.dp))
+                                                Text(
+                                                    text = "You're clear • Enjoy your break!",
+                                                    fontSize = 12.sp,
+                                                    color = Slate
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    val nowCal = Calendar.getInstance()
+                                    val nowM = nowCal.get(Calendar.HOUR_OF_DAY) * 60 + nowCal.get(Calendar.MINUTE)
+
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        itemsIndexed(todayClasses) { _, item ->
+                                            val sM = parseTimeInMinutes(item.start)
+                                            val eEnd = parseTimeInMinutes(item.end)
+                                            val eM = if (eEnd > 0) eEnd else if (sM > 0) sM + 50 else 0
+
+                                            val isLive = (sM > 0 && eM > 0 && nowM in sM..eM)
+                                            val isOver = (eM > 0 && nowM > eM)
+                                            val isUpcoming = !isLive && !isOver && (sM > nowM)
+
+                                            val timingState = when {
+                                                isLive -> ClassTimingState.ON_GOING
+                                                isUpcoming -> ClassTimingState.UPCOMING
+                                                isOver -> ClassTimingState.OVER
+                                                else -> ClassTimingState.PENDING
+                                            }
+
+                                            TodayHorizontalClassCard(
+                                                item = item,
+                                                timingState = timingState,
+                                                onClick = {
+                                                    onSelectDay(todayName)
+                                                    activeTab = "TIMETABLE"
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 3. Quick Access Boxes ([Timetable] [Exams] [Result])
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                            ) {
+                                Text(
+                                    text = "QUICK ACCESS",
+                                    fontFamily = BarlowCondensed,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = Slate,
+                                    letterSpacing = 0.8.sp
+                                )
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    QuickAccessFeatureBox(
+                                        title = "Timetable",
+                                        icon = Icons.Default.CalendarToday,
+                                        badgeText = timetableBadge,
+                                        onClick = {
+                                            onSelectDay(todayName)
+                                            activeTab = "TIMETABLE"
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    QuickAccessFeatureBox(
+                                        title = "Exams",
+                                        icon = Icons.Default.School,
+                                        badgeText = examBadge,
+                                        onClick = { activeTab = "EXAMS" },
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    QuickAccessFeatureBox(
+                                        title = "Result",
+                                        icon = Icons.Default.Calculate,
+                                        badgeText = resultBadge,
+                                        onClick = { activeTab = "GPA" },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
+
+                        // 4. "Today's Schedule" Section Header
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                            ) {
+                                HorizontalDivider(color = Rule, thickness = 1.dp)
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "TODAY'S SCHEDULE",
+                                        fontFamily = BarlowCondensed,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = Slate,
+                                        letterSpacing = 0.8.sp
+                                    )
+
+                                    Text(
+                                        text = "View Week",
+                                        fontFamily = BarlowCondensed,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = Blaze,
+                                        modifier = Modifier.clickable {
+                                            onSelectDay(todayName)
+                                            activeTab = "TIMETABLE"
+                                        }
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                            }
+                        }
+
+                        // 5. Today's Class items (Vertical timeline)
+                        if (todayClasses.isNotEmpty()) {
+                            val nowCal = Calendar.getInstance()
+                            val nowM = nowCal.get(Calendar.HOUR_OF_DAY) * 60 + nowCal.get(Calendar.MINUTE)
+                            val todayAllDone = todayClasses.all { item ->
+                                val sM = parseTimeInMinutes(item.start)
+                                val eEnd = parseTimeInMinutes(item.end)
+                                val eM = if (eEnd > 0) eEnd else if (sM > 0) sM + 50 else 0
+                                eM > 0 && nowM > eM
+                            }
+
+                            if (todayAllDone) {
+                                item {
+                                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                                        CelebrationCard(count = todayClasses.size)
+                                    }
+                                }
+                            }
+
+                            itemsIndexed(todayClasses) { index, item ->
+                                val sM = parseTimeInMinutes(item.start)
+                                val eEnd = parseTimeInMinutes(item.end)
+                                val eM = if (eEnd > 0) eEnd else if (sM > 0) sM + 50 else 0
+
+                                val isLive = (sM > 0 && eM > 0 && nowM in sM..eM)
+                                val isOver = (eM > 0 && nowM > eM)
+                                val isUpcoming = !isLive && !isOver && (sM > nowM)
+
+                                val timingState = when {
+                                    isLive -> ClassTimingState.ON_GOING
+                                    isUpcoming -> ClassTimingState.UPCOMING
+                                    isOver -> ClassTimingState.OVER
+                                    else -> ClassTimingState.PENDING
+                                }
+
+                                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                                    StaggeredClassCard(
+                                        item = item,
+                                        index = index,
+                                        timingState = timingState
+                                    )
+                                }
+                            }
+                        } else {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(32.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            text = "Nothing today.",
+                                            fontFamily = BarlowCondensed,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 26.sp,
+                                            color = Chalk
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = "You're clear • Free day.",
+                                            fontSize = 14.sp,
+                                            color = Slate
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 6. Developer Footer Card
+                        item {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                DeveloperFooterCard(onClick = { showAboutDialog = true })
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+                    }
+                }
             }
         }
     }
@@ -3292,6 +3747,326 @@ enum class ClassTimingState {
     UPCOMING,
     PENDING,
     OVER
+}
+
+// ── Today's Timetable Horizontal Card (LPU Touch Inspired, Sked OLED Ink Theme) ──
+
+@Composable
+fun TodayHorizontalClassCard(
+    item: ClassItem,
+    timingState: ClassTimingState,
+    onClick: (() -> Unit)? = null
+) {
+    val isOnGoing = timingState == ClassTimingState.ON_GOING
+    val onGoingGreen = Color(0xFF10B981)
+    val upcomingOrange = Color(0xFFFF8533)
+    val pendingIndigo = Color(0xFF818CF8)
+    val overGrey = Color(0xFF71717A)
+
+    val borderColor = when (timingState) {
+        ClassTimingState.ON_GOING -> Blaze
+        ClassTimingState.UPCOMING -> Blaze.copy(alpha = 0.5f)
+        else -> Rule
+    }
+
+    val statusText = when (timingState) {
+        ClassTimingState.ON_GOING -> "Going On"
+        ClassTimingState.UPCOMING -> "Up Next"
+        ClassTimingState.OVER     -> "Over"
+        ClassTimingState.PENDING  -> "Upcoming"
+    }
+
+    val statusDotColor = when (timingState) {
+        ClassTimingState.ON_GOING -> onGoingGreen
+        ClassTimingState.UPCOMING -> upcomingOrange
+        ClassTimingState.OVER     -> overGrey
+        ClassTimingState.PENDING  -> pendingIndigo
+    }
+
+    val statusBg = when (timingState) {
+        ClassTimingState.ON_GOING -> onGoingGreen.copy(alpha = 0.15f)
+        ClassTimingState.UPCOMING -> upcomingOrange.copy(alpha = 0.14f)
+        ClassTimingState.OVER     -> Color(0xFF27272A).copy(alpha = 0.40f)
+        ClassTimingState.PENDING  -> pendingIndigo.copy(alpha = 0.12f)
+    }
+
+    val tagLabel = when (item.type) {
+        "Lecture"   -> "LEC"
+        "Practical" -> "PRAC"
+        "Tutorial"  -> "TUT"
+        else        -> item.type.uppercase().take(4)
+    }
+
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = Slab,
+        border = androidx.compose.foundation.BorderStroke(
+            if (isOnGoing) 1.5.dp else 1.dp,
+            borderColor
+        ),
+        modifier = Modifier
+            .width(215.dp)
+            .height(138.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(enabled = onClick != null) { onClick?.invoke() }
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Subtle watermark icon
+            Icon(
+                imageVector = Icons.Default.School,
+                contentDescription = null,
+                tint = Chalk.copy(alpha = 0.035f),
+                modifier = Modifier
+                    .size(76.dp)
+                    .align(Alignment.CenterEnd)
+                    .offset(x = 10.dp, y = (-6).dp)
+            )
+
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Main card content
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                ) {
+                    // Top row: Course Code + Tag
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = item.courseCode,
+                            fontFamily = BarlowCondensed,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Chalk
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(3.dp),
+                            color = if (item.isMakeup) Blaze.copy(alpha = 0.18f) else Color.Transparent,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (item.isMakeup) Blaze.copy(alpha = 0.6f) else Rule)
+                        ) {
+                            Text(
+                                text = if (item.isMakeup) "MAKEUP" else tagLabel,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (item.isMakeup) Blaze else Slate,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(3.dp))
+
+                    // Room
+                    Text(
+                        text = item.room.ifEmpty { "Room N/A" },
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Slate
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Status Pill (like Image 2 "• Going On")
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = statusBg,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, statusDotColor.copy(alpha = 0.4f))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(5.dp)
+                                    .clip(CircleShape)
+                                    .background(statusDotColor)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = statusText,
+                                fontSize = 10.sp,
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                color = statusDotColor
+                            )
+                        }
+                    }
+                }
+
+                // Bottom time bar — full width, dark contrast band
+                Surface(
+                    color = Color(0xFF0D0D0D),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column {
+                        HorizontalDivider(color = Rule, thickness = 1.dp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Schedule,
+                                contentDescription = null,
+                                tint = if (isOnGoing) Blaze else Slate,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = item.timeRange.ifEmpty { "${item.start} - ${item.end}" },
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isOnGoing) Blaze else Chalk
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SkeletonHorizontalClassCard() {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = Slab,
+        border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
+        modifier = Modifier
+            .width(215.dp)
+            .height(138.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Box(
+                    modifier = Modifier
+                        .width(80.dp)
+                        .height(20.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Rule)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .width(60.dp)
+                        .height(14.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Rule)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(24.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Rule)
+            )
+        }
+    }
+}
+
+// ── Quick Access Feature Box ([Timetable], [Exams], [Result]) ───────────────
+
+@Composable
+fun QuickAccessFeatureBox(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    badgeText: String? = null,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = Slab,
+        border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
+        modifier = modifier
+            .height(112.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable { onClick() }
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Badge in top-right corner if provided (matching Image 2)
+            if (!badgeText.isNullOrBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(topStart = 0.dp, topEnd = 9.dp, bottomStart = 8.dp, bottomEnd = 0.dp),
+                    color = Blaze,
+                    modifier = Modifier.align(Alignment.TopEnd)
+                ) {
+                    Text(
+                        text = badgeText,
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp,
+                        color = Ink,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Spacer(modifier = Modifier.height(2.dp))
+
+                // Icon in circular highlight
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(Blaze.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = title,
+                        tint = Blaze,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                // Title banner pill at bottom (matching Image 2)
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = Color(0xFF1E1E1E),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = title,
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = Chalk,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 3.dp)
+                    )
+                }
+            }
+        }
+    }
 }
 
 // ── Staggered Animated Class Item Reveal ────────────────────────────────────
