@@ -459,9 +459,9 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
             isLoading = isLoading,
             lastSyncTimestamp = lastSyncTimestamp,
             exams = examList,
-            onRefresh = triggerForcedSync,
+            onRefresh = triggerFullReSync,
             onPinWidget = onPinWidget,
-            onReSync = triggerForcedSync,
+            onReSync = triggerFullReSync,
             onFullReSync = triggerFullReSync,
             onLogoutClick = { showLogoutDialog = true }
         )
@@ -1114,13 +1114,7 @@ fun DashboardScreen(
                     // Re-sync — sharp, utilitarian with timestamp
                     Column(horizontalAlignment = Alignment.End) {
                         OutlinedButton(
-                            onClick = {
-                                if (activeTab == "GPA" || activeTab == "EXAMS") {
-                                    onFullReSync()
-                                } else {
-                                    onReSync()
-                                }
-                            },
+                            onClick = { onFullReSync() },
                             enabled = !isLoading,
                             shape = RoundedCornerShape(4.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, if (isLoading) Blaze else Rule),

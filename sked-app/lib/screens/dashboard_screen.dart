@@ -761,13 +761,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         OutlinedButton.icon(
                           onPressed: _isLoading
                               ? null
-                              : () {
-                                  if (_activeTab == 'GPA' || _activeTab == 'EXAMS') {
-                                    _showFullReAuthDialog();
-                                  } else {
-                                    _triggerReSync();
-                                  }
-                                },
+                              : () => _showFullReAuthDialog(),
                           style: OutlinedButton.styleFrom(
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                             side: BorderSide(color: _isLoading ? SkedColors.blaze : SkedColors.rule),
