@@ -247,18 +247,11 @@ fun LeaveSlipScreen(
                     Toast.makeText(context, "Gate pass updated", Toast.LENGTH_SHORT).show()
                 }
                 is LeaveSyncResult.SessionExpired -> {
-                    if (onReSync != null) {
-                        Toast.makeText(context, "UMS Session expired. Re-authenticating...", Toast.LENGTH_SHORT).show()
-                        onReSync.invoke()
-                    } else {
-                        Toast.makeText(context, "Session expired. Re-sync from Home.", Toast.LENGTH_SHORT).show()
-                    }
+                    // Never trigger full timetable re-sync from leave slip screen!
                 }
                 is LeaveSyncResult.Error -> {
                     if (passRes.isSuccess) {
                         Toast.makeText(context, "Gate pass refreshed", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "Sync note: ${res.message}", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -316,42 +309,22 @@ fun LeaveSlipScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Ink)
-                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .padding(horizontal = 16.dp, vertical = 6.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = Chalk
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    Column {
-                        Text(
-                            text = "HOSTEL LEAVE SLIP",
-                            fontFamily = BarlowCondensed,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = Blaze,
-                            letterSpacing = 0.5.sp
-                        )
-                        Text(
-                            text = "Check In • Check Out Gate Pass",
-                            fontSize = 11.sp,
-                            color = Slate
-                        )
-                    }
+                Column {
+                    Text(
+                        text = "HOSTEL GATE PASS",
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = Slate,
+                        letterSpacing = 0.5.sp
+                    )
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
