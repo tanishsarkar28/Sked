@@ -1683,7 +1683,13 @@ fun LeaveSlipFetchBridgeDialog(
                                         isDone = true
                                         coroutineScope.launch(Dispatchers.Main) {
                                             statusText = "Slip received! Parsing..."
-                                            val freshCookies = cm.getCookie("https://ums.lpu.in") ?: ""
+                                            cm.flush()
+                                            val freshCookies = cm.getCookie("https://ums.lpu.in/lpuums/frmHostelLeaveSlipTest.aspx")
+                                                ?.takeIf { it.isNotBlank() }
+                                                ?: cm.getCookie("https://ums.lpu.in/lpuums")
+                                                ?.takeIf { it.isNotBlank() }
+                                                ?: cm.getCookie("https://ums.lpu.in")
+                                                ?: ""
                                             if (freshCookies.isNotBlank()) {
                                                 prefs.edit().putString(AutoSyncManager.KEY_UMS_COOKIES, freshCookies).apply()
                                             }

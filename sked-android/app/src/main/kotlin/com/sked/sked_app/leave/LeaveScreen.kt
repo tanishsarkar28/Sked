@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -109,6 +110,7 @@ fun LeaveScreen(
     var errorMessageDialog by remember { mutableStateOf<String?>(null) }
     var successLeaveIdDialog by remember { mutableStateOf<String?>(null) }
     var showApplyBridge by remember { mutableStateOf(false) }
+    var showSyncBridge by remember { mutableStateOf(false) }
 
     // Dialog state for 15-minute time picker: null = hidden, "START" or "END"
     var timePickerTarget by remember { mutableStateOf<String?>(null) }
@@ -236,7 +238,7 @@ fun LeaveScreen(
                 }
                 is LeaveSyncResult.SessionExpired -> {
                     if (isUserInitiated) {
-                        Toast.makeText(context, "Session expired. Tap Apply or Fetch Slip to log in.", Toast.LENGTH_SHORT).show()
+                        showSyncBridge = true
                     }
                 }
                 is LeaveSyncResult.Error -> {
@@ -253,15 +255,18 @@ fun LeaveScreen(
         refreshLeaveData(isUserInitiated = false)
     }
 
-    val refreshRotation by rememberInfiniteTransition(label = "refresh").animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "refreshRot"
-    )
+    val infiniteTransition = rememberInfiniteTransition(label = "refresh")
+    val refreshRotation = if (isRefreshing) {
+        infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(900, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "refreshRot"
+        )
+    } else null
 
     val dateFormat = remember { SimpleDateFormat("EEE, MMM d, yyyy", Locale.US) }
     val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.US) }
@@ -305,7 +310,9 @@ fun LeaveScreen(
                                 tint = Blaze,
                                 modifier = Modifier
                                     .size(14.dp)
-                                    .then(if (isRefreshing) Modifier.rotate(refreshRotation) else Modifier)
+                                    .graphicsLayer {
+                                        rotationZ = refreshRotation?.value ?: 0f
+                                    }
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
@@ -966,91 +973,12 @@ fun LeaveScreen(
                     }
                 }
             } else {
-                items(records) { rec ->
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = Slab,
-                        border = BorderStroke(1.dp, Rule),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "#${rec.leaveId}",
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
-                                        color = Blaze
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = rec.leaveType,
-                                        fontFamily = BarlowCondensed,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        color = Chalk
-                                    )
-                                }
-
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = if (rec.status.contains("Approve", ignoreCase = true)) SuccessGreen.copy(alpha = 0.15f) else SlabElevated,
-                                    border = BorderStroke(1.dp, if (rec.status.contains("Approve", ignoreCase = true)) SuccessGreen.copy(alpha = 0.4f) else Rule)
-                                ) {
-                                    Text(
-                                        text = rec.status,
-                                        fontSize = 10.5.sp,
-                                        fontFamily = BarlowCondensed,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (rec.status.contains("Approve", ignoreCase = true)) SuccessGreen else Slate,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("DEPARTURE", fontSize = 10.sp, color = Slate, fontFamily = BarlowCondensed)
-                                    Text(rec.leaveDate, fontSize = 12.sp, color = Chalk, fontWeight = FontWeight.Medium)
-                                }
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("RETURN", fontSize = 10.sp, color = Slate, fontFamily = BarlowCondensed)
-                                    Text(rec.returnDate, fontSize = 12.sp, color = Chalk, fontWeight = FontWeight.Medium)
-                                }
-                            }
-
-                            if (rec.checkOut.isNotBlank() || rec.checkIn.isNotBlank()) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                HorizontalDivider(color = Rule)
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = "Out: ${rec.checkOut.ifBlank { "Not exited" }}",
-                                        fontSize = 10.5.sp,
-                                        color = Slate
-                                    )
-                                    Text(
-                                        text = "In: ${rec.checkIn.ifBlank { "Pending" }}",
-                                        fontSize = 10.5.sp,
-                                        color = if (rec.checkIn.isNotBlank()) SuccessGreen else Slate
-                                    )
-                                }
-                            }
-                        }
-                    }
+                items(
+                    items = records,
+                    key = { it.leaveId },
+                    contentType = { "leave_record" }
+                ) { rec ->
+                    LeaveRecordItemCard(record = rec)
                 }
             }
         }
@@ -1422,4 +1350,132 @@ fun LeaveScreen(
             }
         )
     }
+
+    // ── Dedicated Live Leave Sync Bridge Dialog ───────────────────────────
+    if (showSyncBridge) {
+        LeaveSyncBridgeDialog(
+            onDismiss = { showSyncBridge = false },
+            onSuccess = { parsedData ->
+                showSyncBridge = false
+                balance = parsedData.balance
+                profile = parsedData.profile
+                records = parsedData.records
+                if (relativeMobile.isBlank() && parsedData.profile.registeredMobile.isNotBlank()) {
+                    relativeMobile = parsedData.profile.registeredMobile
+                }
+                Toast.makeText(context, "Hostel leave data synced successfully", Toast.LENGTH_SHORT).show()
+            },
+            onError = { err ->
+                showSyncBridge = false
+                errorMessageDialog = err
+            }
+        )
+    }
 }
+
+@Composable
+fun LeaveRecordItemCard(
+    record: LeaveRecord,
+    modifier: Modifier = Modifier
+) {
+    val isApproved = remember(record.status) {
+        record.status.contains("Approve", ignoreCase = true)
+    }
+    val statusBg = remember(isApproved) {
+        if (isApproved) SuccessGreen.copy(alpha = 0.15f) else SlabElevated
+    }
+    val statusBorder = remember(isApproved) {
+        BorderStroke(1.dp, if (isApproved) SuccessGreen.copy(alpha = 0.4f) else Rule)
+    }
+    val statusColor = remember(isApproved) {
+        if (isApproved) SuccessGreen else Slate
+    }
+
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = Slab,
+        border = BorderStroke(1.dp, Rule),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "#${record.leaveId}",
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = Blaze
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = record.leaveType,
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = Chalk,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = statusBg,
+                    border = statusBorder
+                ) {
+                    Text(
+                        text = record.status,
+                        fontSize = 10.5.sp,
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        color = statusColor,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("DEPARTURE", fontSize = 10.sp, color = Slate, fontFamily = BarlowCondensed)
+                    Text(record.leaveDate, fontSize = 12.sp, color = Chalk, fontWeight = FontWeight.Medium)
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("RETURN", fontSize = 10.sp, color = Slate, fontFamily = BarlowCondensed)
+                    Text(record.returnDate, fontSize = 12.sp, color = Chalk, fontWeight = FontWeight.Medium)
+                }
+            }
+
+            if (record.checkOut.isNotBlank() || record.checkIn.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(color = Rule)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Out: ${record.checkOut.ifBlank { "Not exited" }}",
+                        fontSize = 10.5.sp,
+                        color = Slate
+                    )
+                    Text(
+                        text = "In: ${record.checkIn.ifBlank { "Pending" }}",
+                        fontSize = 10.5.sp,
+                        color = if (record.checkIn.isNotBlank()) SuccessGreen else Slate
+                    )
+                }
+            }
+        }
+    }
+}
+

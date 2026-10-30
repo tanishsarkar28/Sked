@@ -31,7 +31,13 @@ object LeaveSubmitEngine {
     suspend fun fetchLatestData(context: Context): LeaveSyncResult = withContext(Dispatchers.IO) {
         try {
             val cm = CookieManager.getInstance()
-            var cookies = cm.getCookie("https://ums.lpu.in") ?: ""
+            cm.flush()
+            var cookies = cm.getCookie(LEAVE_URL)
+                ?.takeIf { it.isNotBlank() }
+                ?: cm.getCookie("https://ums.lpu.in/lpuums")
+                ?.takeIf { it.isNotBlank() }
+                ?: cm.getCookie("https://ums.lpu.in")
+                ?: ""
             if (cookies.isBlank()) {
                 val prefs = context.getSharedPreferences(com.sked.sked_app.widget.PREFS_NAME, Context.MODE_PRIVATE)
                 cookies = prefs.getString(com.sked.sked_app.AutoSyncManager.KEY_UMS_COOKIES, "") ?: ""
@@ -90,7 +96,15 @@ object LeaveSubmitEngine {
     suspend fun fetchGatePass(context: Context): Result<HostelGatePass> = withContext(Dispatchers.IO) {
         try {
             val cm = CookieManager.getInstance()
-            var cookies = cm.getCookie("https://ums.lpu.in") ?: ""
+            cm.flush()
+            var cookies = cm.getCookie(LEAVE_SLIP_URL)
+                ?.takeIf { it.isNotBlank() }
+                ?: cm.getCookie(LEAVE_URL)
+                ?.takeIf { it.isNotBlank() }
+                ?: cm.getCookie("https://ums.lpu.in/lpuums")
+                ?.takeIf { it.isNotBlank() }
+                ?: cm.getCookie("https://ums.lpu.in")
+                ?: ""
             if (cookies.isBlank()) {
                 val prefs = context.getSharedPreferences(com.sked.sked_app.widget.PREFS_NAME, Context.MODE_PRIVATE)
                 cookies = prefs.getString(com.sked.sked_app.AutoSyncManager.KEY_UMS_COOKIES, "") ?: ""

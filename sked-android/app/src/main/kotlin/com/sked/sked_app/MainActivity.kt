@@ -2338,7 +2338,14 @@ fun UmsAuthBridgeDialog(
                                                 window._skedDsDebug = 'ERROR: ' + e.toString();
                                             });
 
-                                            return Promise.all([ttPromise, dsPromise]);
+                                            var leavePromise = safeFetch('/lpuums/frmStudentHostelLeaveApplicationTermWise.aspx', 'hostelLeave')
+                                                .then(function(res) {
+                                                    window._skedLeaveResult = res.html || '';
+                                                }).catch(function(e) {
+                                                    window._skedLeaveResult = '';
+                                                });
+
+                                            return Promise.all([ttPromise, dsPromise, leavePromise]);
                                         }
 
                                         fetch(form ? form.action : window.location.href, {
@@ -2459,13 +2466,44 @@ fun UmsAuthBridgeDialog(
                                         isSyncing = true
                                         wv.evaluateJavascript("window._skedTimetableResult") { ttRaw ->
                                             wv.evaluateJavascript("window._skedDatesheetResult || ''") { dsRaw ->
-                                                wv.evaluateJavascript("window._skedDsDebug || ''") { dsDbg ->
-                                                    coroutineScope.launch(Dispatchers.IO) {
-                                                        try {
-                                                            val rawCookies = CookieManager.getInstance().getCookie("https://ums.lpu.in") ?: ""
-                                                            if (rawCookies.isNotBlank()) {
-                                                                AutoSyncManager.saveCookies(context, rawCookies)
-                                                            }
+                                                wv.evaluateJavascript("window._skedLeaveResult || ''") { leaveRaw ->
+                                                    wv.evaluateJavascript("window._skedDsDebug || ''") { dsDbg ->
+                                                        coroutineScope.launch(Dispatchers.IO) {
+                                                            try {
+                                                                val cm = CookieManager.getInstance()
+                                                                cm.flush()
+                                                                val rawCookies = cm.getCookie("https://ums.lpu.in/lpuums/frmStudentHostelLeaveApplicationTermWise.aspx")
+                                                                    ?.takeIf { it.isNotBlank() }
+                                                                    ?: cm.getCookie("https://ums.lpu.in/lpuums")
+                                                                    ?.takeIf { it.isNotBlank() }
+                                                                    ?: cm.getCookie("https://ums.lpu.in")
+                                                                    ?: ""
+                                                                if (rawCookies.isNotBlank()) {
+                                                                    AutoSyncManager.saveCookies(context, rawCookies)
+                                                                }
+
+                                                                // Sync live hostel leave data
+                                                                val cleanLeaveHtml = if (!leaveRaw.isNullOrBlank() && leaveRaw != "\"\"" && leaveRaw != "null") {
+                                                                    try {
+                                                                        if (leaveRaw.startsWith("\"") && leaveRaw.endsWith("\"")) {
+                                                                            JSONObject("{\"v\":$leaveRaw}").getString("v")
+                                                                        } else leaveRaw
+                                                                    } catch (_: Exception) { leaveRaw }
+                                                                } else ""
+
+                                                                if (cleanLeaveHtml.isNotBlank() && (cleanLeaveHtml.contains("ctl00_cphHeading") || cleanLeaveHtml.contains("LeaveDetail") || cleanLeaveHtml.contains("Balance"))) {
+                                                                    try {
+                                                                        val parsedLeave = com.sked.sked_app.leave.LeaveParser.parse(cleanLeaveHtml)
+                                                                        if (parsedLeave.balance.dayTotal > 0 || parsedLeave.records.isNotEmpty()) {
+                                                                            com.sked.sked_app.leave.LeaveStorage.saveBalance(context, parsedLeave.balance)
+                                                                            com.sked.sked_app.leave.LeaveStorage.saveProfile(context, parsedLeave.profile)
+                                                                            com.sked.sked_app.leave.LeaveStorage.saveRecords(context, parsedLeave.records)
+                                                                            android.util.Log.i("SkedSync", "Successfully synced live hostel leave data (records: ${parsedLeave.records.size})")
+                                                                        }
+                                                                    } catch (e: Exception) {
+                                                                        android.util.Log.w("SkedSync", "Failed to parse hostel leave HTML: ${e.message}")
+                                                                    }
+                                                                }
 
                                                             val entries: List<ClassItem> = if (!ttRaw.isNullOrBlank()) TimetableParser.parse(ttRaw) else emptyList()
                                                             if (entries.isNotEmpty()) {
@@ -2655,6 +2693,7 @@ fun UmsAuthBridgeDialog(
                                         }
                                     }
                                 }
+                            }
                             } catch (_: Exception) {}
                         }
                     }

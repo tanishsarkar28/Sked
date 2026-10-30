@@ -712,7 +712,13 @@ fun LeaveApplyBridgeDialog(
 }
 
 private fun saveFreshCookies(cm: CookieManager, prefs: android.content.SharedPreferences) {
-    val freshCookies = cm.getCookie("https://ums.lpu.in") ?: ""
+    cm.flush()
+    val freshCookies = cm.getCookie("https://ums.lpu.in/lpuums/frmStudentHostelLeaveApplicationTermWise.aspx")
+        ?.takeIf { it.isNotBlank() }
+        ?: cm.getCookie("https://ums.lpu.in/lpuums")
+        ?.takeIf { it.isNotBlank() }
+        ?: cm.getCookie("https://ums.lpu.in")
+        ?: ""
     if (freshCookies.isNotBlank()) {
         prefs.edit().putString(AutoSyncManager.KEY_UMS_COOKIES, freshCookies).apply()
     }
