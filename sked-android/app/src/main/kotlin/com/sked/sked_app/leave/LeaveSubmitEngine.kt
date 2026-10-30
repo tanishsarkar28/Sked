@@ -412,7 +412,23 @@ object LeaveSubmitEngine {
 
                                 // 7. Declaration Checkbox
                                 var chk = document.getElementById('ctl00_cphHeading_chkOption');
-                                if (chk) chk.checked = true;
+                                if (chk) {
+                                    chk.checked = true;
+                                    chk.defaultChecked = true;
+                                    chk.setAttribute('checked', 'checked');
+                                    chk.dispatchEvent(new Event('input', { bubbles: true }));
+                                    chk.dispatchEvent(new Event('change', { bubbles: true }));
+                                }
+                                var allCheckboxes = document.querySelectorAll('input[type="checkbox"]');
+                                for (var ci = 0; ci < allCheckboxes.length; ci++) {
+                                    if (allCheckboxes[ci].name && allCheckboxes[ci].name.indexOf('chkOption') !== -1) {
+                                        allCheckboxes[ci].checked = true;
+                                        allCheckboxes[ci].defaultChecked = true;
+                                        allCheckboxes[ci].setAttribute('checked', 'checked');
+                                        allCheckboxes[ci].dispatchEvent(new Event('input', { bubbles: true }));
+                                        allCheckboxes[ci].dispatchEvent(new Event('change', { bubbles: true }));
+                                    }
+                                }
 
                                 // 8. Client-side validation check
                                 if (typeof Page_ClientValidate === 'function') {
@@ -600,14 +616,24 @@ object LeaveSubmitEngine {
                                                 }
                                             }
 
-                                            // 6. Check for red text spans or fonts in the form body
+                                            // 6. Check for red text spans or fonts in the form body (excluding static declaration text)
                                             var allRedEls = document.querySelectorAll('span, div, p, font, td');
                                             for (var r = 0; r < allRedEls.length; r++) {
                                                 var redEl = allRedEls[r];
                                                 var cStyle = (redEl.style && redEl.style.color) ? redEl.style.color.toLowerCase() : '';
                                                 var fCol = redEl.getAttribute('color') || '';
-                                                if (cStyle === 'red' || cStyle.indexOf('255, 0, 0') !== -1 || fCol.toLowerCase() === 'red') {
+                                                if (cStyle === 'red' || cStyle.indexOf('255, 0, 0') !== -1 || fCol.toLowerCase() === 'red' || cStyle.indexOf('#ff0000') !== -1) {
                                                     var redTxt = (redEl.textContent || redEl.innerText || '').trim();
+                                                    var rLower = redTxt.toLowerCase();
+                                                    // Skip static declaration text, VID, asterisks, and dropdown captions
+                                                    if (rLower.indexOf('disciplinary') !== -1 ||
+                                                        rLower.indexOf('misconduct') !== -1 ||
+                                                        rLower.indexOf('hostel leave application') !== -1 ||
+                                                        rLower.indexOf('submitting this') !== -1 ||
+                                                        rLower.indexOf('acknowledge') !== -1 ||
+                                                        rLower.indexOf('rules and regulations') !== -1) {
+                                                        continue;
+                                                    }
                                                     if (redTxt && redTxt.length > 3 && redTxt !== '*' && !redTxt.includes('VID') && !redTxt.includes('Select')) {
                                                         return JSON.stringify({ status: 'error', message: redTxt });
                                                     }
