@@ -9,6 +9,7 @@ object LeaveStorage {
     private const val KEY_BALANCE_JSON = "key_leave_balance"
     private const val KEY_RECORDS_JSON = "key_leave_records"
     private const val KEY_PROFILE_JSON = "key_leave_profile"
+    private const val KEY_GATE_PASS_JSON = "key_gate_pass_json"
     private const val KEY_LAST_STAY_ADDR = "key_last_stay_addr"
     private const val KEY_LAST_REASON = "key_last_reason"
     private const val KEY_LAST_RELATIVE_MOBILE = "key_last_rel_mobile"
@@ -23,16 +24,19 @@ object LeaveStorage {
     )
 
     val DEFAULT_PROFILE = LeaveProfile(
-        uid = "12102838",
+        uid = "12407229",
         name = "TANISH SARKAR",
-        hostel = "BH-02",
-        roomNo = "415",
+        hostel = "Boys Hostel-01",
+        roomNo = "A706-Bed A",
         authority = "Warden",
         registeredMobile = "8293118470",
         homeAddress = "Village : Suravisthan, P.O. : Badkulla,,Badkulla,Nadia,West Bengal,India"
     )
 
+    val DEFAULT_GATE_PASS = HostelGatePass()
+
     val DEFAULT_RECORDS = listOf(
+        LeaveRecord("5821114", "Day Leave(Extended Leave Timing)", "10/30/2026 5:57:00 PM", "10/30/2026 6:00:00 PM", "10/30/2026 10:45:00 PM", "Approved", "10/30/2026 6:06:00 PM", ""),
         LeaveRecord("5768261", "Day Leave(Extended Leave Timing)", "10/20/2026 2:46:21 PM", "10/20/2026 3:00:00 PM", "10/20/2026 10:45:00 PM", "Approved", "10/20/2026 2:50:47 PM", "10/20/2026 9:43:22 PM"),
         LeaveRecord("5757328", "Day Leave(Extended Leave Timing)", "10/18/2026 5:25:49 PM", "10/18/2026 5:30:00 PM", "10/18/2026 10:45:00 PM", "Approved", "10/18/2026 5:39:33 PM", "10/18/2026 8:43:58 PM"),
         LeaveRecord("5725392", "Day Leave(Extended Leave Timing)", "10/7/2026 4:56:02 PM", "10/7/2026 5:00:00 PM", "10/7/2026 10:45:00 PM", "Approved", "10/7/2026 5:07:25 PM", "10/7/2026 9:07:07 PM"),
@@ -190,5 +194,86 @@ object LeaveStorage {
     fun getLastRelativeMobile(context: Context): String {
         val m = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_LAST_RELATIVE_MOBILE, "") ?: ""
         return if (m.isNotBlank()) m else DEFAULT_PROFILE.registeredMobile
+    }
+
+    fun saveGatePass(context: Context, pass: HostelGatePass) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val obj = JSONObject().apply {
+            put("universityTitle", pass.universityTitle)
+            put("passSubtitle", pass.passSubtitle)
+            put("leaveType", pass.leaveType)
+            put("leaveId", pass.leaveId)
+            put("leaveCode", pass.leaveCode)
+            put("regNo", pass.regNo)
+            put("name", pass.name)
+            put("dateOfApply", pass.dateOfApply)
+            put("dateOfLeaving", pass.dateOfLeaving)
+            put("dateOfReturn", pass.dateOfReturn)
+            put("checkOutTime", pass.checkOutTime)
+            put("checkInTime", pass.checkInTime)
+            put("contactNo", pass.contactNo)
+            put("hostel", pass.hostel)
+            put("roomNo", pass.roomNo)
+            put("note", pass.note)
+            put("hasActivePass", pass.hasActivePass)
+
+            val gatesArr = JSONArray()
+            for (g in pass.gates) {
+                val gObj = JSONObject().apply {
+                    put("gateName", g.gateName)
+                    put("status", g.status)
+                }
+                gatesArr.put(gObj)
+            }
+            put("gates", gatesArr)
+        }
+        prefs.edit().putString(KEY_GATE_PASS_JSON, obj.toString()).apply()
+    }
+
+    fun loadGatePass(context: Context): HostelGatePass {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val raw = prefs.getString(KEY_GATE_PASS_JSON, null)
+        if (raw == null) {
+            saveGatePass(context, DEFAULT_GATE_PASS)
+            return DEFAULT_GATE_PASS
+        }
+        return try {
+            val obj = JSONObject(raw)
+            val gatesList = mutableListOf<GateActivation>()
+            val gatesArr = obj.optJSONArray("gates")
+            if (gatesArr != null) {
+                for (i in 0 until gatesArr.length()) {
+                    val gObj = gatesArr.getJSONObject(i)
+                    gatesList.add(
+                        GateActivation(
+                            gateName = gObj.optString("gateName", ""),
+                            status = gObj.optString("status", "✔ Activated")
+                        )
+                    )
+                }
+            }
+            HostelGatePass(
+                universityTitle = obj.optString("universityTitle", DEFAULT_GATE_PASS.universityTitle),
+                passSubtitle = obj.optString("passSubtitle", DEFAULT_GATE_PASS.passSubtitle),
+                leaveType = obj.optString("leaveType", DEFAULT_GATE_PASS.leaveType),
+                leaveId = obj.optString("leaveId", DEFAULT_GATE_PASS.leaveId),
+                leaveCode = obj.optString("leaveCode", DEFAULT_GATE_PASS.leaveCode),
+                regNo = obj.optString("regNo", DEFAULT_GATE_PASS.regNo),
+                name = obj.optString("name", DEFAULT_GATE_PASS.name),
+                dateOfApply = obj.optString("dateOfApply", DEFAULT_GATE_PASS.dateOfApply),
+                dateOfLeaving = obj.optString("dateOfLeaving", DEFAULT_GATE_PASS.dateOfLeaving),
+                dateOfReturn = obj.optString("dateOfReturn", DEFAULT_GATE_PASS.dateOfReturn),
+                checkOutTime = obj.optString("checkOutTime", DEFAULT_GATE_PASS.checkOutTime),
+                checkInTime = obj.optString("checkInTime", DEFAULT_GATE_PASS.checkInTime),
+                contactNo = obj.optString("contactNo", DEFAULT_GATE_PASS.contactNo),
+                hostel = obj.optString("hostel", DEFAULT_GATE_PASS.hostel),
+                roomNo = obj.optString("roomNo", DEFAULT_GATE_PASS.roomNo),
+                gates = if (gatesList.isNotEmpty()) gatesList else DEFAULT_GATE_PASS.gates,
+                note = obj.optString("note", DEFAULT_GATE_PASS.note),
+                hasActivePass = obj.optBoolean("hasActivePass", true)
+            )
+        } catch (_: Exception) {
+            DEFAULT_GATE_PASS
+        }
     }
 }

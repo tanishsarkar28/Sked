@@ -80,6 +80,69 @@ object LeaveSubmitEngine {
         }
     }
 
+    const val LEAVE_SLIP_URL = "https://ums.lpu.in/lpuums/frmHostelLeaveSlipTest.aspx"
+    const val STUDENT_PHOTO_URL = "https://ums.lpu.in/lpuums/DisplayImageForPowerBi.aspx"
+
+    /**
+     * Fetches official hostel leave gate pass from frmHostelLeaveSlipTest.aspx using session cookies.
+     * Also downloads and caches the student photo locally.
+     */
+    suspend fun fetchGatePass(context: Context): Result<HostelGatePass> = withContext(Dispatchers.IO) {
+        try {
+            val cm = CookieManager.getInstance()
+            var cookies = cm.getCookie("https://ums.lpu.in") ?: ""
+            if (cookies.isBlank()) {
+                val prefs = context.getSharedPreferences(com.sked.sked_app.widget.PREFS_NAME, Context.MODE_PRIVATE)
+                cookies = prefs.getString(com.sked.sked_app.AutoSyncManager.KEY_UMS_COOKIES, "") ?: ""
+            }
+            if (cookies.isBlank()) {
+                return@withContext Result.failure(Exception("UMS session cookies missing"))
+            }
+
+            val client = OkHttpClient.Builder()
+                .connectTimeout(12, TimeUnit.SECONDS)
+                .readTimeout(12, TimeUnit.SECONDS)
+                .followRedirects(false)
+                .build()
+
+            val req = Request.Builder()
+                .url(LEAVE_SLIP_URL)
+                .header("Cookie", cookies)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+                .build()
+
+            client.newCall(req).execute().use { resp ->
+                val html = resp.body?.string() ?: ""
+                if (html.isNotBlank()) {
+                    val pass = LeaveParser.parseGatePass(html)
+                    if (pass != null) {
+                        LeaveStorage.saveGatePass(context, pass)
+                        // Download student photo
+                        try {
+                            val photoReq = Request.Builder()
+                                .url(STUDENT_PHOTO_URL)
+                                .header("Cookie", cookies)
+                                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+                                .build()
+                            client.newCall(photoReq).execute().use { photoResp ->
+                                val bytes = photoResp.body?.bytes()
+                                if (bytes != null && bytes.size > 200) {
+                                    val photoFile = java.io.File(context.filesDir, "student_photo.jpg")
+                                    photoFile.writeBytes(bytes)
+                                }
+                            }
+                        } catch (_: Exception) {}
+                        return@withContext Result.success(pass)
+                    }
+                }
+                Result.failure(Exception("Could not parse leave gate pass"))
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("SkedLeave", "fetchGatePass error: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
     /**
      * Submits the leave application on UMS via an automated WebView bridge.
      * Handles ASP.NET PostBacks, Telerik datepickers, declaration checkbox, and intercepts alerts.

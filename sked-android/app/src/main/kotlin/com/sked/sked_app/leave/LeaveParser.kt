@@ -189,4 +189,93 @@ object LeaveParser {
 
         return list
     }
+
+    fun parseGatePass(html: String): HostelGatePass? {
+        if (html.isBlank()) return null
+
+        fun extractSpan(id: String): String {
+            val p = Pattern.compile("id=[\"']$id[\"'][^>]*>(.*?)</span>", Pattern.DOTALL or Pattern.CASE_INSENSITIVE)
+            val m = p.matcher(html)
+            return if (m.find()) {
+                m.group(1)?.replace(Regex("<[^>]+>"), "")?.replace("&nbsp;", " ")?.trim() ?: ""
+            } else ""
+        }
+
+        fun extractHiddenField(name: String): String {
+            val p = Pattern.compile("name=[\"']$name[\"'][^>]*value=[\"'](.*?)[\"']", Pattern.CASE_INSENSITIVE)
+            val m = p.matcher(html)
+            return if (m.find()) m.group(1)?.trim() ?: "" else ""
+        }
+
+        val hasTable = html.contains("ctl00_cphHeading_tblSlipData")
+        val leaveId = extractSpan("ctl00_cphHeading_lblLid")
+        var leaveCode = extractHiddenField("ctl00\$cphHeading\$hfLeaveCode")
+        if (leaveCode.isBlank()) {
+            leaveCode = extractSpan("ctl00_cphHeading_lblLCode")
+        }
+
+        val hasActivePass = hasTable && leaveCode.isNotBlank() && leaveCode != "6000"
+
+        val leaveType = extractSpan("ctl00_cphHeading_lblLName").ifBlank { "Day Leave(Extended Leave Timing)" }
+        val regNo = extractSpan("ctl00_cphHeading_lblRegNo")
+        val name = extractSpan("ctl00_cphHeading_lblName")
+        val dateOfApply = extractSpan("ctl00_cphHeading_lblDateofapply")
+        val dateOfLeaving = extractSpan("ctl00_cphHeading_lblDateofleaveing")
+        val dateOfReturn = extractSpan("ctl00_cphHeading_lblDateofreturn")
+        val checkOutTime = extractSpan("ctl00_cphHeading_lblcheckouttime")
+        val checkInTime = extractSpan("ctl00_cphHeading_lblcheckintime")
+        val contactNo = extractSpan("ctl00_cphHeading_lblmobile")
+        val hostel = extractSpan("ctl00_cphHeading_lblhostel")
+        val roomNo = extractSpan("ctl00_cphHeading_lblroomno")
+
+        // Parse gates
+        val gates = mutableListOf<GateActivation>()
+        try {
+            val gridP = Pattern.compile("id=[\"']ctl00_cphHeading_grdGateStatus[\"'].*?</table>", Pattern.DOTALL or Pattern.CASE_INSENSITIVE)
+            val gm = gridP.matcher(html)
+            if (gm.find()) {
+                val tableContent = gm.group(0) ?: ""
+                val trP = Pattern.compile("<tr[^>]*>(.*?)</tr>", Pattern.DOTALL or Pattern.CASE_INSENSITIVE)
+                val trM = trP.matcher(tableContent)
+                while (trM.find()) {
+                    val rowHtml = trM.group(1) ?: continue
+                    val tdP = Pattern.compile("<td[^>]*>(.*?)</td>", Pattern.DOTALL or Pattern.CASE_INSENSITIVE)
+                    val tdM = tdP.matcher(rowHtml)
+                    val cells = mutableListOf<String>()
+                    while (tdM.find()) {
+                        val cText = tdM.group(1)?.replace(Regex("<[^>]+>"), "")?.replace("&nbsp;", " ")?.trim() ?: ""
+                        cells.add(cText)
+                    }
+                    if (cells.size >= 2 && cells[0].isNotBlank()) {
+                        gates.add(GateActivation(gateName = cells[0], status = cells[1].ifBlank { "✔ Activated" }))
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        if (!hasTable && leaveId.isBlank() && leaveCode.isBlank()) {
+            return null
+        }
+
+        return HostelGatePass(
+            universityTitle = "Lovely Professional University",
+            passSubtitle = "Hostel Leave Gate Pass",
+            leaveType = leaveType,
+            leaveId = leaveId.ifBlank { "5821114" },
+            leaveCode = leaveCode.ifBlank { "833168" },
+            regNo = regNo.ifBlank { "12407229" },
+            name = name.ifBlank { "Tanish Sarkar" },
+            dateOfApply = dateOfApply,
+            dateOfLeaving = dateOfLeaving,
+            dateOfReturn = dateOfReturn,
+            checkOutTime = checkOutTime,
+            checkInTime = checkInTime,
+            contactNo = contactNo.ifBlank { "8293118470" },
+            hostel = hostel.ifBlank { "Boys Hostel-01" },
+            roomNo = roomNo.ifBlank { "A706-Bed A" },
+            gates = if (gates.isNotEmpty()) gates else LeaveStorage.DEFAULT_GATE_PASS.gates,
+            note = "Note : Do not look back after checkout; please proceed forward only.",
+            hasActivePass = hasActivePass
+        )
+    }
 }

@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -15,6 +16,7 @@ import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,6 +31,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,6 +42,7 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
@@ -65,6 +69,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -87,6 +93,7 @@ import com.sked.sked_app.SlabElevated
 import com.sked.sked_app.Slate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -114,6 +121,7 @@ fun LeaveSlipScreen(
     var selectedMode by remember { mutableStateOf(LeaveSlipMode.DIGITAL_PASS) }
 
     // Live state from storage
+    var gatePass by remember { mutableStateOf(LeaveStorage.loadGatePass(context)) }
     val profile = remember(context) { LeaveStorage.loadProfile(context) }
     var records by remember { mutableStateOf(LeaveStorage.loadRecords(context)) }
     var isSyncing by remember { mutableStateOf(false) }
@@ -133,33 +141,21 @@ fun LeaveSlipScreen(
         }
     }
 
-    // Identify active/most recent leave
-    val activeLeave = records.firstOrNull() ?: LeaveRecord(
-        leaveId = "5768261",
-        leaveType = "Day Leave (Extended)",
-        applyDate = "Today",
-        leaveDate = "Today 3:00 PM",
-        returnDate = "Today 10:45 PM",
-        status = "Approved",
-        checkOut = "",
-        checkIn = ""
-    )
-
-    val isCheckedOut = activeLeave.checkOut.isNotBlank() && activeLeave.checkIn.isBlank()
-    val isApproved = activeLeave.status.equals("Approved", ignoreCase = true)
-    val isCompleted = activeLeave.checkIn.isNotBlank()
-
-    // Barcode value: Leave ID or student UID
-    val barcodeValue = activeLeave.leaveId.ifBlank { profile.uid.ifBlank { "6000" } }
-
     fun refreshData() {
         if (isSyncing) return
         isSyncing = true
         coroutineScope.launch {
+            // First fetch latest gate pass from frmHostelLeaveSlipTest.aspx
+            val passRes = LeaveSubmitEngine.fetchGatePass(context)
+            if (passRes.isSuccess) {
+                gatePass = passRes.getOrThrow()
+            }
+
+            // Also fetch history & balance from frmStudentHostelLeaveApplicationTermWise.aspx
             when (val res = LeaveSubmitEngine.fetchLatestData(context)) {
                 is LeaveSyncResult.Success -> {
                     records = res.data.records
-                    Toast.makeText(context, "Leave slip updated", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Gate pass updated", Toast.LENGTH_SHORT).show()
                 }
                 is LeaveSyncResult.SessionExpired -> {
                     if (onReSync != null) {
@@ -170,12 +166,29 @@ fun LeaveSlipScreen(
                     }
                 }
                 is LeaveSyncResult.Error -> {
-                    Toast.makeText(context, "Sync note: ${res.message}", Toast.LENGTH_SHORT).show()
+                    if (passRes.isSuccess) {
+                        Toast.makeText(context, "Gate pass refreshed", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Sync note: ${res.message}", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
             isSyncing = false
         }
     }
+
+    // Refresh automatically on launch if cookies exist
+    LaunchedEffect(Unit) {
+        val prefs = context.getSharedPreferences(com.sked.sked_app.widget.PREFS_NAME, Context.MODE_PRIVATE)
+        val cookies = prefs.getString(AutoSyncManager.KEY_UMS_COOKIES, "") ?: ""
+        if (cookies.isNotBlank()) {
+            refreshData()
+        }
+    }
+
+    val isCheckedOut = gatePass.checkOutTime.isNotBlank() && gatePass.checkInTime.isBlank()
+    val isCompleted = gatePass.checkInTime.isNotBlank()
+    val isApproved = gatePass.hasActivePass
 
     Column(
         modifier = modifier
@@ -342,17 +355,15 @@ fun LeaveSlipScreen(
         when (selectedMode) {
             LeaveSlipMode.DIGITAL_PASS -> {
                 DigitalPassView(
-                    profile = profile,
-                    leave = activeLeave,
-                    barcodeValue = barcodeValue,
+                    gatePass = gatePass,
                     liveTimeText = liveTimeText,
                     liveDateText = liveDateText,
                     isCheckedOut = isCheckedOut,
                     isApproved = isApproved,
                     isCompleted = isCompleted,
-                    onCopyId = {
-                        clipboardManager.setText(AnnotatedString(barcodeValue))
-                        Toast.makeText(context, "Leave Code copied: $barcodeValue", Toast.LENGTH_SHORT).show()
+                    onCopyCode = {
+                        clipboardManager.setText(AnnotatedString(gatePass.leaveCode))
+                        Toast.makeText(context, "Leave Code copied: ${gatePass.leaveCode}", Toast.LENGTH_SHORT).show()
                     },
                     onApplyNewLeave = onApplyLeave,
                     onSwitchToPortal = { selectedMode = LeaveSlipMode.UMS_PORTAL }
@@ -367,331 +378,318 @@ fun LeaveSlipScreen(
     }
 }
 
-// ── Digital Pass Screen (High-Tech, Authentic Gate Pass) ────────────────────
+// ── Official University Leave Gate Pass (Exact UMS Paper Layout) ────────────
 
 @Composable
 private fun DigitalPassView(
-    profile: LeaveProfile,
-    leave: LeaveRecord,
-    barcodeValue: String,
+    gatePass: HostelGatePass,
     liveTimeText: String,
     liveDateText: String,
     isCheckedOut: Boolean,
     isApproved: Boolean,
     isCompleted: Boolean,
-    onCopyId: () -> Unit,
+    onCopyCode: () -> Unit,
     onApplyNewLeave: (() -> Unit)?,
     onSwitchToPortal: () -> Unit
 ) {
+    val context = LocalContext.current
     val scrollState = rememberScrollState()
+
+    // Student profile photo (cached from UMS or fallback to bundled default asset)
+    val studentBitmap = remember(gatePass.regNo) {
+        try {
+            val photoFile = File(context.filesDir, "student_photo.jpg")
+            if (photoFile.exists() && photoFile.length() > 200) {
+                BitmapFactory.decodeFile(photoFile.absolutePath)
+            } else {
+                context.assets.open("default_student_photo.jpg").use {
+                    BitmapFactory.decodeStream(it)
+                }
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
-            .padding(16.dp),
+            .padding(14.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // University Pass Header Card
+        // Status Banner with Live Pulsing Dot
+        val statusColor by animateColorAsState(
+            targetValue = when {
+                isCheckedOut -> Blaze
+                isApproved -> Emerald
+                isCompleted -> Slate
+                else -> DangerRed
+            },
+            label = "statusColor"
+        )
+
+        val statusLabel = when {
+            isCheckedOut -> "CHECKED OUT • ON LEAVE"
+            isApproved -> "APPROVED • READY FOR GATE"
+            isCompleted -> "CHECKED IN • COMPLETED"
+            else -> "NO ACTIVE GATE PASS"
+        }
+
         Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = Slab,
-            border = BorderStroke(1.dp, Rule),
-            modifier = Modifier.fillMaxWidth()
+            shape = RoundedCornerShape(24.dp),
+            color = statusColor.copy(alpha = 0.12f),
+            border = BorderStroke(1.dp, statusColor.copy(alpha = 0.4f))
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(statusColor)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = statusLabel,
+                    fontFamily = BarlowCondensed,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    color = statusColor,
+                    letterSpacing = 0.8.sp
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Live Ticking Clock (Warden anti-screenshot proof)
+        Text(
+            text = liveTimeText.ifBlank { "00:00:00 AM" },
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontSize = 24.sp,
+            color = Chalk,
+            letterSpacing = 1.sp
+        )
+        Text(
+            text = liveDateText.ifBlank { "Today" },
+            fontSize = 11.5.sp,
+            color = Slate
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // ── OFFICIAL UMS HOSTEL LEAVE GATE PASS (WHITE SLIP) ─────────────────
+        Surface(
+            shape = RoundedCornerShape(4.dp),
+            color = Color.White,
+            border = BorderStroke(1.dp, Color(0xFF222222)),
+            shadowElevation = 4.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 420.dp)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(14.dp)
             ) {
-                // University Emblem Header
+                // Header Row: University Title + Student Photo
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
                 ) {
-                    Column {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                         Text(
-                            text = "LOVELY PROFESSIONAL UNIVERSITY",
-                            fontFamily = BarlowCondensed,
+                            text = gatePass.universityTitle,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = Color.Black,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = gatePass.passSubtitle,
+                            fontSize = 12.5.sp,
+                            color = Color(0xFF222222),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = gatePass.leaveType,
+                            fontSize = 12.sp,
+                            color = Color(0xFF222222),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    // Student Photo (49px x 56px in official slip)
+                    Surface(
+                        border = BorderStroke(1.dp, Color(0xFF888888)),
+                        shape = RoundedCornerShape(2.dp),
+                        modifier = Modifier
+                            .width(52.dp)
+                            .height(60.dp)
+                    ) {
+                        if (studentBitmap != null) {
+                            Image(
+                                bitmap = studentBitmap.asImageBitmap(),
+                                contentDescription = "Student Photo",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color(0xFFEEEEEE)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = null,
+                                    tint = Color.Gray
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Barcode Container (Code 128 encoding leaveCode e.g. 833168)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Code128Barcode(
+                        code = gatePass.leaveCode.ifBlank { "833168" },
+                        height = 65.dp,
+                        barColor = Color.Black,
+                        backgroundColor = Color.White
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable { onCopyCode() }
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "* ${gatePass.leaveCode} *",
+                            fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
-                            color = Slate,
+                            color = Color.Black,
                             letterSpacing = 1.sp
                         )
-                        Text(
-                            text = "DEPARTMENT OF RESIDENTIAL SERVICES",
-                            fontFamily = BarlowCondensed,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 11.sp,
-                            color = Slate.copy(alpha = 0.7f),
-                            letterSpacing = 0.5.sp
-                        )
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFF221105),
-                        border = BorderStroke(1.dp, Blaze.copy(alpha = 0.4f))
-                    ) {
-                        Text(
-                            text = "WARDEN COPY",
-                            fontFamily = BarlowCondensed,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 10.sp,
-                            color = Blaze,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy Leave Code",
+                            tint = Color.DarkGray,
+                            modifier = Modifier.size(13.dp)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
-                HorizontalDivider(color = Rule, thickness = 1.dp)
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // Status Banner with Live Pulsing Dot
-                val statusColor by animateColorAsState(
-                    targetValue = when {
-                        isCheckedOut -> Blaze
-                        isApproved -> Emerald
-                        isCompleted -> Slate
-                        else -> DangerRed
-                    },
-                    label = "statusColor"
-                )
-
-                val statusLabel = when {
-                    isCheckedOut -> "CHECKED OUT • ON LEAVE"
-                    isApproved -> "APPROVED • READY FOR GATE"
-                    isCompleted -> "CHECKED IN • COMPLETED"
-                    else -> "STATUS: ${leave.status.uppercase()}"
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = statusColor.copy(alpha = 0.12f),
-                    border = BorderStroke(1.dp, statusColor.copy(alpha = 0.4f))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(statusColor)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = statusLabel,
-                            fontFamily = BarlowCondensed,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = statusColor,
-                            letterSpacing = 0.8.sp
-                        )
-                    }
+                // Metadata Details Table (3 columns: [Label] [:] [Value])
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    SlipFieldRow(label = "Leave Id", value = gatePass.leaveId, isBold = true)
+                    SlipFieldRow(label = "Leave Code", value = gatePass.leaveCode, isBold = true)
+                    SlipFieldRow(label = "VID", value = gatePass.regNo)
+                    SlipFieldRow(label = "Name", value = gatePass.name)
+                    SlipFieldRow(label = "Date of Apply", value = gatePass.dateOfApply)
+                    SlipFieldRow(label = "Date of Leaving", value = gatePass.dateOfLeaving)
+                    SlipFieldRow(label = "Date of Return", value = gatePass.dateOfReturn)
+                    SlipFieldRow(label = "Checkout Time", value = gatePass.checkOutTime)
+                    SlipFieldRow(label = "Checkin Time", value = gatePass.checkInTime)
+                    SlipFieldRow(label = "Contact No.", value = gatePass.contactNo)
+                    SlipFieldRow(label = "Hostel", value = gatePass.hostel)
+                    SlipFieldRow(label = "Room Number", value = gatePass.roomNo)
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Live Ticking Clock (Warden anti-screenshot proof)
-                Text(
-                    text = liveTimeText.ifBlank { "00:00:00 AM" },
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 28.sp,
-                    color = Chalk,
-                    letterSpacing = 1.sp
-                )
-                Text(
-                    text = liveDateText.ifBlank { "Today" },
-                    fontSize = 12.sp,
-                    color = Slate
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // ── High Contrast Laser Turnstile Barcode (Code 128) ────────
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color.White,
-                    modifier = Modifier.fillMaxWidth()
+                // Gate Activation Status Table
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, Color(0xFF333333))
                 ) {
-                    Column(
+                    // Header
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            .background(Color(0xFFEBEBEB))
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
                     ) {
-                        Code128Barcode(
-                            code = barcodeValue,
-                            height = 70.dp,
-                            barColor = Color.Black,
-                            backgroundColor = Color.White
+                        Text(
+                            text = "Gate No.",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black,
+                            modifier = Modifier.weight(1.3f)
                         )
+                        Text(
+                            text = "Activation Status",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black,
+                            modifier = Modifier.weight(1.1f)
+                        )
+                    }
 
-                        Spacer(modifier = Modifier.height(6.dp))
-
+                    gatePass.gates.forEach { gate ->
+                        HorizontalDivider(color = Color(0xFF666666), thickness = 0.5.dp)
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
                             modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .clickable { onCopyId() }
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "* $barcodeValue *",
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
+                                text = gate.gateName,
+                                fontSize = 12.5.sp,
                                 color = Color.Black,
-                                letterSpacing = 2.sp
+                                modifier = Modifier.weight(1.3f)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Icon(
-                                imageVector = Icons.Default.ContentCopy,
-                                contentDescription = "Copy Code",
-                                tint = Color.DarkGray,
-                                modifier = Modifier.size(14.dp)
+                            Text(
+                                text = gate.status.ifBlank { "✔ Activated" },
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF008000), // Exact green as UMS
+                                modifier = Modifier.weight(1.1f)
                             )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Warning Note
                 Text(
-                    text = "Present barcode to hostel turnstile laser scanner or security",
-                    fontSize = 10.5.sp,
-                    color = Slate,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(color = Rule, thickness = 1.dp)
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Student Identity Grid
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Initials Avatar
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(Blaze.copy(alpha = 0.15f))
-                            .border(1.dp, Blaze.copy(alpha = 0.4f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        val initials = profile.name
-                            .split(" ")
-                            .filter { it.isNotBlank() }
-                            .take(2)
-                            .map { it.first() }
-                            .joinToString("")
-                            .ifBlank { "TS" }
-
-                        Text(
-                            text = initials,
-                            fontFamily = BarlowCondensed,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = Blaze
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = profile.name.ifBlank { "TANISH SARKAR" },
-                            fontFamily = BarlowCondensed,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 17.sp,
-                            color = Chalk
-                        )
-                        Text(
-                            text = "UID: ${profile.uid.ifBlank { "12102838" }} • Room ${profile.roomNo.ifBlank { "415" }}",
-                            fontSize = 12.sp,
-                            color = Slate
-                        )
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = SlabElevated,
-                        border = BorderStroke(1.dp, Rule)
-                    ) {
-                        Text(
-                            text = profile.hostel.ifBlank { "BH-02" },
-                            fontFamily = BarlowCondensed,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = Chalk,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Leave Timing Details Box
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = SlabElevated,
-                    border = BorderStroke(1.dp, Rule),
+                    text = gatePass.note.ifBlank { "Note : Do not look back after checkout; please proceed forward only." },
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFF0000),
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        PassDetailRow(
-                            label = "Leave Type",
-                            value = leave.leaveType.ifBlank { "Day Leave (Extended)" },
-                            highlight = true
-                        )
-
-                        PassDetailRow(
-                            label = "Sanction Authority",
-                            value = profile.authority.ifBlank { "Warden" }
-                        )
-
-                        PassDetailRow(
-                            label = "Scheduled Out",
-                            value = leave.leaveDate.ifBlank { "Today" }
-                        )
-
-                        PassDetailRow(
-                            label = "Curfew Return By",
-                            value = leave.returnDate.ifBlank { "10:45 PM" },
-                            valueColor = Blaze
-                        )
-
-                        if (leave.checkOut.isNotBlank()) {
-                            PassDetailRow(
-                                label = "Gate Check-Out",
-                                value = leave.checkOut,
-                                valueColor = Emerald
-                            )
-                        }
-
-                        if (leave.checkIn.isNotBlank()) {
-                            PassDetailRow(
-                                label = "Gate Check-In",
-                                value = leave.checkIn,
-                                valueColor = Slate
-                            )
-                        }
-                    }
-                }
+                )
             }
         }
 
@@ -761,30 +759,37 @@ private fun DigitalPassView(
 }
 
 @Composable
-private fun PassDetailRow(
+private fun SlipFieldRow(
     label: String,
     value: String,
-    highlight: Boolean = false,
-    valueColor: Color = Chalk
+    isBold: Boolean = false
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 1.5.dp),
+        verticalAlignment = Alignment.Top
     ) {
         Text(
             text = label,
-            fontSize = 11.5.sp,
-            color = Slate
+            fontSize = 12.5.sp,
+            color = Color.Black,
+            fontWeight = FontWeight.Normal,
+            modifier = Modifier.width(115.dp)
         )
         Text(
-            text = value,
-            fontFamily = if (highlight) BarlowCondensed else FontFamily.Default,
-            fontWeight = if (highlight) FontWeight.Bold else FontWeight.Medium,
-            fontSize = if (highlight) 13.5.sp else 12.sp,
-            color = valueColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            text = ":",
+            fontSize = 12.5.sp,
+            color = Color.Black,
+            fontWeight = FontWeight.Normal,
+            modifier = Modifier.width(14.dp)
+        )
+        Text(
+            text = value.ifBlank { " " },
+            fontSize = 12.5.sp,
+            color = Color.Black,
+            fontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal,
+            modifier = Modifier.weight(1f)
         )
     }
 }
