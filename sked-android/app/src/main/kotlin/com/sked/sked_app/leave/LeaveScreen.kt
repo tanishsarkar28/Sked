@@ -167,8 +167,16 @@ fun LeaveScreen(
         })
     }
 
-    // Auto adjust return time/date on leave type change
+    // Auto adjust return time/date and valid visit places on leave type change
     LaunchedEffect(selectedType) {
+        val validPlaces = VisitPlaceOption.optionsFor(selectedType)
+        if (validPlaces.none { it.code == selectedPlace.code }) {
+            selectedPlace = validPlaces.firstOrNull() ?: VisitPlaceOption.OTHER
+            if (selectedPlace == VisitPlaceOption.HOME && profile.homeAddress.isNotBlank()) {
+                stayAddress = profile.homeAddress
+            }
+        }
+
         val c = (startCal.clone() as Calendar)
         when (selectedType) {
             LeaveTypeOption.DAY_EXTENDED -> {
@@ -488,37 +496,38 @@ fun LeaveScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Visit Place
+                        // Visit Place (Dynamically populated based on Leave Type)
                         Text("VISIT PLACE", fontSize = 11.sp, fontFamily = BarlowCondensed, color = Slate, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        Row(
+                        val currentPlaces = remember(selectedType) { VisitPlaceOption.optionsFor(selectedType) }
+                        LazyRow(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            VisitPlaceOption.entries.forEach { place ->
-                                val isSelected = place == selectedPlace
+                            items(currentPlaces) { place ->
+                                val isSelected = place.code == selectedPlace.code
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
                                     color = if (isSelected) Blaze.copy(alpha = 0.15f) else SlabElevated,
                                     border = BorderStroke(1.dp, if (isSelected) Blaze else Rule),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable {
-                                            selectedPlace = place
-                                            if (place == VisitPlaceOption.HOME && profile.homeAddress.isNotBlank()) {
-                                                stayAddress = profile.homeAddress
-                                            }
+                                    modifier = Modifier.clickable {
+                                        selectedPlace = place
+                                        if (place == VisitPlaceOption.HOME && profile.homeAddress.isNotBlank()) {
+                                            stayAddress = profile.homeAddress
+                                        } else if (place.code in listOf("Phagwara", "Jalandhar", "Ludhiana")) {
+                                            stayAddress = place.code
                                         }
+                                    }
                                 ) {
                                     Text(
-                                        text = place.code,
+                                        text = place.displayName,
                                         fontSize = 12.sp,
                                         fontFamily = BarlowCondensed,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                         color = if (isSelected) Blaze else Chalk,
                                         textAlign = TextAlign.Center,
-                                        modifier = Modifier.padding(vertical = 7.dp)
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
                                     )
                                 }
                             }

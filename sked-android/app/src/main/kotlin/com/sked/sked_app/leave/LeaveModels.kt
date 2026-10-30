@@ -70,11 +70,43 @@ enum class LeaveTypeOption(
     )
 }
 
-enum class VisitPlaceOption(
+data class VisitPlaceOption(
     val code: String,
     val displayName: String
 ) {
-    OTHER("Other", "Other (Market, Law Gate, Outing)"),
-    HOME("Home", "Home (Registered Address)"),
-    LOCAL_GUARDIAN("Local Guardian", "Local Guardian")
+    companion object {
+        val HOME = VisitPlaceOption("Home", "Home")
+        val LOCAL_GUARDIAN = VisitPlaceOption("Local Guardian", "Local Guardian")
+        val OTHER = VisitPlaceOption("Other", "Other")
+
+        fun optionsFor(leaveType: LeaveTypeOption): List<VisitPlaceOption> {
+            return when (leaveType) {
+                LeaveTypeOption.DAY_EXTENDED -> listOf(
+                    VisitPlaceOption("Phagwara", "Phagwara"),
+                    VisitPlaceOption("Jalandhar", "Jalandhar"),
+                    VisitPlaceOption("Ludhiana", "Ludhiana"),
+                    VisitPlaceOption("Other", "Other")
+                )
+                LeaveTypeOption.DAY_STANDARD -> listOf(
+                    VisitPlaceOption("Local Visit", "Local Visit"),
+                    VisitPlaceOption("Personal grooming", "Personal grooming"),
+                    VisitPlaceOption("Medical checkup", "Medical checkup"),
+                    VisitPlaceOption("Due to Academic purposes", "Academic"),
+                    VisitPlaceOption("Coaching", "Coaching"),
+                    VisitPlaceOption("Placement", "Placement"),
+                    VisitPlaceOption("Out Station Visit", "Out Station"),
+                    VisitPlaceOption("Home", "Home"),
+                    VisitPlaceOption("Local Guardian", "Local Guardian"),
+                    VisitPlaceOption("Other", "Other")
+                )
+                LeaveTypeOption.NIGHT_STANDARD,
+                LeaveTypeOption.NIGHT_EXTENDED,
+                LeaveTypeOption.VACATION -> listOf(
+                    VisitPlaceOption("Home", "Home"),
+                    VisitPlaceOption("Local Guardian", "Local Guardian"),
+                    VisitPlaceOption("Other", "Other")
+                )
+            }
+        }
+    }
 }

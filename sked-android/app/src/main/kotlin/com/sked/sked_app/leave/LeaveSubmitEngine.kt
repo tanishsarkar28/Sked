@@ -251,6 +251,7 @@ object LeaveSubmitEngine {
                             // Step 2: Set Visit Place dropdown and trigger ASP.NET postback
                             onStatus("Setting destination...")
                             stage = 2
+                            val safeVisitPlace = org.json.JSONObject.quote(visitPlace)
                             val jsSetVisit = """
                                 (function() {
                                     try {
@@ -259,12 +260,47 @@ object LeaveSubmitEngine {
 
                                         var vp = document.getElementById('ctl00_cphHeading_ddlVisitDay');
                                         if (vp) {
-                                            vp.value = '$visitPlace';
+                                            var target = $safeVisitPlace;
+                                            var found = false;
+                                            // 1. Direct match on value
+                                            for (var i = 0; i < vp.options.length; i++) {
+                                                if (vp.options[i].value === target || vp.options[i].text.trim() === target) {
+                                                    vp.selectedIndex = i;
+                                                    found = true;
+                                                    break;
+                                                }
+                                            }
+                                            // 2. Case-insensitive substring fallback
+                                            if (!found) {
+                                                var lower = target.toLowerCase();
+                                                for (var j = 0; j < vp.options.length; j++) {
+                                                    var t = vp.options[j].text.toLowerCase();
+                                                    var v = vp.options[j].value.toLowerCase();
+                                                    if (t.indexOf(lower) !== -1 || v.indexOf(lower) !== -1) {
+                                                        vp.selectedIndex = j;
+                                                        found = true;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            // 3. Fallback to 'Other' if present
+                                            if (!found) {
+                                                for (var k = 0; k < vp.options.length; k++) {
+                                                    if (vp.options[k].value.toLowerCase() === 'other' || vp.options[k].text.toLowerCase() === 'other') {
+                                                        vp.selectedIndex = k;
+                                                        found = true;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+
                                             if (typeof __doPostBack === 'function') {
                                                 __doPostBack('ctl00${'$'}cphHeading${'$'}ddlVisitDay', '');
                                             } else {
                                                 vp.dispatchEvent(new Event('change'));
                                             }
+                                        } else {
+                                            window.SkedLeaveBridge.onError('Destination dropdown not found');
                                         }
                                     } catch(e) {
                                         window.SkedLeaveBridge.onError('Failed to set visit place: ' + e.toString());
