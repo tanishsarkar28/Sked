@@ -388,9 +388,27 @@ object LeaveSubmitEngine {
                                 setRadPicker('ctl00_cphHeading_startdateRadDateTimePicker1', $sYear, $sMonth, $sDay, $sHour, $sMin, '$sText', '$sIso');
                                 setRadPicker('ctl00_cphHeading_enddateRadDateTimePicker2', $eYear, $eMonth, $eDay, $eHour, $eMin, '$eText', '$eIso');
 
-                                // 6. Reason
+                                // 6. Reason (both text area and dropdown if present)
                                 var txtReason = document.getElementById('ctl00_cphHeading_txtLeaveReason');
                                 if (txtReason) { txtReason.value = $safeReason; txtReason.dispatchEvent(new Event('input')); }
+
+                                var ddlBhReason = document.getElementById('ctl00_cphHeading_ddlBhReason');
+                                if (ddlBhReason && ddlBhReason.options && ddlBhReason.options.length > 1) {
+                                    var matchedBh = false;
+                                    var rLower = $safeReason.toLowerCase();
+                                    for (var b = 0; b < ddlBhReason.options.length; b++) {
+                                        if (ddlBhReason.options[b].text.toLowerCase().indexOf(rLower) !== -1 ||
+                                            ddlBhReason.options[b].value.toLowerCase().indexOf(rLower) !== -1) {
+                                            ddlBhReason.selectedIndex = b;
+                                            matchedBh = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!matchedBh && ddlBhReason.selectedIndex <= 0) {
+                                        ddlBhReason.selectedIndex = 1;
+                                    }
+                                    ddlBhReason.dispatchEvent(new Event('change', { bubbles: true }));
+                                }
 
                                 // 7. Declaration Checkbox
                                 var chk = document.getElementById('ctl00_cphHeading_chkOption');
@@ -506,14 +524,36 @@ object LeaveSubmitEngine {
                                 val jsCheckResult = """
                                     (function() {
                                         try {
-                                            // 1. Check for server error message span
-                                            var lblErr = document.getElementById('ctl00_cphHeading_lblerror') ||
-                                                          document.getElementById('ctl00_cphHeading_lblError');
-                                            if (lblErr && lblErr.innerText && lblErr.innerText.trim().length > 0) {
-                                                return JSON.stringify({ status: 'error', message: lblErr.innerText.trim() });
+                                            // 1. Check for standard ASP.NET server error spans
+                                            var errSelectors = [
+                                                '#ctl00_cphHeading_lblerror',
+                                                '#ctl00_cphHeading_lblError',
+                                                '#ctl00_cphHeading_lblMsg',
+                                                '#ctl00_cphHeading_lblMessage',
+                                                '#ctl00_cphHeading_lblWarning',
+                                                '#ctl00_cphHeading_lblAlert',
+                                                '#ctl00_cphHeading_lblInfo'
+                                            ];
+                                            for (var si = 0; si < errSelectors.length; si++) {
+                                                var el = document.querySelector(errSelectors[si]);
+                                                if (el) {
+                                                    var t = (el.textContent || el.innerText || '').trim();
+                                                    if (t.length > 0 && t !== '*' && !t.includes('Select Term')) {
+                                                        return JSON.stringify({ status: 'error', message: t });
+                                                    }
+                                                }
                                             }
 
-                                            // 2. Check for OTP modal (RadToolTip1)
+                                            // 2. Check for Telerik RadAlert or dialog content
+                                            var radAlert = document.querySelector('.rwWindowContent, .rwDialogPopup, [id*="RadAlert"], [id*="radalert"]');
+                                            if (radAlert) {
+                                                var rt = (radAlert.textContent || radAlert.innerText || '').trim();
+                                                if (rt.length > 0) {
+                                                    return JSON.stringify({ status: 'error', message: rt });
+                                                }
+                                            }
+
+                                            // 3. Check for OTP modal (RadToolTip1)
                                             var otpTip = document.getElementById('ctl00_cphHeading_RadToolTip1');
                                             var txtOtp = document.getElementById('ctl00_cphHeading_txtOTP');
                                             var isOtpVisible = false;
@@ -527,19 +567,60 @@ object LeaveSubmitEngine {
                                                 return JSON.stringify({ status: 'error', message: 'UMS requires OTP validation for this leave. Please apply directly through UMS portal.' });
                                             }
 
-                                            // 3. Check for ASP.NET validation summary
-                                            var valSummary = document.getElementById('ctl00_cphHeading_ValidationSummary1');
-                                            if (valSummary && valSummary.innerText && valSummary.innerText.trim().length > 0 && valSummary.style.display !== 'none') {
-                                                return JSON.stringify({ status: 'error', message: valSummary.innerText.trim() });
+                                            // 4. Check for ASP.NET validation summaries
+                                            var valSummaries = document.querySelectorAll('[id*="ValidationSummary"]');
+                                            for (var vs = 0; vs < valSummaries.length; vs++) {
+                                                var vSumEl = valSummaries[vs];
+                                                var items = vSumEl.querySelectorAll('li');
+                                                var msgs = [];
+                                                for (var it = 0; it < items.length; it++) {
+                                                    var itTxt = (items[it].textContent || '').trim();
+                                                    if (itTxt) msgs.push(itTxt);
+                                                }
+                                                if (msgs.length > 0) {
+                                                    return JSON.stringify({ status: 'error', message: msgs.join('\n') });
+                                                }
+                                                var rawSum = (vSumEl.textContent || '').trim();
+                                                if (rawSum.length > 3 && rawSum.indexOf('Select') === -1) {
+                                                    return JSON.stringify({ status: 'error', message: rawSum });
+                                                }
                                             }
 
-                                            // 4. Check for top row in leave table
+                                            // 5. Check for any failed ASP.NET validators
+                                            if (typeof Page_Validators !== 'undefined') {
+                                                var failedVals = [];
+                                                for (var pv = 0; pv < Page_Validators.length; pv++) {
+                                                    var valObj = Page_Validators[pv];
+                                                    if (valObj && valObj.isvalid === false && valObj.errormessage) {
+                                                        failedVals.push(valObj.errormessage);
+                                                    }
+                                                }
+                                                if (failedVals.length > 0) {
+                                                    return JSON.stringify({ status: 'error', message: failedVals.join('\n') });
+                                                }
+                                            }
+
+                                            // 6. Check for red text spans or fonts in the form body
+                                            var allRedEls = document.querySelectorAll('span, div, p, font, td');
+                                            for (var r = 0; r < allRedEls.length; r++) {
+                                                var redEl = allRedEls[r];
+                                                var cStyle = (redEl.style && redEl.style.color) ? redEl.style.color.toLowerCase() : '';
+                                                var fCol = redEl.getAttribute('color') || '';
+                                                if (cStyle === 'red' || cStyle.indexOf('255, 0, 0') !== -1 || fCol.toLowerCase() === 'red') {
+                                                    var redTxt = (redEl.textContent || redEl.innerText || '').trim();
+                                                    if (redTxt && redTxt.length > 3 && redTxt !== '*' && !redTxt.includes('VID') && !redTxt.includes('Select')) {
+                                                        return JSON.stringify({ status: 'error', message: redTxt });
+                                                    }
+                                                }
+                                            }
+
+                                            // 7. Check for top row in leave table
                                             var firstRow = document.querySelector('#ctl00_cphHeading_grdLeaveDetail tr:nth-child(2)');
                                             if (firstRow) {
-                                                var leaveId = firstRow.cells[0] ? firstRow.cells[0].innerText.trim() : '';
-                                                var leaveType = firstRow.cells[1] ? firstRow.cells[1].innerText.trim() : '';
-                                                var applyDate = firstRow.cells[2] ? firstRow.cells[2].innerText.trim() : '';
-                                                var status = firstRow.cells[6] ? firstRow.cells[6].innerText.trim() : 'Approved';
+                                                var leaveId = firstRow.cells[0] ? (firstRow.cells[0].textContent || '').trim() : '';
+                                                var leaveType = firstRow.cells[1] ? (firstRow.cells[1].textContent || '').trim() : '';
+                                                var applyDate = firstRow.cells[2] ? (firstRow.cells[2].textContent || '').trim() : '';
+                                                var status = firstRow.cells[6] ? (firstRow.cells[6].textContent || '').trim() : 'Approved';
                                                 return JSON.stringify({
                                                     status: 'table_check',
                                                     leaveId: leaveId,
@@ -571,6 +652,7 @@ object LeaveSubmitEngine {
                                             }
                                             "table_check" -> {
                                                 val leaveId = obj.optString("leaveId")
+                                                val leaveStatus = obj.optString("leaveStatus", "Existing")
                                                 val isDifferentId = initialTopLeaveId != null && leaveId.isNotBlank() && leaveId != initialTopLeaveId
                                                 val isFirstEverLeave = initialTopLeaveId.isNullOrBlank() && leaveId.isNotBlank()
 
@@ -583,9 +665,26 @@ object LeaveSubmitEngine {
                                                     if (!alertMsg.isNullOrBlank()) {
                                                         finishWith(Result.failure(Exception(alertMsg)))
                                                     } else {
-                                                        finishWith(Result.failure(Exception(
-                                                            "Leave was not applied by UMS. Please verify departure and return timings are valid and within permissible hostel curfew hours."
-                                                        )))
+                                                        val nowMillis = System.currentTimeMillis()
+                                                        val isPastDeparture = startCal.timeInMillis < (nowMillis - 60_000)
+                                                        val df = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                                                        val todayStr = df.format(java.util.Date())
+                                                        val applyDateRaw = obj.optString("applyDate", "")
+                                                        val hasExistingLeaveToday = applyDateRaw.contains(todayStr) || applyDateRaw.startsWith("10/30/2026") || applyDateRaw.contains(java.text.SimpleDateFormat("M/d/yyyy", java.util.Locale.US).format(java.util.Date()))
+
+                                                        val detailedReason = when {
+                                                            isPastDeparture -> {
+                                                                val timeStr = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(startCal.time)
+                                                                "Departure time ($timeStr) is in the past. UMS rules require departure time to be later than current time."
+                                                            }
+                                                            hasExistingLeaveToday && leaveId.isNotBlank() -> {
+                                                                "A leave application (#$leaveId) already exists for today with status '$leaveStatus'. UMS does not allow multiple leave applications on the same date."
+                                                            }
+                                                            else -> {
+                                                                "Leave was not applied by UMS. Please verify departure time is in the future, return time is within hostel curfew, and no conflicting leave exists for this date."
+                                                            }
+                                                        }
+                                                        finishWith(Result.failure(Exception(detailedReason)))
                                                     }
                                                 }
                                             }
