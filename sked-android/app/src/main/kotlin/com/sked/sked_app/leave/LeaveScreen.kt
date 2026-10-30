@@ -110,7 +110,6 @@ fun LeaveScreen(
     var errorMessageDialog by remember { mutableStateOf<String?>(null) }
     var successLeaveIdDialog by remember { mutableStateOf<String?>(null) }
     var showApplyBridge by remember { mutableStateOf(false) }
-    var showSyncBridge by remember { mutableStateOf(false) }
 
     // Dialog state for 15-minute time picker: null = hidden, "START" or "END"
     var timePickerTarget by remember { mutableStateOf<String?>(null) }
@@ -220,7 +219,7 @@ fun LeaveScreen(
         }
     }
 
-    fun refreshLeaveData(isUserInitiated: Boolean = false) {
+    fun refreshLeaveData() {
         if (isRefreshing) return
         isRefreshing = true
         coroutineScope.launch {
@@ -232,19 +231,9 @@ fun LeaveScreen(
                     if (relativeMobile.isBlank() && res.data.profile.registeredMobile.isNotBlank()) {
                         relativeMobile = res.data.profile.registeredMobile
                     }
-                    if (isUserInitiated) {
-                        Toast.makeText(context, "Hostel leave balances updated", Toast.LENGTH_SHORT).show()
-                    }
                 }
-                is LeaveSyncResult.SessionExpired -> {
-                    if (isUserInitiated) {
-                        showSyncBridge = true
-                    }
-                }
-                is LeaveSyncResult.Error -> {
-                    if (isUserInitiated) {
-                        Toast.makeText(context, "Sync failed: ${res.message}", Toast.LENGTH_SHORT).show()
-                    }
+                else -> {
+                    // Silent background update; live data is provided by main app re-sync
                 }
             }
             isRefreshing = false
@@ -252,21 +241,8 @@ fun LeaveScreen(
     }
 
     LaunchedEffect(Unit) {
-        refreshLeaveData(isUserInitiated = false)
+        refreshLeaveData()
     }
-
-    val infiniteTransition = rememberInfiniteTransition(label = "refresh")
-    val refreshRotation = if (isRefreshing) {
-        infiniteTransition.animateFloat(
-            initialValue = 0f,
-            targetValue = 360f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(900, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart
-            ),
-            label = "refreshRot"
-        )
-    } else null
 
     val dateFormat = remember { SimpleDateFormat("EEE, MMM d, yyyy", Locale.US) }
     val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.US) }
@@ -284,46 +260,14 @@ fun LeaveScreen(
             // ── 1. Header & Live Balance Summary Cards ────────────────────────
             item {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "HOSTEL LEAVE BALANCE",
-                            fontFamily = BarlowCondensed,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = Slate,
-                            letterSpacing = 0.8.sp
-                        )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .clickable(enabled = !isRefreshing) { refreshLeaveData(isUserInitiated = true) }
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Sync,
-                                contentDescription = "Refresh",
-                                tint = Blaze,
-                                modifier = Modifier
-                                    .size(14.dp)
-                                    .graphicsLayer {
-                                        rotationZ = refreshRotation?.value ?: 0f
-                                    }
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (isRefreshing) "SYNCING..." else "SYNC",
-                                fontSize = 11.sp,
-                                fontFamily = BarlowCondensed,
-                                fontWeight = FontWeight.Bold,
-                                color = Blaze
-                            )
-                        }
-                    }
+                    Text(
+                        text = "HOSTEL LEAVE BALANCE",
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = Slate,
+                        letterSpacing = 0.8.sp
+                    )
 
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -1337,7 +1281,7 @@ fun LeaveScreen(
             onSuccess = { leaveId ->
                 showApplyBridge = false
                 successLeaveIdDialog = if (leaveId.startsWith("Leave ID", ignoreCase = true)) leaveId else "Leave ID #$leaveId"
-                refreshLeaveData(isUserInitiated = false)
+                refreshLeaveData()
                 coroutineScope.launch(Dispatchers.IO) {
                     try {
                         LeaveSubmitEngine.fetchGatePass(context)
@@ -1346,27 +1290,6 @@ fun LeaveScreen(
             },
             onError = { err ->
                 showApplyBridge = false
-                errorMessageDialog = err
-            }
-        )
-    }
-
-    // ── Dedicated Live Leave Sync Bridge Dialog ───────────────────────────
-    if (showSyncBridge) {
-        LeaveSyncBridgeDialog(
-            onDismiss = { showSyncBridge = false },
-            onSuccess = { parsedData ->
-                showSyncBridge = false
-                balance = parsedData.balance
-                profile = parsedData.profile
-                records = parsedData.records
-                if (relativeMobile.isBlank() && parsedData.profile.registeredMobile.isNotBlank()) {
-                    relativeMobile = parsedData.profile.registeredMobile
-                }
-                Toast.makeText(context, "Hostel leave data synced successfully", Toast.LENGTH_SHORT).show()
-            },
-            onError = { err ->
-                showSyncBridge = false
                 errorMessageDialog = err
             }
         )
