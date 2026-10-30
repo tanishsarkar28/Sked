@@ -25,27 +25,31 @@ object LeaveParser {
     }
 
     private fun parseBalance(html: String): LeaveBalance {
-        var dayTotal = 75
+        var dayTotal = 0
         var dayAvailed = 0
-        var dayBalance = 75
+        var dayBalance = 0
 
-        var nightTotal = 60
+        var nightTotal = 0
         var nightAvailed = 0
-        var nightBalance = 60
+        var nightBalance = 0
 
         fun parseGrid(gridId: String): Triple<Int, Int, Int>? {
-            val gridPattern = Pattern.compile("$gridId.*?<tbody>(.*?)</tbody>", Pattern.DOTALL)
-            val m = gridPattern.matcher(html)
-            if (!m.find()) return null
-            val tbody = m.group(1) ?: return null
+            val idx = html.indexOf(gridId)
+            val searchArea = if (idx != -1) {
+                html.substring(idx, (idx + 6000).coerceAtMost(html.length))
+            } else {
+                val gridPattern = Pattern.compile("$gridId.*?<tbody>(.*?)</tbody>", Pattern.DOTALL)
+                val m = gridPattern.matcher(html)
+                if (m.find()) m.group(1) ?: return null else return null
+            }
 
-            var tot = 0
-            var av = 0
-            var bal = 0
+            var tot = -1
+            var av = -1
+            var bal = -1
 
-            // Match ASP.NET RadGrid TypeLabel and CountLabel spans
+            // 1. Match ASP.NET RadGrid TypeLabel and CountLabel spans
             val rowPattern = Pattern.compile("TypeLabel[^>]*>\\s*([^<]+)\\s*</span>.*?CountLabel[^>]*>\\s*(\\d+)\\s*</span>", Pattern.DOTALL)
-            val rm = rowPattern.matcher(tbody)
+            val rm = rowPattern.matcher(searchArea)
             var foundAny = false
             while (rm.find()) {
                 foundAny = true
@@ -58,11 +62,28 @@ object LeaveParser {
                 }
             }
 
-            // Fallback pattern if span structure differs
-            if (!foundAny) {
-                val fallback = Pattern.compile("(Total|Availed|Balance)[^\\d]*(\\d+)", Pattern.DOTALL or Pattern.CASE_INSENSITIVE)
-                val fm = fallback.matcher(tbody)
+            // 2. Match table cell pairs (e.g. <td>Total</td><td>75</td>)
+            if (!foundAny || tot < 0) {
+                val tdPattern = Pattern.compile("<td[^>]*>\\s*(Total|Availed|Balance)\\s*</td>\\s*<td[^>]*>\\s*(\\d+)\\s*</td>", Pattern.CASE_INSENSITIVE or Pattern.DOTALL)
+                val tm = tdPattern.matcher(searchArea)
+                while (tm.find()) {
+                    foundAny = true
+                    val type = tm.group(1)?.trim()?.lowercase() ?: ""
+                    val count = tm.group(2)?.toIntOrNull() ?: 0
+                    when (type) {
+                        "total" -> tot = count
+                        "availed" -> av = count
+                        "balance" -> bal = count
+                    }
+                }
+            }
+
+            // 3. Fallback pattern if span or td structure differs
+            if (!foundAny || tot < 0) {
+                val fallback = Pattern.compile("(Total|Availed|Balance)[^\\d<]{1,150}(\\d+)", Pattern.DOTALL or Pattern.CASE_INSENSITIVE)
+                val fm = fallback.matcher(searchArea)
                 while (fm.find()) {
+                    foundAny = true
                     val type = fm.group(1)?.trim()?.lowercase() ?: ""
                     val count = fm.group(2)?.toIntOrNull() ?: 0
                     when (type) {
@@ -72,23 +93,26 @@ object LeaveParser {
                     }
                 }
             }
-            return Triple(tot, av, bal)
+
+            if (tot >= 0 || av >= 0 || bal >= 0) {
+                val safeTot = if (tot >= 0) tot else 0
+                val safeAv = if (av >= 0) av else 0
+                val safeBal = if (bal >= 0) bal else (safeTot - safeAv).coerceAtLeast(0)
+                return Triple(safeTot, safeAv, safeBal)
+            }
+            return null
         }
 
         try {
             parseGrid("ctl00_cphHeading_RadGrid1")?.let { (tot, av, bal) ->
-                if (tot > 0) {
-                    dayTotal = tot
-                    dayAvailed = av
-                    dayBalance = bal
-                }
+                dayTotal = tot
+                dayAvailed = av
+                dayBalance = bal
             }
             parseGrid("ctl00_cphHeading_RadGrid2")?.let { (tot, av, bal) ->
-                if (tot > 0) {
-                    nightTotal = tot
-                    nightAvailed = av
-                    nightBalance = bal
-                }
+                nightTotal = tot
+                nightAvailed = av
+                nightBalance = bal
             }
         } catch (_: Exception) {}
 
@@ -170,7 +194,7 @@ object LeaveParser {
                     cells.add(clean)
                 }
 
-                if (cells.size >= 8 && cells[0].isNotBlank()) {
+                if (cells.size >= 8 && cells[0].isNotBlank() && cells[0].all { it.isDigit() }) {
                     list.add(
                         LeaveRecord(
                             leaveId = cells[0],

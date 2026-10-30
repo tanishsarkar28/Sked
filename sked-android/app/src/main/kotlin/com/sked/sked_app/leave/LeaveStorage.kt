@@ -52,6 +52,7 @@ object LeaveStorage {
     )
 
     fun saveBalance(context: Context, balance: LeaveBalance) {
+        if (balance.dayTotal <= 0 && balance.nightTotal <= 0) return
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val obj = JSONObject().apply {
             put("dayTotal", balance.dayTotal)
@@ -81,6 +82,12 @@ object LeaveStorage {
                 nightAvailed = obj.optInt("nightAvailed", 0),
                 nightBalance = obj.optInt("nightBalance", 0)
             )
+            // If stored balance is the corrupted dummy placeholder (0/75 used & 0/60 used), restore DEFAULT_BALANCE
+            if (bal.dayTotal == 75 && bal.dayAvailed == 0 && bal.dayBalance == 75 &&
+                bal.nightTotal == 60 && bal.nightAvailed == 0 && bal.nightBalance == 60
+            ) {
+                return DEFAULT_BALANCE
+            }
             if (bal.dayTotal > 0 || bal.nightTotal > 0) bal else DEFAULT_BALANCE
         } catch (_: Exception) {
             DEFAULT_BALANCE
@@ -88,6 +95,7 @@ object LeaveStorage {
     }
 
     fun saveRecords(context: Context, list: List<LeaveRecord>) {
+        if (list.isEmpty()) return
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val arr = JSONArray()
         for (item in list) {
@@ -139,6 +147,7 @@ object LeaveStorage {
     }
 
     fun saveProfile(context: Context, profile: LeaveProfile) {
+        if (profile.uid.isBlank() && profile.name.isBlank()) return
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val obj = JSONObject().apply {
             put("uid", profile.uid)

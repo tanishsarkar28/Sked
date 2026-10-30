@@ -219,15 +219,36 @@ fun LeaveScreen(
         }
     }
 
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                balance = LeaveStorage.loadBalance(context)
+                profile = LeaveStorage.loadProfile(context)
+                records = LeaveStorage.loadRecords(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     fun refreshLeaveData() {
         if (isRefreshing) return
         isRefreshing = true
         coroutineScope.launch {
             when (val res = LeaveSubmitEngine.fetchLatestData(context)) {
                 is LeaveSyncResult.Success -> {
-                    balance = res.data.balance
-                    profile = res.data.profile
-                    records = res.data.records
+                    if (res.data.balance.dayTotal > 0 || res.data.balance.nightTotal > 0) {
+                        balance = res.data.balance
+                    }
+                    if (res.data.profile.uid.isNotBlank() || res.data.profile.name.isNotBlank()) {
+                        profile = res.data.profile
+                    }
+                    if (res.data.records.isNotEmpty()) {
+                        records = res.data.records
+                    }
                     if (relativeMobile.isBlank() && res.data.profile.registeredMobile.isNotBlank()) {
                         relativeMobile = res.data.profile.registeredMobile
                     }
@@ -241,6 +262,9 @@ fun LeaveScreen(
     }
 
     LaunchedEffect(Unit) {
+        balance = LeaveStorage.loadBalance(context)
+        profile = LeaveStorage.loadProfile(context)
+        records = LeaveStorage.loadRecords(context)
         refreshLeaveData()
     }
 

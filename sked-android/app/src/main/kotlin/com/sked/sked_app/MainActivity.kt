@@ -2338,12 +2338,33 @@ fun UmsAuthBridgeDialog(
                                                 window._skedDsDebug = 'ERROR: ' + e.toString();
                                             });
 
-                                            var leavePromise = safeFetch('/lpuums/frmStudentHostelLeaveApplicationTermWise.aspx', 'hostelLeave')
-                                                .then(function(res) {
-                                                    window._skedLeaveResult = res.html || '';
-                                                }).catch(function(e) {
+                                            var leavePromise = fetch('/lpuums/frmStudentHostelLeaveApplicationTermWise.aspx', { credentials: 'include' })
+                                                .then(function(r) {
+                                                    if (!r.ok) {
+                                                        window._skedLeaveDbg = 'HTTP_' + r.status;
+                                                        window._skedLeaveResult = '';
+                                                        return;
+                                                    }
+                                                    return r.text().then(function(t) {
+                                                        var hasGrd = t ? (t.indexOf('RadGrid') !== -1 || t.indexOf('ctl00_cphHeading') !== -1) : false;
+                                                        window._skedLeaveDbg = 'OK_LEN_' + (t ? t.length : 0) + '_GRD_' + hasGrd;
+                                                        if (t && !t.includes('LoginNew.aspx') && !t.includes('lockerror')) {
+                                                            window._skedLeaveResult = t;
+                                                        } else {
+                                                            window._skedLeaveResult = '';
+                                                        }
+                                                    });
+                                                })
+                                                .catch(function(e) {
+                                                    window._skedLeaveDbg = 'ERR_' + e.toString();
                                                     window._skedLeaveResult = '';
                                                 });
+
+                                            Promise.all([ttPromise, dsPromise, leavePromise]).then(function() {
+                                                window._skedAllDone = true;
+                                            }).catch(function() {
+                                                window._skedAllDone = true;
+                                            });
 
                                             return Promise.all([ttPromise, dsPromise, leavePromise]);
                                         }
@@ -2423,12 +2444,18 @@ fun UmsAuthBridgeDialog(
                                     var st = 'Waiting for Turnstile verification...';
                                     if (cf && cf.value && cf.value.length > 20) st = 'Turnstile verified! Submitting...';
 
+                                    if (window._skedTimetableResult && !window._skedTtTime) {
+                                        window._skedTtTime = Date.now();
+                                    }
+                                    var timeoutPassed = window._skedTtTime && (Date.now() - window._skedTtTime > 8000);
+                                    var allFinished = !!window._skedAllDone || timeoutPassed;
+
                                     return JSON.stringify({
                                         status: window._skedError || st,
                                         error: window._skedError || '',
                                         syncing: !!window._skedIsSyncing,
                                         authFailed: !!window._skedAuthFailed,
-                                        hasResult: !!window._skedTimetableResult
+                                        hasResult: !!window._skedTimetableResult && allFinished
                                     });
                                 } catch(e) {
                                     return JSON.stringify({ error: e.toString() });
@@ -2468,6 +2495,7 @@ fun UmsAuthBridgeDialog(
                                             wv.evaluateJavascript("window._skedDatesheetResult || ''") { dsRaw ->
                                                 wv.evaluateJavascript("window._skedLeaveResult || ''") { leaveRaw ->
                                                     wv.evaluateJavascript("window._skedDsDebug || ''") { dsDbg ->
+                                                        wv.evaluateJavascript("window._skedLeaveDbg || ''") { leaveDbg ->
                                                         coroutineScope.launch(Dispatchers.IO) {
                                                             try {
                                                                 val cm = CookieManager.getInstance()
@@ -2491,14 +2519,21 @@ fun UmsAuthBridgeDialog(
                                                                     } catch (_: Exception) { leaveRaw }
                                                                 } else ""
 
-                                                                if (cleanLeaveHtml.isNotBlank() && (cleanLeaveHtml.contains("ctl00_cphHeading") || cleanLeaveHtml.contains("LeaveDetail") || cleanLeaveHtml.contains("Balance"))) {
+                                                                android.util.Log.i("SkedSync", "Leave HTML received len=${cleanLeaveHtml.length}, dbg=$leaveDbg")
+
+                                                                if (cleanLeaveHtml.isNotBlank() && (cleanLeaveHtml.contains("ctl00_cphHeading") || cleanLeaveHtml.contains("LeaveDetail") || cleanLeaveHtml.contains("RadGrid") || cleanLeaveHtml.contains("Hostel Leave"))) {
                                                                     try {
                                                                         val parsedLeave = com.sked.sked_app.leave.LeaveParser.parse(cleanLeaveHtml)
-                                                                        if (parsedLeave.balance.dayTotal > 0 || parsedLeave.records.isNotEmpty()) {
+                                                                        if (parsedLeave.balance.dayTotal > 0 || parsedLeave.balance.nightTotal > 0) {
                                                                             com.sked.sked_app.leave.LeaveStorage.saveBalance(context, parsedLeave.balance)
+                                                                            android.util.Log.i("SkedSync", "Saved live leave balance: day=${parsedLeave.balance.dayAvailed}/${parsedLeave.balance.dayTotal}, night=${parsedLeave.balance.nightAvailed}/${parsedLeave.balance.nightTotal}")
+                                                                        }
+                                                                        if (parsedLeave.profile.uid.isNotBlank() || parsedLeave.profile.name.isNotBlank()) {
                                                                             com.sked.sked_app.leave.LeaveStorage.saveProfile(context, parsedLeave.profile)
+                                                                        }
+                                                                        if (parsedLeave.records.isNotEmpty()) {
                                                                             com.sked.sked_app.leave.LeaveStorage.saveRecords(context, parsedLeave.records)
-                                                                            android.util.Log.i("SkedSync", "Successfully synced live hostel leave data (records: ${parsedLeave.records.size})")
+                                                                            android.util.Log.i("SkedSync", "Saved ${parsedLeave.records.size} live leave records")
                                                                         }
                                                                     } catch (e: Exception) {
                                                                         android.util.Log.w("SkedSync", "Failed to parse hostel leave HTML: ${e.message}")
@@ -2652,40 +2687,36 @@ fun UmsAuthBridgeDialog(
                                                             }
                                                             val exams = examsFound
 
+                                                            try {
+                                                                val manager = GlanceAppWidgetManager(context)
+                                                                val ids = manager.getGlanceIds(TimetableWidget::class.java)
+                                                                ids.forEach { id ->
+                                                                    TimetableWidget().update(context, id)
+                                                                }
+                                                            } catch (_: Exception) {}
+                                                            TimetableRefreshWorker.runNow(context)
 
-
-                                                        try {
-                                                            val manager = GlanceAppWidgetManager(context)
-                                                            val ids = manager.getGlanceIds(TimetableWidget::class.java)
-                                                            ids.forEach { id ->
-                                                                TimetableWidget().update(context, id)
+                                                            withContext(Dispatchers.Main) {
+                                                                 if (entries.isNotEmpty()) {
+                                                                     isAllDone = true
+                                                                     maxProgressReached = 1.0f
+                                                                     statusText = "Sync complete!"
+                                                                     delay(400)
+                                                                     val examMsg = if (exams.isNotEmpty()) " & ${exams.size} exams" else ""
+                                                                     Toast.makeText(context, "Synced timetable (${entries.size} classes$examMsg)", Toast.LENGTH_SHORT).show()
+                                                                     onSuccess(userId)
+                                                                 } else {
+                                                                     isSyncing = false
+                                                                     statusText = "No classes found in timetable"
+                                                                     Toast.makeText(context, "Found 0 classes in timetable", Toast.LENGTH_LONG).show()
+                                                                 }
                                                             }
-                                                        } catch (_: Exception) {}
-                                                        TimetableRefreshWorker.runNow(context)
-                                                        try {
-                                                            com.sked.sked_app.leave.LeaveSubmitEngine.fetchLatestData(context)
-                                                        } catch (_: Exception) {}
-
-                                                        withContext(Dispatchers.Main) {
-                                                             if (entries.isNotEmpty()) {
-                                                                 isAllDone = true
-                                                                 maxProgressReached = 1.0f
-                                                                 statusText = "Sync complete!"
-                                                                 delay(400)
-                                                                 val examMsg = if (exams.isNotEmpty()) " & ${exams.size} exams" else ""
-                                                                 Toast.makeText(context, "Synced timetable (${entries.size} classes$examMsg)", Toast.LENGTH_SHORT).show()
-                                                                 onSuccess(userId)
-                                                             } else {
-                                                                 isSyncing = false
-                                                                 statusText = "No classes found in timetable"
-                                                                 Toast.makeText(context, "Found 0 classes in timetable", Toast.LENGTH_LONG).show()
-                                                             }
-                                                        }
-                                                    } catch (e: Exception) {
-                                                        withContext(Dispatchers.Main) {
-                                                            isSyncing = false
-                                                            statusText = "Parse error: ${e.message}"
-                                                            Toast.makeText(context, "Parse error: ${e.message}", Toast.LENGTH_LONG).show()
+                                                        } catch (e: Exception) {
+                                                            withContext(Dispatchers.Main) {
+                                                                isSyncing = false
+                                                                statusText = "Parse error: ${e.message}"
+                                                                Toast.makeText(context, "Parse error: ${e.message}", Toast.LENGTH_LONG).show()
+                                                            }
                                                         }
                                                     }
                                                 }

@@ -65,16 +65,36 @@ object LeaveSubmitEngine {
                         return@withContext LeaveSyncResult.SessionExpired
                     }
                 }
+                if (resp.code != 200) {
+                    return@withContext LeaveSyncResult.Error("HTTP ${resp.code}")
+                }
                 val html = resp.body?.string() ?: ""
                 if (html.contains("LoginNew.aspx", ignoreCase = true) || html.contains("Login.aspx", ignoreCase = true)) {
                     return@withContext LeaveSyncResult.SessionExpired
                 }
+                if (html.contains("cf-browser-verification", ignoreCase = true) ||
+                    html.contains("Just a moment", ignoreCase = true) ||
+                    html.contains("Attention Required", ignoreCase = true) ||
+                    html.contains("challenge-running", ignoreCase = true)
+                ) {
+                    return@withContext LeaveSyncResult.SessionExpired
+                }
+                if (!html.contains("ctl00_cphHeading", ignoreCase = true) &&
+                    !html.contains("frmStudentHostelLeaveApplicationTermWise", ignoreCase = true)
+                ) {
+                    return@withContext LeaveSyncResult.Error("Not leave page")
+                }
+
                 if (html.isNotBlank()) {
                     val parsed = LeaveParser.parse(html)
-                    if (parsed.balance.dayTotal > 0 || parsed.records.isNotEmpty()) {
-                        LeaveStorage.saveBalance(context, parsed.balance)
-                        LeaveStorage.saveProfile(context, parsed.profile)
-                        LeaveStorage.saveRecords(context, parsed.records)
+                    val hasBal = parsed.balance.dayTotal > 0 || parsed.balance.nightTotal > 0
+                    val hasProf = parsed.profile.uid.isNotBlank() || parsed.profile.name.isNotBlank()
+                    val hasRecs = parsed.records.isNotEmpty()
+
+                    if (hasBal || hasRecs) {
+                        if (hasBal) LeaveStorage.saveBalance(context, parsed.balance)
+                        if (hasProf) LeaveStorage.saveProfile(context, parsed.profile)
+                        if (hasRecs) LeaveStorage.saveRecords(context, parsed.records)
                         return@withContext LeaveSyncResult.Success(parsed)
                     }
                 }
