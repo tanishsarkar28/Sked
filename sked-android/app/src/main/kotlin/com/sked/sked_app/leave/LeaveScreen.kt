@@ -116,6 +116,7 @@ fun LeaveScreen(
     // Form States
     var selectedType by remember { mutableStateOf(LeaveTypeOption.DAY_EXTENDED) }
     var selectedPlace by remember { mutableStateOf(VisitPlaceOption.OTHER) }
+    var isVisitPlaceExpanded by remember { mutableStateOf(false) }
     var stayAddress by remember { mutableStateOf(LeaveStorage.getLastStayAddress(context)) }
     var relativeMobile by remember {
         mutableStateOf(LeaveStorage.getLastRelativeMobile(context).ifBlank { profile.registeredMobile })
@@ -496,38 +497,95 @@ fun LeaveScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Visit Place (Dynamically populated based on Leave Type)
+                        // Visit Place (Dropdown selector dynamically populated based on Leave Type)
                         Text("VISIT PLACE", fontSize = 11.sp, fontFamily = BarlowCondensed, color = Slate, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(6.dp))
 
                         val currentPlaces = remember(selectedType) { VisitPlaceOption.optionsFor(selectedType) }
-                        LazyRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(currentPlaces) { place ->
-                                val isSelected = place.code == selectedPlace.code
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = if (isSelected) Blaze.copy(alpha = 0.15f) else SlabElevated,
-                                    border = BorderStroke(1.dp, if (isSelected) Blaze else Rule),
-                                    modifier = Modifier.clickable {
-                                        selectedPlace = place
-                                        if (place == VisitPlaceOption.HOME && profile.homeAddress.isNotBlank()) {
-                                            stayAddress = profile.homeAddress
-                                        } else if (place.code in listOf("Phagwara", "Jalandhar", "Ludhiana")) {
-                                            stayAddress = place.code
-                                        }
-                                    }
+
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = SlabElevated,
+                                border = BorderStroke(1.dp, if (isVisitPlaceExpanded) Blaze else Rule),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { isVisitPlaceExpanded = !isVisitPlaceExpanded }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = place.displayName,
-                                        fontSize = 12.sp,
-                                        fontFamily = BarlowCondensed,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) Blaze else Chalk,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            Icons.Default.Place,
+                                            contentDescription = null,
+                                            tint = Blaze,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = selectedPlace.displayName,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Chalk
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = if (isVisitPlaceExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                        contentDescription = "Expand Visit Place",
+                                        tint = if (isVisitPlaceExpanded) Blaze else Slate,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = isVisitPlaceExpanded,
+                                onDismissRequest = { isVisitPlaceExpanded = false },
+                                modifier = Modifier
+                                    .fillMaxWidth(0.85f)
+                                    .background(SlabElevated)
+                                    .border(BorderStroke(1.dp, Rule), RoundedCornerShape(8.dp))
+                            ) {
+                                currentPlaces.forEach { place ->
+                                    val isSelected = place.code == selectedPlace.code
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = place.displayName,
+                                                fontSize = 13.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) Blaze else Chalk
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            if (isSelected) {
+                                                Icon(
+                                                    Icons.Default.Check,
+                                                    contentDescription = null,
+                                                    tint = Blaze,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            } else {
+                                                Spacer(modifier = Modifier.size(16.dp))
+                                            }
+                                        },
+                                        onClick = {
+                                            selectedPlace = place
+                                            isVisitPlaceExpanded = false
+                                            if (place == VisitPlaceOption.HOME && profile.homeAddress.isNotBlank()) {
+                                                stayAddress = profile.homeAddress
+                                            } else if (place.code in listOf("Phagwara", "Jalandhar", "Ludhiana")) {
+                                                stayAddress = place.code
+                                            }
+                                        },
+                                        modifier = Modifier.background(
+                                            if (isSelected) Blaze.copy(alpha = 0.1f) else Color.Transparent
+                                        )
                                     )
                                 }
                             }
