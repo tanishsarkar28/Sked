@@ -224,6 +224,11 @@ object TimetableParser {
             // AutoSyncManager.performSync() is the single owner of that timestamp
             // to prevent dual-write drift and false "synced just now" on any save.
             .apply()
+
+        // Arm dynamic exact alarm for the next class transition
+        try {
+            com.sked.sked_app.widget.WidgetScheduleManager.scheduleNextUpdate(context)
+        } catch (_: Exception) {}
     }
 
     /**

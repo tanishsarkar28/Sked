@@ -173,6 +173,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         com.sked.sked_app.telemetry.TelemetryManager.recordInstallIfNeeded(this)
         com.sked.sked_app.telemetry.TelemetryManager.recordDailyActiveUser(this)
         TimetableRefreshWorker.schedule(this)
+        com.sked.sked_app.widget.WidgetScheduleManager.scheduleNextUpdate(this)
 
         AutoSyncManager.createNotificationChannel(this)
         AppUpdateManager.createUpdateNotificationChannel(this)
@@ -226,6 +227,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     override fun onResume() {
         super.onResume()
         TimetableRefreshWorker.runNow(this)
+        com.sked.sked_app.widget.WidgetScheduleManager.scheduleNextUpdate(this)
         // BUG-02 FIX: Use lifecycleScope so the coroutine is automatically
         // cancelled when the Activity is destroyed — no more scope leaks.
         lifecycleScope.launch(Dispatchers.IO) {

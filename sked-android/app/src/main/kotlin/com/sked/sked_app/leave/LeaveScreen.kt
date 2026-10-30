@@ -37,6 +37,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.fragment.app.FragmentActivity
 import com.sked.sked_app.BarlowCondensed
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -107,6 +108,7 @@ fun LeaveScreen(
     var submitStatusText by remember { mutableStateOf("") }
     var errorMessageDialog by remember { mutableStateOf<String?>(null) }
     var successLeaveIdDialog by remember { mutableStateOf<String?>(null) }
+    var showApplyBridge by remember { mutableStateOf(false) }
 
     // Dialog state for 15-minute time picker: null = hidden, "START" or "END"
     var timePickerTarget by remember { mutableStateOf<String?>(null) }
@@ -234,12 +236,7 @@ fun LeaveScreen(
                 }
                 is LeaveSyncResult.SessionExpired -> {
                     if (isUserInitiated) {
-                        if (onReSync != null) {
-                            Toast.makeText(context, "UMS session expired. Re-authenticating...", Toast.LENGTH_SHORT).show()
-                            onReSync.invoke()
-                        } else {
-                            Toast.makeText(context, "UMS session expired. Please re-authenticate.", Toast.LENGTH_LONG).show()
-                        }
+                        Toast.makeText(context, "Session expired. Tap Apply or Fetch Slip to log in.", Toast.LENGTH_SHORT).show()
                     }
                 }
                 is LeaveSyncResult.Error -> {
@@ -896,36 +893,7 @@ fun LeaveScreen(
                                         title = "Authorize Leave Application",
                                         subtitle = "${selectedType.displayName} • ${timeFormat.format(startCal.time)} to ${timeFormat.format(endCal.time)}",
                                         onSuccess = {
-                                            isSubmitting = true
-                                            submitStatusText = "Connecting to UMS..."
-                                            coroutineScope.launch {
-                                                val finalStay = if (selectedPlace == VisitPlaceOption.HOME) profile.homeAddress else stayAddress
-
-                                                val res = LeaveSubmitEngine.submitLeave(
-                                                    context = context,
-                                                    leaveTypeCode = selectedType.code,
-                                                    visitPlace = selectedPlace.code,
-                                                    stayAddress = finalStay,
-                                                    relativeMobile = relativeMobile,
-                                                    startCal = startCal,
-                                                    endCal = endCal,
-                                                    reason = reason,
-                                                    onStatus = { status -> submitStatusText = status }
-                                                )
-
-                                                isSubmitting = false
-                                                if (res.isSuccess) {
-                                                    successLeaveIdDialog = res.getOrNull() ?: "Leave Applied"
-                                                    refreshLeaveData()
-                                                } else {
-                                                    val err = res.exceptionOrNull()?.message ?: "Submission rejected by UMS"
-                                                    errorMessageDialog = err
-                                                    if (err.contains("session expired", ignoreCase = true) || err.contains("re-authenticate", ignoreCase = true)) {
-                                                        Toast.makeText(context, "UMS session expired. Re-authenticating...", Toast.LENGTH_SHORT).show()
-                                                        onReSync?.invoke()
-                                                    }
-                                                }
-                                            }
+                                            showApplyBridge = true
                                         },
                                         onError = { err ->
                                             if (!err.contains("Cancelled", ignoreCase = true)) {
@@ -933,6 +901,8 @@ fun LeaveScreen(
                                             }
                                         }
                                     )
+                                } else {
+                                    showApplyBridge = true
                                 }
                             },
                             shape = RoundedCornerShape(8.dp),
@@ -1420,6 +1390,36 @@ fun LeaveScreen(
                 }
             },
             containerColor = SlabElevated
+        )
+    }
+
+    // ── Dedicated Direct Leave Application Bridge Dialog ──────────────────
+    if (showApplyBridge) {
+        val finalStay = if (selectedPlace == VisitPlaceOption.HOME) profile.homeAddress else stayAddress
+
+        LeaveApplyBridgeDialog(
+            onDismiss = { showApplyBridge = false },
+            selectedType = selectedType,
+            selectedPlace = selectedPlace,
+            stayAddress = finalStay,
+            relativeMobile = relativeMobile,
+            startCal = startCal,
+            endCal = endCal,
+            reason = reason,
+            onSuccess = { leaveId ->
+                showApplyBridge = false
+                successLeaveIdDialog = if (leaveId.startsWith("Leave ID", ignoreCase = true)) leaveId else "Leave ID #$leaveId"
+                refreshLeaveData(isUserInitiated = false)
+                coroutineScope.launch(Dispatchers.IO) {
+                    try {
+                        LeaveSubmitEngine.fetchGatePass(context)
+                    } catch (_: Exception) {}
+                }
+            },
+            onError = { err ->
+                showApplyBridge = false
+                errorMessageDialog = err
+            }
         )
     }
 }

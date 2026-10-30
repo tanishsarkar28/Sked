@@ -119,6 +119,11 @@ class TimetableRefreshWorker(ctx: Context, params: WorkerParameters) :
                 TimetableWidget().update(applicationContext, id)
             }
 
+            // Ensure dynamic class transition alarm is armed
+            try {
+                WidgetScheduleManager.scheduleNextUpdate(applicationContext)
+            } catch (_: Exception) {}
+
             // 4. Check for app updates and post notification if new release available
             try {
                 com.sked.sked_app.update.AppUpdateManager.checkForUpdate(applicationContext)
