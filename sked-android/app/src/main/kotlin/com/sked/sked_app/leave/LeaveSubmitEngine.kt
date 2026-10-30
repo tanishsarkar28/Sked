@@ -112,26 +112,37 @@ object LeaveSubmitEngine {
                 .build()
 
             client.newCall(req).execute().use { resp ->
+                if (resp.code in 300..399) {
+                    val location = resp.header("Location") ?: ""
+                    if (location.contains("Login", ignoreCase = true)) {
+                        return@withContext Result.failure(Exception("Session expired (redirected to login)"))
+                    }
+                }
                 val html = resp.body?.string() ?: ""
+                if (html.contains("LoginNew.aspx", ignoreCase = true) || html.contains("Login.aspx", ignoreCase = true)) {
+                    return@withContext Result.failure(Exception("Session expired (login page returned)"))
+                }
                 if (html.isNotBlank()) {
                     val pass = LeaveParser.parseGatePass(html)
                     if (pass != null) {
                         LeaveStorage.saveGatePass(context, pass)
-                        // Download student photo
-                        try {
-                            val photoReq = Request.Builder()
-                                .url(STUDENT_PHOTO_URL)
-                                .header("Cookie", cookies)
-                                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
-                                .build()
-                            client.newCall(photoReq).execute().use { photoResp ->
-                                val bytes = photoResp.body?.bytes()
-                                if (bytes != null && bytes.size > 200) {
-                                    val photoFile = java.io.File(context.filesDir, "student_photo.jpg")
-                                    photoFile.writeBytes(bytes)
+                        if (pass.hasActivePass) {
+                            // Download student photo
+                            try {
+                                val photoReq = Request.Builder()
+                                    .url(STUDENT_PHOTO_URL)
+                                    .header("Cookie", cookies)
+                                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+                                    .build()
+                                client.newCall(photoReq).execute().use { photoResp ->
+                                    val bytes = photoResp.body?.bytes()
+                                    if (bytes != null && bytes.size > 200) {
+                                        val photoFile = java.io.File(context.filesDir, "student_photo.jpg")
+                                        photoFile.writeBytes(bytes)
+                                    }
                                 }
-                            }
-                        } catch (_: Exception) {}
+                            } catch (_: Exception) {}
+                        }
                         return@withContext Result.success(pass)
                     }
                 }

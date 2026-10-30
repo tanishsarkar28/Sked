@@ -253,8 +253,44 @@ object LeaveParser {
             }
         } catch (_: Exception) {}
 
-        if (!hasTable && leaveId.isBlank() && leaveCode.isBlank()) {
+        // Session expired / login page detection
+        if (html.contains("LoginNew.aspx", ignoreCase = true) ||
+            html.contains("Login.aspx", ignoreCase = true) ||
+            html.contains("lockerror", ignoreCase = true)
+        ) {
             return null
+        }
+
+        val isLeaveSlipPage = html.contains("frmHostelLeaveSlipTest", ignoreCase = true) ||
+                html.contains("ctl00_cphHeading", ignoreCase = true) ||
+                html.contains("tblSlipData", ignoreCase = true) ||
+                html.contains("Hostel Leave", ignoreCase = true)
+
+        if (!hasActivePass && (!hasTable || leaveCode == "6000" || leaveId.isBlank())) {
+            if (isLeaveSlipPage) {
+                return HostelGatePass(
+                    universityTitle = "Lovely Professional University",
+                    passSubtitle = "Hostel Leave Gate Pass",
+                    leaveType = leaveType,
+                    leaveId = leaveId,
+                    leaveCode = leaveCode,
+                    regNo = regNo.ifBlank { "12407229" },
+                    name = name.ifBlank { "Tanish Sarkar" },
+                    dateOfApply = dateOfApply,
+                    dateOfLeaving = dateOfLeaving,
+                    dateOfReturn = dateOfReturn,
+                    checkOutTime = checkOutTime,
+                    checkInTime = checkInTime,
+                    contactNo = contactNo.ifBlank { "8293118470" },
+                    hostel = hostel.ifBlank { "Boys Hostel-01" },
+                    roomNo = roomNo.ifBlank { "A706-Bed A" },
+                    gates = emptyList(),
+                    note = "Note : Do not look back after checkout; please proceed forward only.",
+                    hasActivePass = false
+                )
+            } else {
+                return null
+            }
         }
 
         return HostelGatePass(

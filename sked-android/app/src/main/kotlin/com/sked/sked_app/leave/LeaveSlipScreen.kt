@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.webkit.JavascriptInterface
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -40,6 +41,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
@@ -48,13 +50,22 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -90,21 +101,70 @@ import com.sked.sked_app.Ink
 import com.sked.sked_app.Rule
 import com.sked.sked_app.Slab
 import com.sked.sked_app.SlabElevated
-import com.sked.sked_app.Slate
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 private val Emerald = Color(0xFF10B981)
+private val Slate = Color(0xFF7A7774)
 
 private const val UMS_LEAVE_SLIP_URL = "https://ums.lpu.in/lpuums/frmHostelLeaveSlipTest.aspx"
 
 enum class LeaveSlipMode {
     DIGITAL_PASS,
     UMS_PORTAL
+}
+
+/**
+ * Parses UMS date format: e.g. "30 Oct 2026 Time - 10:45PM" or standard formats.
+ */
+fun parseUmsReturnDate(returnDateStr: String): Date? {
+    if (returnDateStr.isBlank()) return null
+    val clean = returnDateStr.replace("Time -", " ")
+        .replace("time -", " ")
+        .replace("TIME -", " ")
+        .replace("\\s+".toRegex(), " ")
+        .trim()
+
+    val patterns = listOf(
+        "dd MMM yyyy hh:mma",
+        "dd MMM yyyy h:mma",
+        "dd MMM yyyy hh:mm a",
+        "dd MMM yyyy h:mm a",
+        "dd MMM yyyy HH:mm",
+        "MM/dd/yyyy hh:mm:ss a",
+        "MM/dd/yyyy h:mm:ss a",
+        "MM/dd/yyyy hh:mm a",
+        "MM/dd/yyyy h:mm a",
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd HH:mm"
+    )
+
+    for (pattern in patterns) {
+        try {
+            val sdf = SimpleDateFormat(pattern, Locale.ENGLISH)
+            sdf.isLenient = true
+            val d = sdf.parse(clean)
+            if (d != null) return d
+        } catch (_: Exception) {}
+    }
+    return null
+}
+
+/**
+ * Returns true if current time is more than bufferMinutes after scheduled return time.
+ */
+fun isLeaveExpired(returnDateStr: String, bufferMinutes: Int = 10): Boolean {
+    val returnDate = parseUmsReturnDate(returnDateStr) ?: return false
+    val expiryMillis = returnDate.time + (bufferMinutes * 60 * 1000L)
+    return System.currentTimeMillis() > expiryMillis
 }
 
 @Composable
@@ -125,6 +185,8 @@ fun LeaveSlipScreen(
     val profile = remember(context) { LeaveStorage.loadProfile(context) }
     var records by remember { mutableStateOf(LeaveStorage.loadRecords(context)) }
     var isSyncing by remember { mutableStateOf(false) }
+    var isFetchingSlip by remember { mutableStateOf(false) }
+    var showSlipBridge by remember { mutableStateOf(false) }
 
     // Live clock for authentic warden verification (seconds tick live)
     var liveTimeText by remember { mutableStateOf("") }
@@ -138,6 +200,33 @@ fun LeaveSlipScreen(
             liveTimeText = timeFormat.format(now).uppercase()
             liveDateText = dateFormat.format(now)
             delay(1000)
+        }
+    }
+
+    fun triggerFetchSlip() {
+        if (isFetchingSlip) return
+        isFetchingSlip = true
+        coroutineScope.launch {
+            val passRes = LeaveSubmitEngine.fetchGatePass(context)
+            if (passRes.isSuccess) {
+                val pass = passRes.getOrThrow()
+                gatePass = pass
+                isFetchingSlip = false
+                val expired = isLeaveExpired(pass.dateOfReturn, 10)
+                if (pass.hasActivePass && !expired && pass.checkInTime.isBlank() && pass.leaveCode != "6000") {
+                    Toast.makeText(context, "Leave slip fetched from UMS", Toast.LENGTH_SHORT).show()
+                } else if (!pass.hasActivePass || pass.leaveCode == "6000") {
+                    Toast.makeText(context, "UMS reports: No active leave slip", Toast.LENGTH_SHORT).show()
+                } else if (expired) {
+                    Toast.makeText(context, "Leave slip fetched (Expired 10m post-return)", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Leave slip fetched (Checked in / completed)", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                // Cookies expired or missing -> launch dedicated login & slip scraper dialog
+                isFetchingSlip = false
+                showSlipBridge = true
+            }
         }
     }
 
@@ -186,9 +275,36 @@ fun LeaveSlipScreen(
         }
     }
 
-    val isCheckedOut = gatePass.checkOutTime.isNotBlank() && gatePass.checkInTime.isBlank()
-    val isCompleted = gatePass.checkInTime.isNotBlank()
-    val isApproved = gatePass.hasActivePass
+    val isExpired = isLeaveExpired(gatePass.dateOfReturn, bufferMinutes = 10)
+    val isCheckInDone = gatePass.checkInTime.isNotBlank()
+    val isCheckedOut = gatePass.checkOutTime.isNotBlank() && !isCheckInDone
+    val isCompleted = isCheckInDone
+    val hasValidCode = gatePass.leaveCode.isNotBlank() && gatePass.leaveCode != "6000"
+    val shouldDisplaySlip = gatePass.hasActivePass && hasValidCode && !isExpired && !isCheckInDone
+
+    if (showSlipBridge) {
+        LeaveSlipFetchBridgeDialog(
+            onDismiss = { showSlipBridge = false },
+            onSuccess = { fetchedPass ->
+                gatePass = fetchedPass
+                showSlipBridge = false
+                val expired = isLeaveExpired(fetchedPass.dateOfReturn, 10)
+                if (fetchedPass.hasActivePass && !expired && fetchedPass.checkInTime.isBlank() && fetchedPass.leaveCode != "6000") {
+                    Toast.makeText(context, "Leave slip fetched from UMS", Toast.LENGTH_SHORT).show()
+                } else if (!fetchedPass.hasActivePass || fetchedPass.leaveCode == "6000") {
+                    Toast.makeText(context, "UMS reports: No active leave slip", Toast.LENGTH_SHORT).show()
+                } else if (expired) {
+                    Toast.makeText(context, "Leave slip fetched (Expired 10m post-return)", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Leave slip fetched (Checked in / completed)", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onError = { err ->
+                Toast.makeText(context, "Login failed: $err", Toast.LENGTH_LONG).show()
+                showSlipBridge = false
+            }
+        )
+    }
 
     Column(
         modifier = modifier
@@ -239,25 +355,46 @@ fun LeaveSlipScreen(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = { refreshData() },
-                        enabled = !isSyncing,
-                        modifier = Modifier.size(36.dp)
+                    // Prominent [ FETCH SLIP ] button
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Blaze,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(enabled = !isFetchingSlip) { triggerFetchSlip() }
                     ) {
-                        if (isSyncing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                color = Blaze,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "Refresh Slip",
-                                tint = Slate
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (isFetchingSlip) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(13.dp),
+                                    color = Ink,
+                                    strokeWidth = 1.8.dp
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    tint = Ink,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+                            Text(
+                                text = "FETCH SLIP",
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = Ink,
+                                letterSpacing = 0.5.sp
                             )
                         }
                     }
+
+                    Spacer(modifier = Modifier.width(6.dp))
 
                     IconButton(
                         onClick = {
@@ -359,8 +496,12 @@ fun LeaveSlipScreen(
                     liveTimeText = liveTimeText,
                     liveDateText = liveDateText,
                     isCheckedOut = isCheckedOut,
-                    isApproved = isApproved,
+                    isApproved = gatePass.hasActivePass,
                     isCompleted = isCompleted,
+                    isExpired = isExpired,
+                    shouldDisplaySlip = shouldDisplaySlip,
+                    onFetchSlip = { triggerFetchSlip() },
+                    isFetchingSlip = isFetchingSlip,
                     onCopyCode = {
                         clipboardManager.setText(AnnotatedString(gatePass.leaveCode))
                         Toast.makeText(context, "Leave Code copied: ${gatePass.leaveCode}", Toast.LENGTH_SHORT).show()
@@ -388,12 +529,226 @@ private fun DigitalPassView(
     isCheckedOut: Boolean,
     isApproved: Boolean,
     isCompleted: Boolean,
+    isExpired: Boolean,
+    shouldDisplaySlip: Boolean,
+    onFetchSlip: () -> Unit,
+    isFetchingSlip: Boolean,
     onCopyCode: () -> Unit,
     onApplyNewLeave: (() -> Unit)?,
     onSwitchToPortal: () -> Unit
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+
+    // ── EMPTY STATE: NO ACTIVE GATE PASS / EXPIRED ─────────────────────────
+    if (!shouldDisplaySlip) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            val statusColor = if (isExpired) DangerRed else Slate
+            val statusLabel = when {
+                isExpired -> "LEAVE EXPIRED • RETURN TIME PASSED"
+                isCompleted -> "CHECKED IN • COMPLETED"
+                else -> "NO ACTIVE GATE PASS"
+            }
+
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = statusColor.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, statusColor.copy(alpha = 0.4f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(statusColor)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = statusLabel,
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = statusColor,
+                        letterSpacing = 0.8.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Live Ticking Clock
+            Text(
+                text = liveTimeText.ifBlank { "00:00:00 AM" },
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 24.sp,
+                color = Chalk,
+                letterSpacing = 1.sp
+            )
+            Text(
+                text = liveDateText.ifBlank { "Today" },
+                fontSize = 11.5.sp,
+                color = Slate
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Large Empty State Card
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Slab,
+                border = BorderStroke(1.dp, Rule),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 420.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(22.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = if (isExpired) Icons.Default.Schedule else Icons.Default.Shield,
+                        contentDescription = null,
+                        tint = if (isExpired) DangerRed else Blaze,
+                        modifier = Modifier.size(46.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = when {
+                            isExpired -> "Gate Pass Expired"
+                            isCompleted -> "Leave Completed"
+                            else -> "No Active Gate Pass"
+                        },
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = Chalk
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = when {
+                            isExpired -> "Your leave gate pass expired 10 minutes after scheduled return time (${gatePass.dateOfReturn}). It has been removed from active view."
+                            isCompleted -> "You checked in at ${gatePass.checkInTime}. This gate pass is now completed and closed."
+                            else -> "There is currently no approved or active hostel gate pass on your UMS portal."
+                        },
+                        fontSize = 12.5.sp,
+                        color = Slate,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 18.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Primary Button: [ FETCH SLIP FROM UMS ]
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Blaze,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(enabled = !isFetchingSlip) { onFetchSlip() }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (isFetchingSlip) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        color = Ink,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        tint = Ink,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
+                                Text(
+                                    text = "FETCH SLIP FROM UMS",
+                                    fontFamily = BarlowCondensed,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = Ink,
+                                    letterSpacing = 0.5.sp
+                                )
+                            }
+                        }
+                    }
+
+                    if (onApplyNewLeave != null) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = SlabElevated,
+                            border = BorderStroke(1.dp, Rule),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onApplyNewLeave() }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "APPLY NEW LEAVE",
+                                    fontFamily = BarlowCondensed,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.5.sp,
+                                    color = Chalk,
+                                    letterSpacing = 0.5.sp
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.Transparent,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(38.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onSwitchToPortal() }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "VIEW OFFICIAL UMS SLIP PORTAL",
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.5.sp,
+                                color = Slate,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+        }
+        return
+    }
 
     // Student profile photo (cached from UMS or fallback to bundled default asset)
     val studentBitmap = remember(gatePass.regNo) {
@@ -702,29 +1057,38 @@ private fun DigitalPassView(
         ) {
             Surface(
                 shape = RoundedCornerShape(10.dp),
-                color = Slab,
-                border = BorderStroke(1.dp, Rule),
+                color = Blaze,
                 modifier = Modifier
                     .weight(1f)
                     .height(44.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .clickable { onSwitchToPortal() }
+                    .clickable(enabled = !isFetchingSlip) { onFetchSlip() }
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Security,
-                            contentDescription = null,
-                            tint = Slate,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        if (isFetchingSlip) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                color = Ink,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                tint = Ink,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                        }
                         Text(
-                            text = "UMS PORTAL VIEW",
+                            text = "FETCH SLIP",
                             fontFamily = BarlowCondensed,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = Chalk
+                            fontSize = 12.5.sp,
+                            color = Ink,
+                            letterSpacing = 0.5.sp
                         )
                     }
                 }
@@ -733,7 +1097,8 @@ private fun DigitalPassView(
             if (onApplyNewLeave != null) {
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = Blaze,
+                    color = Slab,
+                    border = BorderStroke(1.dp, Rule),
                     modifier = Modifier
                         .weight(1f)
                         .height(44.dp)
@@ -742,11 +1107,11 @@ private fun DigitalPassView(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
-                            text = "APPLY NEW LEAVE",
+                            text = "APPLY LEAVE",
                             fontFamily = BarlowCondensed,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.5.sp,
-                            color = Ink,
+                            color = Chalk,
                             letterSpacing = 0.5.sp
                         )
                     }
@@ -1060,3 +1425,482 @@ private fun UmsPortalWebView(
         }
     }
 }
+
+// ── Dedicated Leave Slip Fetch Bridge Dialog (Logs in & Fetches Slip Only) ───
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+fun LeaveSlipFetchBridgeDialog(
+    onDismiss: () -> Unit,
+    onSuccess: (HostelGatePass) -> Unit,
+    onError: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val prefs = remember {
+        context.getSharedPreferences(com.sked.sked_app.widget.PREFS_NAME, Context.MODE_PRIVATE)
+    }
+
+    var userId by remember {
+        mutableStateOf(
+            prefs.getString("saved_ums_user", "") ?: prefs.getString("user_id", "") ?: ""
+        )
+    }
+    var password by remember {
+        mutableStateOf(prefs.getString("saved_ums_pwd", "") ?: "")
+    }
+
+    var showPasswordInput by remember {
+        mutableStateOf(userId.isBlank() || password.isBlank())
+    }
+    var inputUser by remember { mutableStateOf(userId) }
+    var inputPassword by remember { mutableStateOf(password) }
+    var passwordVisible by remember { mutableStateOf(false) }
+
+    var statusText by remember { mutableStateOf("Connecting to UMS...") }
+    var showRawWebView by remember { mutableStateOf(false) }
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var isDone by remember { mutableStateOf(false) }
+    var turnstileWaitTicks by remember { mutableIntStateOf(0) }
+
+    if (showPasswordInput) {
+        Dialog(onDismissRequest = onDismiss) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Slab,
+                border = BorderStroke(1.dp, Rule),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = Blaze,
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "UMS CREDENTIALS NEEDED",
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = Chalk
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Enter your Registration Number and Password to log in and fetch your leave slip:",
+                        fontSize = 12.sp,
+                        color = Slate,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    OutlinedTextField(
+                        value = inputUser,
+                        onValueChange = { inputUser = it },
+                        label = { Text("Registration No") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Blaze,
+                            unfocusedBorderColor = Rule,
+                            focusedTextColor = Chalk,
+                            unfocusedTextColor = Chalk,
+                            focusedLabelColor = Blaze,
+                            unfocusedLabelColor = Slate
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedTextField(
+                        value = inputPassword,
+                        onValueChange = { inputPassword = it },
+                        label = { Text("UMS Password") },
+                        singleLine = true,
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                Icon(
+                                    imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                    contentDescription = null,
+                                    tint = Slate
+                                )
+                            }
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Blaze,
+                            unfocusedBorderColor = Rule,
+                            focusedTextColor = Chalk,
+                            unfocusedTextColor = Chalk,
+                            focusedLabelColor = Blaze,
+                            unfocusedLabelColor = Slate
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = SlabElevated,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(42.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onDismiss() }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("CANCEL", color = Slate, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Blaze,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(42.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    if (inputUser.isNotBlank() && inputPassword.isNotBlank()) {
+                                        prefs.edit()
+                                            .putString("saved_ums_user", inputUser.trim())
+                                            .putString("saved_ums_pwd", inputPassword.trim())
+                                            .apply()
+                                        userId = inputUser.trim()
+                                        password = inputPassword.trim()
+                                        showPasswordInput = false
+                                    }
+                                }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("FETCH SLIP", color = Ink, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Ink)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                // Top Header Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = null,
+                            tint = Blaze,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "FETCHING LEAVE SLIP",
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = Blaze,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = "Logging in & scraping hostel slip only...",
+                                fontSize = 10.5.sp,
+                                color = Slate
+                            )
+                        }
+                    }
+
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Slate)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().height(2.dp),
+                    color = Blaze,
+                    trackColor = Slab
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Status message & Captcha toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = statusText,
+                        fontSize = 12.sp,
+                        color = Chalk,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Slab,
+                        border = BorderStroke(0.5.dp, Rule),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { showRawWebView = !showRawWebView }
+                    ) {
+                        Text(
+                            text = if (showRawWebView) "HIDE VIEW" else "SHOW BROWSER",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Blaze,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // WebView Container (Shown either full or minimal height)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (showRawWebView) Color.White else Slab)
+                        .border(1.dp, Rule, RoundedCornerShape(8.dp))
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.useWideViewPort = true
+                                settings.loadWithOverviewMode = true
+
+                                val cm = CookieManager.getInstance()
+                                cm.setAcceptCookie(true)
+                                cm.setAcceptThirdPartyCookies(this, true)
+
+                                class SlipJsBridge {
+                                    @JavascriptInterface
+                                    fun onSlipHtml(html: String) {
+                                        if (isDone) return
+                                        isDone = true
+                                        coroutineScope.launch(Dispatchers.Main) {
+                                            statusText = "Slip received! Parsing..."
+                                            val freshCookies = cm.getCookie("https://ums.lpu.in") ?: ""
+                                            if (freshCookies.isNotBlank()) {
+                                                prefs.edit().putString(AutoSyncManager.KEY_UMS_COOKIES, freshCookies).apply()
+                                            }
+                                            val parsed = LeaveParser.parseGatePass(html)
+                                            val finalPass = parsed ?: HostelGatePass(
+                                                universityTitle = "Lovely Professional University",
+                                                passSubtitle = "Hostel Leave Gate Pass",
+                                                hasActivePass = false
+                                            )
+                                            LeaveStorage.saveGatePass(context, finalPass)
+                                            if (finalPass.hasActivePass) {
+                                                coroutineScope.launch(Dispatchers.IO) {
+                                                    try {
+                                                        val client = OkHttpClient()
+                                                        val photoReq = Request.Builder()
+                                                            .url("https://ums.lpu.in/lpuums/DisplayImageForPowerBi.aspx")
+                                                            .header("Cookie", freshCookies)
+                                                            .build()
+                                                        client.newCall(photoReq).execute().use { photoResp ->
+                                                            val bytes = photoResp.body?.bytes()
+                                                            if (bytes != null && bytes.size > 200) {
+                                                                File(context.filesDir, "student_photo.jpg").writeBytes(bytes)
+                                                            }
+                                                        }
+                                                    } catch (_: Exception) {}
+                                                }
+                                            }
+                                            onSuccess(finalPass)
+                                        }
+                                    }
+
+                                    @JavascriptInterface
+                                    fun onStatus(msg: String) {
+                                        coroutineScope.launch(Dispatchers.Main) {
+                                            statusText = msg
+                                        }
+                                    }
+
+                                    @JavascriptInterface
+                                    fun onAuthError(err: String) {
+                                        coroutineScope.launch(Dispatchers.Main) {
+                                            statusText = "Login error: $err"
+                                            onError(err)
+                                        }
+                                    }
+                                }
+
+                                addJavascriptInterface(SlipJsBridge(), "SlipBridge")
+
+                                webViewClient = object : WebViewClient() {
+                                    override fun onPageFinished(view: WebView?, url: String?) {
+                                        val curUrl = url ?: ""
+                                        if (curUrl.contains("frmHostelLeaveSlipTest.aspx", ignoreCase = true)) {
+                                            statusText = "Hostel slip page reached! Extracting..."
+                                            view?.evaluateJavascript(
+                                                """
+                                                (function() {
+                                                    try {
+                                                        if (window.SlipBridge) {
+                                                            window.SlipBridge.onSlipHtml(document.documentElement.outerHTML);
+                                                        }
+                                                    } catch(e) {
+                                                        if (window.SlipBridge) window.SlipBridge.onAuthError(e.toString());
+                                                    }
+                                                })();
+                                                """.trimIndent(),
+                                                null
+                                            )
+                                        } else if (curUrl.contains("StudentDashboard", ignoreCase = true) ||
+                                            curUrl.contains("Default3", ignoreCase = true) ||
+                                            curUrl.contains("w-schedule", ignoreCase = true)
+                                        ) {
+                                            statusText = "Login successful! Opening hostel leave slip..."
+                                            view?.loadUrl("https://ums.lpu.in/lpuums/frmHostelLeaveSlipTest.aspx")
+                                        } else if (curUrl.contains("Login", ignoreCase = true)) {
+                                            statusText = "Solving Cloudflare & authenticating..."
+                                        }
+                                    }
+                                }
+
+                                loadUrl("https://ums.lpu.in/lpuums/frmHostelLeaveSlipTest.aspx")
+                                webViewRef = this
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(if (showRawWebView) 0.dp else 0.dp)
+                    )
+
+                    // Overlay when browser is hidden
+                    if (!showRawWebView) {
+                        Surface(
+                            color = Ink.copy(alpha = 0.96f),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                CircularProgressIndicator(color = Blaze, strokeWidth = 3.dp)
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = statusText,
+                                    fontSize = 13.sp,
+                                    color = Chalk,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Only the official leave slip is being fetched.\nTimetable, exams, and attendance are skipped.",
+                                    fontSize = 11.sp,
+                                    color = Slate,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Slab,
+                                    border = BorderStroke(1.dp, Rule),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable { showRawWebView = true }
+                                ) {
+                                    Text(
+                                        text = "SHOW BROWSER FOR CLOUDFLARE",
+                                        fontFamily = BarlowCondensed,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.5.sp,
+                                        color = Blaze,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Continuous polling / form auto-submission
+            LaunchedEffect(webViewRef, userId, password) {
+                val wv = webViewRef ?: return@LaunchedEffect
+                val safeUser = JSONObject.quote(userId)
+                val safePass = JSONObject.quote(password)
+
+                while (!isDone) {
+                    delay(700)
+                    turnstileWaitTicks++
+                    if (turnstileWaitTicks > 6 && !showRawWebView) {
+                        // Automatically show browser if Cloudflare Turnstile takes more than ~4.5 seconds
+                        // so student can tap the checkbox if needed
+                        showRawWebView = true
+                    }
+
+                    val autoFillJs = """
+                        (function() {
+                            try {
+                                var u = document.getElementById('txtU');
+                                var p = document.querySelector('input[type="password"]');
+                                var cf = document.querySelector('[name="cf-turnstile-response"]');
+                                var form = document.querySelector('form');
+
+                                if (u && $safeUser && (!u.value || u.value.length === 0)) {
+                                    u.value = $safeUser;
+                                }
+                                if (p && $safePass && (!p.value || p.value.length === 0)) {
+                                    p.value = $safePass;
+                                }
+
+                                if (window._skedSubmitting) return;
+
+                                if (cf && cf.value && cf.value.length > 0) {
+                                    window._skedSubmitting = true;
+                                    if (window.SlipBridge) window.SlipBridge.onStatus('Turnstile verified! Submitting login...');
+                                    var submitBtn = form ? form.querySelector('input[type="submit"]') : null;
+                                    if (submitBtn) {
+                                        submitBtn.click();
+                                    } else if (form) {
+                                        form.submit();
+                                    }
+                                }
+                            } catch(e) {}
+                        })();
+                    """.trimIndent()
+                    wv.evaluateJavascript(autoFillJs, null)
+                }
+            }
+        }
+    }
+}
+
