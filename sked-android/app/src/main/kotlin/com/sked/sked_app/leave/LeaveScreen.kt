@@ -672,16 +672,16 @@ fun LeaveScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             // Start Date Picker Box
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = SlabElevated,
-                                border = BorderStroke(1.dp, Rule),
+                            Box(
                                 modifier = Modifier
                                     .weight(1.1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(SlabElevated)
+                                    .border(1.dp, Rule, RoundedCornerShape(6.dp))
                                     .clickable { datePickerTarget = "START" }
+                                    .padding(horizontal = 10.dp, vertical = 9.dp)
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(Icons.Default.CalendarToday, contentDescription = null, tint = Blaze, modifier = Modifier.size(13.dp))
@@ -698,16 +698,16 @@ fun LeaveScreen(
                             }
 
                             // Start Time Picker Box (Opens UMS 15-Minute Grid)
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = SlabElevated,
-                                border = BorderStroke(1.dp, Rule),
+                            Box(
                                 modifier = Modifier
                                     .weight(0.9f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(SlabElevated)
+                                    .border(1.dp, Rule, RoundedCornerShape(6.dp))
                                     .clickable { timePickerTarget = "START" }
+                                    .padding(horizontal = 10.dp, vertical = 9.dp)
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(Icons.Default.Schedule, contentDescription = null, tint = Blaze, modifier = Modifier.size(14.dp))
@@ -742,16 +742,16 @@ fun LeaveScreen(
                             val isDayLeave = selectedType == LeaveTypeOption.DAY_EXTENDED || selectedType == LeaveTypeOption.DAY_STANDARD
 
                             // Return Date Picker Box (Locked if Day Leave)
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = if (isDayLeave) SlabElevated.copy(alpha = 0.5f) else SlabElevated,
-                                border = BorderStroke(1.dp, Rule),
+                            Box(
                                 modifier = Modifier
                                     .weight(1.1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isDayLeave) SlabElevated.copy(alpha = 0.5f) else SlabElevated)
+                                    .border(1.dp, Rule, RoundedCornerShape(6.dp))
                                     .clickable(enabled = !isDayLeave) { datePickerTarget = "END" }
+                                    .padding(horizontal = 10.dp, vertical = 9.dp)
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
@@ -773,16 +773,16 @@ fun LeaveScreen(
                             }
 
                             // Return Time Picker Box (Opens UMS 15-Minute Grid)
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = SlabElevated,
-                                border = BorderStroke(1.dp, Rule),
+                            Box(
                                 modifier = Modifier
                                     .weight(0.9f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(SlabElevated)
+                                    .border(1.dp, Rule, RoundedCornerShape(6.dp))
                                     .clickable { timePickerTarget = "END" }
+                                    .padding(horizontal = 10.dp, vertical = 9.dp)
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(Icons.Default.Schedule, contentDescription = null, tint = Blaze, modifier = Modifier.size(14.dp))
@@ -1145,22 +1145,46 @@ fun LeaveScreen(
                     ) {
                         items(activeSlots) { slot ->
                             val isSelected = slot.hour == currentH && slot.minute == currentM
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = if (isSelected) Blaze else Slab,
-                                border = BorderStroke(1.dp, if (isSelected) Blaze else Rule),
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSelected) Blaze else Slab)
+                                    .border(1.dp, if (isSelected) Blaze else Rule, RoundedCornerShape(6.dp))
                                     .clickable {
-                                        targetCal.set(Calendar.HOUR_OF_DAY, slot.hour)
-                                        targetCal.set(Calendar.MINUTE, slot.minute)
+                                        val newCal = Calendar.getInstance().apply {
+                                            timeInMillis = targetCal.timeInMillis
+                                            set(Calendar.HOUR_OF_DAY, slot.hour)
+                                            set(Calendar.MINUTE, slot.minute)
+                                            set(Calendar.SECOND, 0)
+                                            set(Calendar.MILLISECOND, 0)
+                                        }
                                         if (isStart) {
-                                            startCal = (targetCal.clone() as Calendar)
+                                            startCal = newCal
+                                            // Ensure return time is after start time
+                                            if (endCal.timeInMillis <= newCal.timeInMillis) {
+                                                endCal = Calendar.getInstance().apply {
+                                                    timeInMillis = newCal.timeInMillis
+                                                    if (selectedType == LeaveTypeOption.DAY_EXTENDED) {
+                                                        set(Calendar.HOUR_OF_DAY, 22)
+                                                        set(Calendar.MINUTE, 45)
+                                                    } else if (selectedType == LeaveTypeOption.DAY_STANDARD) {
+                                                        set(Calendar.HOUR_OF_DAY, 20)
+                                                        set(Calendar.MINUTE, 0)
+                                                    } else {
+                                                        add(Calendar.HOUR_OF_DAY, 2)
+                                                    }
+                                                    set(Calendar.SECOND, 0)
+                                                    set(Calendar.MILLISECOND, 0)
+                                                }
+                                            }
                                         } else {
-                                            endCal = (targetCal.clone() as Calendar)
+                                            endCal = newCal
                                         }
                                         timePickerTarget = null
                                     }
+                                    .padding(vertical = 8.dp, horizontal = 2.dp),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = slot.display,
@@ -1168,8 +1192,7 @@ fun LeaveScreen(
                                     fontFamily = BarlowCondensed,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (isSelected) Ink else Chalk,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp)
+                                    textAlign = TextAlign.Center
                                 )
                             }
                         }

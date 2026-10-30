@@ -97,17 +97,25 @@ object LeaveSubmitEngine {
         onStatus: (String) -> Unit
     ): Result<String> = withContext(Dispatchers.Main) {
         suspendCancellableCoroutine { continuation ->
+            val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
             var isResumed = false
-            fun finishWith(result: Result<String>) {
-                if (!isResumed) {
-                    isResumed = true
-                    continuation.resume(result)
-                }
-            }
+            var timeoutRunnable: Runnable? = null
 
             val webView = WebView(context)
             webView.settings.javaScriptEnabled = true
             webView.settings.domStorageEnabled = true
+
+            fun finishWith(result: Result<String>) {
+                if (!isResumed) {
+                    isResumed = true
+                    timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+                    try {
+                        webView.stopLoading()
+                        webView.destroy()
+                    } catch (_: Exception) {}
+                    continuation.resume(result)
+                }
+            }
 
             // Ensure CookieManager has the latest saved UMS session cookies
             val cm = CookieManager.getInstance()
@@ -128,7 +136,8 @@ object LeaveSubmitEngine {
             var capturedAlert: String? = null
             var capturedError: String? = null
             var initialTopLeaveId: String? = null
-            var stage = 0 // 0: initial load, 1: leaveType set postback, 2: visitPlace set postback, 3: submitted
+            var stage = 0 // 0: initial load, 1: leaveType set postback, 2: submitted
+            var executeSubmitFn: (() -> Unit)? = null
 
             class LeaveJsBridge {
                 @JavascriptInterface
@@ -140,10 +149,17 @@ object LeaveSubmitEngine {
                 }
 
                 @JavascriptInterface
+                fun onLeaveTypeReady() {
+                    mainHandler.post {
+                        executeSubmitFn?.invoke()
+                    }
+                }
+
+                @JavascriptInterface
                 fun onAlert(msg: String) {
                     android.util.Log.i("SkedLeave", "Intercepted UMS Alert via bridge: $msg")
                     capturedAlert = msg
-                    if (stage >= 2) {
+                    if (stage >= 1) {
                         if (msg.contains("success", ignoreCase = true) || msg.contains("applied", ignoreCase = true)) {
                             finishWith(Result.success(msg))
                         } else {
@@ -179,7 +195,7 @@ object LeaveSubmitEngine {
                     android.util.Log.i("SkedLeave", "WebChromeClient intercepted alert: $msg")
                     capturedAlert = msg
                     result?.confirm()
-                    if (stage >= 2) {
+                    if (stage >= 1) {
                         if (msg.contains("success", ignoreCase = true) || msg.contains("applied", ignoreCase = true)) {
                             finishWith(Result.success(msg))
                         } else {
@@ -189,6 +205,232 @@ object LeaveSubmitEngine {
                     return true
                 }
             }
+
+            val performSubmit: () -> Unit = {
+                if (stage < 2) {
+                    stage = 2
+                    onStatus("Submitting leave application...")
+                    val safeVisitPlace = org.json.JSONObject.quote(visitPlace)
+                    val safeReason = org.json.JSONObject.quote(reason)
+                    val safeStayAddr = org.json.JSONObject.quote(stayAddress)
+                    val safeMobile = org.json.JSONObject.quote(relativeMobile)
+
+                    val uFormat = java.text.SimpleDateFormat("M/d/yyyy h:mm a", java.util.Locale.US)
+                    val isoFormat = java.text.SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", java.util.Locale.US)
+                    val sText = uFormat.format(startCal.time)
+                    val sIso = isoFormat.format(startCal.time)
+                    val sYear = startCal.get(java.util.Calendar.YEAR)
+                    val sMonth = startCal.get(java.util.Calendar.MONTH)
+                    val sDay = startCal.get(java.util.Calendar.DAY_OF_MONTH)
+                    val sHour = startCal.get(java.util.Calendar.HOUR_OF_DAY)
+                    val sMin = startCal.get(java.util.Calendar.MINUTE)
+
+                    val eText = uFormat.format(endCal.time)
+                    val eIso = isoFormat.format(endCal.time)
+                    val eYear = endCal.get(java.util.Calendar.YEAR)
+                    val eMonth = endCal.get(java.util.Calendar.MONTH)
+                    val eDay = endCal.get(java.util.Calendar.DAY_OF_MONTH)
+                    val eHour = endCal.get(java.util.Calendar.HOUR_OF_DAY)
+                    val eMin = endCal.get(java.util.Calendar.MINUTE)
+
+                    val jsFillAndSubmit = """
+                        (function() {
+                            try {
+                                window.alert = function(msg) { window.SkedLeaveBridge.onAlert(msg); };
+                                window.confirm = function() { return true; };
+
+                                // 1. Destination Dropdown (ddlVisitDay)
+                                var vp = document.getElementById('ctl00_cphHeading_ddlVisitDay');
+                                if (vp) {
+                                    var target = $safeVisitPlace;
+                                    var found = false;
+                                    for (var i = 0; i < vp.options.length; i++) {
+                                        if (vp.options[i].value === target || vp.options[i].text.trim() === target) {
+                                            vp.selectedIndex = i;
+                                            found = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!found) {
+                                        var lower = target.toLowerCase();
+                                        for (var j = 0; j < vp.options.length; j++) {
+                                            var t = vp.options[j].text.toLowerCase();
+                                            var v = vp.options[j].value.toLowerCase();
+                                            if (t.indexOf(lower) !== -1 || v.indexOf(lower) !== -1) {
+                                                vp.selectedIndex = j;
+                                                found = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if (!found) {
+                                        for (var k = 0; k < vp.options.length; k++) {
+                                            if (vp.options[k].value.toLowerCase() === 'other' || vp.options[k].text.toLowerCase() === 'other') {
+                                                vp.selectedIndex = k;
+                                                found = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    vp.dispatchEvent(new Event('change', { bubbles: true }));
+                                }
+
+                                // 2. Leave Term Check
+                                var ddlTerm = document.getElementById('ctl00_cphHeading_ddlLeaveTerm');
+                                if (ddlTerm && (ddlTerm.value === '0' || !ddlTerm.value) && ddlTerm.options.length > 1) {
+                                    ddlTerm.selectedIndex = 1;
+                                }
+
+                                // 3. Relative Mobile
+                                var mob = document.getElementById('ctl00_cphHeading_txtVisitingMobile');
+                                if (mob) { mob.value = $safeMobile; mob.dispatchEvent(new Event('input')); }
+
+                                // 4. Stay Address: Multiple robust matching strategies
+                                // A. Check all validators for any mentioning 'stay' or 'address'
+                                if (typeof Page_Validators !== 'undefined') {
+                                    for (var vi = 0; vi < Page_Validators.length; vi++) {
+                                        var vItem = Page_Validators[vi];
+                                        if (vItem && vItem.controltovalidate) {
+                                            var vMsg = (vItem.errormessage || '').toLowerCase();
+                                            if (vMsg.indexOf('stay') !== -1 || vMsg.indexOf('address') !== -1 || vMsg.indexOf('place') !== -1) {
+                                                var targetEl = document.getElementById(vItem.controltovalidate);
+                                                if (targetEl) {
+                                                    targetEl.value = $safeStayAddr;
+                                                    targetEl.dispatchEvent(new Event('input', { bubbles: true }));
+                                                    targetEl.dispatchEvent(new Event('change', { bubbles: true }));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // B. Check any input/textarea in rows between ddlVisitDay and txtVisitingMobile
+                                var vpEl = document.getElementById('ctl00_cphHeading_ddlVisitDay');
+                                var mobEl = document.getElementById('ctl00_cphHeading_txtVisitingMobile');
+                                if (vpEl && mobEl) {
+                                    var tableEl = vpEl.closest('table') || document;
+                                    var allTrs = tableEl.querySelectorAll('tr');
+                                    var inRange = false;
+                                    for (var trI = 0; trI < allTrs.length; trI++) {
+                                        var rowEl = allTrs[trI];
+                                        if (rowEl.contains(vpEl)) { inRange = true; continue; }
+                                        if (inRange) {
+                                            if (rowEl.contains(mobEl)) break;
+                                            var rowInps = rowEl.querySelectorAll('input[type="text"], textarea');
+                                            for (var rk = 0; rk < rowInps.length; rk++) {
+                                                rowInps[rk].value = $safeStayAddr;
+                                                rowInps[rk].dispatchEvent(new Event('input', { bubbles: true }));
+                                                rowInps[rk].dispatchEvent(new Event('change', { bubbles: true }));
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // C. Fallback: Check all inputs for common address keywords (case-insensitive)
+                                var allTextEls = document.querySelectorAll('input[type="text"], textarea');
+                                for (var ti = 0; ti < allTextEls.length; ti++) {
+                                    var elId = (allTextEls[ti].id || '').toLowerCase();
+                                    var elName = (allTextEls[ti].name || '').toLowerCase();
+                                    if (elId.indexOf('mobile') === -1 && elId.indexOf('reason') === -1 && 
+                                        elId.indexOf('date') === -1 && elId.indexOf('otp') === -1) {
+                                        if (elId.indexOf('stay') !== -1 || elId.indexOf('address') !== -1 ||
+                                            elId.indexOf('place') !== -1 || elId.indexOf('location') !== -1 ||
+                                            elId.indexOf('city') !== -1 || elName.indexOf('stay') !== -1 ||
+                                            elName.indexOf('address') !== -1 || elName.indexOf('place') !== -1) {
+                                            allTextEls[ti].value = $safeStayAddr;
+                                            allTextEls[ti].dispatchEvent(new Event('input', { bubbles: true }));
+                                            allTextEls[ti].dispatchEvent(new Event('change', { bubbles: true }));
+                                        }
+                                    }
+                                }
+
+                                // Re-run validation on validators to clear client errors
+                                if (typeof Page_Validators !== 'undefined') {
+                                    for (var vi = 0; vi < Page_Validators.length; vi++) {
+                                        var valItem = Page_Validators[vi];
+                                        if (valItem && typeof ValidatorValidate === 'function') {
+                                            ValidatorValidate(valItem);
+                                        }
+                                    }
+                                }
+
+                                // 5. Dates & Times Helper (Telerik RadDateTimePicker + inputs + clientState)
+                                function setRadPicker(baseId, y, m, d, h, min, textVal, isoVal) {
+                                    try {
+                                        var p = (typeof ${'$'}find === 'function') ? ${'$'}find(baseId) : null;
+                                        if (p && typeof p.set_selectedDate === 'function') {
+                                            p.set_selectedDate(new Date(y, m, d, h, min, 0));
+                                        }
+                                    } catch(e) {}
+
+                                    var di = document.getElementById(baseId + '_dateInput');
+                                    if (di) {
+                                        di.value = textVal;
+                                        di.dispatchEvent(new Event('input', { bubbles: true }));
+                                        di.dispatchEvent(new Event('change', { bubbles: true }));
+                                    }
+
+                                    var hid = document.getElementById(baseId);
+                                    if (hid) hid.value = textVal;
+
+                                    var cs = document.getElementById(baseId + '_dateInput_ClientState');
+                                    if (cs) {
+                                        try {
+                                            var obj = JSON.parse(cs.value || '{}');
+                                            obj.valueAsString = isoVal;
+                                            obj.validationText = isoVal;
+                                            obj.lastSetTextBoxValue = textVal;
+                                            cs.value = JSON.stringify(obj);
+                                        } catch(e) {}
+                                    }
+                                }
+
+                                setRadPicker('ctl00_cphHeading_startdateRadDateTimePicker1', $sYear, $sMonth, $sDay, $sHour, $sMin, '$sText', '$sIso');
+                                setRadPicker('ctl00_cphHeading_enddateRadDateTimePicker2', $eYear, $eMonth, $eDay, $eHour, $eMin, '$eText', '$eIso');
+
+                                // 6. Reason
+                                var txtReason = document.getElementById('ctl00_cphHeading_txtLeaveReason');
+                                if (txtReason) { txtReason.value = $safeReason; txtReason.dispatchEvent(new Event('input')); }
+
+                                // 7. Declaration Checkbox
+                                var chk = document.getElementById('ctl00_cphHeading_chkOption');
+                                if (chk) chk.checked = true;
+
+                                // 8. Client-side validation check
+                                if (typeof Page_ClientValidate === 'function') {
+                                    var valid = Page_ClientValidate('123');
+                                    if (!valid) {
+                                        var valMsgs = [];
+                                        if (typeof Page_Validators !== 'undefined') {
+                                            for (var vi = 0; vi < Page_Validators.length; vi++) {
+                                                var vItem = Page_Validators[vi];
+                                                if (vItem && !vItem.isvalid && vItem.errormessage) {
+                                                    valMsgs.push(vItem.errormessage);
+                                                }
+                                            }
+                                        }
+                                        var combined = valMsgs.join('\n');
+                                        window.SkedLeaveBridge.onError(combined || 'Validation failed. Please verify form details.');
+                                        return;
+                                    }
+                                }
+
+                                // 9. Click Submit Button
+                                var btn = document.getElementById('ctl00_cphHeading_btnSubmit');
+                                if (btn) {
+                                    setTimeout(function() { btn.click(); }, 350);
+                                } else {
+                                    window.SkedLeaveBridge.onError('Submit button not found');
+                                }
+                            } catch(e) {
+                                window.SkedLeaveBridge.onError('Error populating form: ' + e.toString());
+                            }
+                        })();
+                    """.trimIndent()
+                    webView.evaluateJavascript(jsFillAndSubmit, null)
+                }
+            }
+            executeSubmitFn = performSubmit
 
             webView.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
@@ -232,12 +474,18 @@ object LeaveSubmitEngine {
 
                                         var sel = document.getElementById('ctl00_cphHeading_drpLeaveType');
                                         if (sel) {
-                                            sel.value = '$leaveTypeCode';
-                                            if (typeof __doPostBack === 'function') {
-                                                __doPostBack('ctl00${'$'}cphHeading${'$'}drpLeaveType', '');
+                                            if (sel.value === '$leaveTypeCode') {
+                                                window.SkedLeaveBridge.onLeaveTypeReady();
                                             } else {
-                                                sel.dispatchEvent(new Event('change'));
+                                                sel.value = '$leaveTypeCode';
+                                                if (typeof __doPostBack === 'function') {
+                                                    __doPostBack('ctl00${'$'}cphHeading${'$'}drpLeaveType', '');
+                                                } else {
+                                                    sel.dispatchEvent(new Event('change'));
+                                                }
                                             }
+                                        } else {
+                                            window.SkedLeaveBridge.onLeaveTypeReady();
                                         }
                                     } catch(e) {
                                         window.SkedLeaveBridge.onError('Failed to set leave type: ' + e.toString());
@@ -248,257 +496,13 @@ object LeaveSubmitEngine {
                         }
 
                         1 -> {
-                            // Step 2: Set Visit Place dropdown and trigger ASP.NET postback
-                            onStatus("Setting destination...")
-                            stage = 2
-                            val safeVisitPlace = org.json.JSONObject.quote(visitPlace)
-                            val jsSetVisit = """
-                                (function() {
-                                    try {
-                                        window.alert = function(msg) { window.SkedLeaveBridge.onAlert(msg); };
-                                        window.confirm = function() { return true; };
-
-                                        var vp = document.getElementById('ctl00_cphHeading_ddlVisitDay');
-                                        if (vp) {
-                                            var target = $safeVisitPlace;
-                                            var found = false;
-                                            // 1. Direct match on value
-                                            for (var i = 0; i < vp.options.length; i++) {
-                                                if (vp.options[i].value === target || vp.options[i].text.trim() === target) {
-                                                    vp.selectedIndex = i;
-                                                    found = true;
-                                                    break;
-                                                }
-                                            }
-                                            // 2. Case-insensitive substring fallback
-                                            if (!found) {
-                                                var lower = target.toLowerCase();
-                                                for (var j = 0; j < vp.options.length; j++) {
-                                                    var t = vp.options[j].text.toLowerCase();
-                                                    var v = vp.options[j].value.toLowerCase();
-                                                    if (t.indexOf(lower) !== -1 || v.indexOf(lower) !== -1) {
-                                                        vp.selectedIndex = j;
-                                                        found = true;
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                            // 3. Fallback to 'Other' if present
-                                            if (!found) {
-                                                for (var k = 0; k < vp.options.length; k++) {
-                                                    if (vp.options[k].value.toLowerCase() === 'other' || vp.options[k].text.toLowerCase() === 'other') {
-                                                        vp.selectedIndex = k;
-                                                        found = true;
-                                                        break;
-                                                    }
-                                                }
-                                            }
-
-                                            if (typeof __doPostBack === 'function') {
-                                                __doPostBack('ctl00${'$'}cphHeading${'$'}ddlVisitDay', '');
-                                            } else {
-                                                vp.dispatchEvent(new Event('change'));
-                                            }
-                                        } else {
-                                            window.SkedLeaveBridge.onError('Destination dropdown not found');
-                                        }
-                                    } catch(e) {
-                                        window.SkedLeaveBridge.onError('Failed to set visit place: ' + e.toString());
-                                    }
-                                })();
-                            """.trimIndent()
-                            webView.evaluateJavascript(jsSetVisit, null)
+                            performSubmit()
                         }
 
                         2 -> {
-                            // Step 3: Populate all form fields, datepickers, declaration checkbox and submit
-                            onStatus("Submitting leave application...")
-                            stage = 3
-                            val safeReason = org.json.JSONObject.quote(reason)
-                            val safeStayAddr = org.json.JSONObject.quote(stayAddress)
-                            val safeMobile = org.json.JSONObject.quote(relativeMobile)
-
-                            val uFormat = java.text.SimpleDateFormat("M/d/yyyy h:mm a", java.util.Locale.US)
-                            val isoFormat = java.text.SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", java.util.Locale.US)
-                            val sText = uFormat.format(startCal.time)
-                            val sIso = isoFormat.format(startCal.time)
-                            val sYear = startCal.get(java.util.Calendar.YEAR)
-                            val sMonth = startCal.get(java.util.Calendar.MONTH)
-                            val sDay = startCal.get(java.util.Calendar.DAY_OF_MONTH)
-                            val sHour = startCal.get(java.util.Calendar.HOUR_OF_DAY)
-                            val sMin = startCal.get(java.util.Calendar.MINUTE)
-
-                            val eText = uFormat.format(endCal.time)
-                            val eIso = isoFormat.format(endCal.time)
-                            val eYear = endCal.get(java.util.Calendar.YEAR)
-                            val eMonth = endCal.get(java.util.Calendar.MONTH)
-                            val eDay = endCal.get(java.util.Calendar.DAY_OF_MONTH)
-                            val eHour = endCal.get(java.util.Calendar.HOUR_OF_DAY)
-                            val eMin = endCal.get(java.util.Calendar.MINUTE)
-
-                            val jsFillAndSubmit = """
-                                (function() {
-                                    try {
-                                        window.alert = function(msg) { window.SkedLeaveBridge.onAlert(msg); };
-                                        // Leave Term Check
-                                        var ddlTerm = document.getElementById('ctl00_cphHeading_ddlLeaveTerm');
-                                        if (ddlTerm && (ddlTerm.value === '0' || !ddlTerm.value) && ddlTerm.options.length > 1) {
-                                            ddlTerm.selectedIndex = 1;
-                                        }
-
-                                        // Relative Mobile
-                                        var mob = document.getElementById('ctl00_cphHeading_txtVisitingMobile');
-                                        if (mob) { mob.value = $safeMobile; mob.dispatchEvent(new Event('input')); }
-
-                                        // Stay Address: Multiple robust matching strategies
-                                        // 1. Check all validators for any mentioning 'stay' or 'address'
-                                        if (typeof Page_Validators !== 'undefined') {
-                                            for (var vi = 0; vi < Page_Validators.length; vi++) {
-                                                var vItem = Page_Validators[vi];
-                                                if (vItem && vItem.controltovalidate) {
-                                                    var vMsg = (vItem.errormessage || '').toLowerCase();
-                                                    if (vMsg.indexOf('stay') !== -1 || vMsg.indexOf('address') !== -1 || vMsg.indexOf('place') !== -1) {
-                                                        var targetEl = document.getElementById(vItem.controltovalidate);
-                                                        if (targetEl) {
-                                                            targetEl.value = $safeStayAddr;
-                                                            targetEl.dispatchEvent(new Event('input', { bubbles: true }));
-                                                            targetEl.dispatchEvent(new Event('change', { bubbles: true }));
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        // 2. Check any input/textarea in rows between ddlVisitDay and txtVisitingMobile
-                                        var vpEl = document.getElementById('ctl00_cphHeading_ddlVisitDay');
-                                        var mobEl = document.getElementById('ctl00_cphHeading_txtVisitingMobile');
-                                        if (vpEl && mobEl) {
-                                            var tableEl = vpEl.closest('table') || document;
-                                            var allTrs = tableEl.querySelectorAll('tr');
-                                            var inRange = false;
-                                            for (var trI = 0; trI < allTrs.length; trI++) {
-                                                var rowEl = allTrs[trI];
-                                                if (rowEl.contains(vpEl)) { inRange = true; continue; }
-                                                if (inRange) {
-                                                    if (rowEl.contains(mobEl)) break;
-                                                    var rowInps = rowEl.querySelectorAll('input[type="text"], textarea');
-                                                    for (var rk = 0; rk < rowInps.length; rk++) {
-                                                        rowInps[rk].value = $safeStayAddr;
-                                                        rowInps[rk].dispatchEvent(new Event('input', { bubbles: true }));
-                                                        rowInps[rk].dispatchEvent(new Event('change', { bubbles: true }));
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        // 3. Fallback: Check all inputs for common address keywords (case-insensitive)
-                                        var allTextEls = document.querySelectorAll('input[type="text"], textarea');
-                                        for (var ti = 0; ti < allTextEls.length; ti++) {
-                                            var elId = (allTextEls[ti].id || '').toLowerCase();
-                                            var elName = (allTextEls[ti].name || '').toLowerCase();
-                                            if (elId.indexOf('mobile') === -1 && elId.indexOf('reason') === -1 && 
-                                                elId.indexOf('date') === -1 && elId.indexOf('otp') === -1) {
-                                                if (elId.indexOf('stay') !== -1 || elId.indexOf('address') !== -1 ||
-                                                    elId.indexOf('place') !== -1 || elId.indexOf('location') !== -1 ||
-                                                    elId.indexOf('city') !== -1 || elName.indexOf('stay') !== -1 ||
-                                                    elName.indexOf('address') !== -1 || elName.indexOf('place') !== -1) {
-                                                    allTextEls[ti].value = $safeStayAddr;
-                                                    allTextEls[ti].dispatchEvent(new Event('input', { bubbles: true }));
-                                                    allTextEls[ti].dispatchEvent(new Event('change', { bubbles: true }));
-                                                }
-                                            }
-                                        }
-
-                                        // Re-run validation on validators to clear client errors
-                                        if (typeof Page_Validators !== 'undefined') {
-                                            for (var vi = 0; vi < Page_Validators.length; vi++) {
-                                                var valItem = Page_Validators[vi];
-                                                if (valItem && typeof ValidatorValidate === 'function') {
-                                                    ValidatorValidate(valItem);
-                                                }
-                                            }
-                                        }
-
-                                        // Dates & Times Helper (Telerik RadDateTimePicker + inputs + clientState)
-                                        function setRadPicker(baseId, y, m, d, h, min, textVal, isoVal) {
-                                            try {
-                                                var p = (typeof ${'$'}find === 'function') ? ${'$'}find(baseId) : null;
-                                                if (p && typeof p.set_selectedDate === 'function') {
-                                                    p.set_selectedDate(new Date(y, m, d, h, min, 0));
-                                                }
-                                            } catch(e) {}
-
-                                            var di = document.getElementById(baseId + '_dateInput');
-                                            if (di) {
-                                                di.value = textVal;
-                                                di.dispatchEvent(new Event('input', { bubbles: true }));
-                                                di.dispatchEvent(new Event('change', { bubbles: true }));
-                                            }
-
-                                            var hid = document.getElementById(baseId);
-                                            if (hid) hid.value = textVal;
-
-                                            var cs = document.getElementById(baseId + '_dateInput_ClientState');
-                                            if (cs) {
-                                                try {
-                                                    var obj = JSON.parse(cs.value || '{}');
-                                                    obj.valueAsString = isoVal;
-                                                    obj.validationText = isoVal;
-                                                    obj.lastSetTextBoxValue = textVal;
-                                                    cs.value = JSON.stringify(obj);
-                                                } catch(e) {}
-                                            }
-                                        }
-
-                                        setRadPicker('ctl00_cphHeading_startdateRadDateTimePicker1', $sYear, $sMonth, $sDay, $sHour, $sMin, '$sText', '$sIso');
-                                        setRadPicker('ctl00_cphHeading_enddateRadDateTimePicker2', $eYear, $eMonth, $eDay, $eHour, $eMin, '$eText', '$eIso');
-
-                                        // Reason
-                                        var txtReason = document.getElementById('ctl00_cphHeading_txtLeaveReason');
-                                        if (txtReason) { txtReason.value = $safeReason; txtReason.dispatchEvent(new Event('input')); }
-
-                                        // Declaration Checkbox
-                                        var chk = document.getElementById('ctl00_cphHeading_chkOption');
-                                        if (chk) chk.checked = true;
-
-                                        // Optional client-side validation check
-                                        if (typeof Page_ClientValidate === 'function') {
-                                            var valid = Page_ClientValidate('123');
-                                            if (!valid) {
-                                                var valMsgs = [];
-                                                if (typeof Page_Validators !== 'undefined') {
-                                                    for (var vi = 0; vi < Page_Validators.length; vi++) {
-                                                        var vItem = Page_Validators[vi];
-                                                        if (vItem && !vItem.isvalid && vItem.errormessage) {
-                                                            valMsgs.push(vItem.errormessage);
-                                                        }
-                                                    }
-                                                }
-                                                var combined = valMsgs.join('\n');
-                                                window.SkedLeaveBridge.onError(combined || 'Validation failed. Please verify form details.');
-                                                return;
-                                            }
-                                        }
-
-                                        // Click Submit Button
-                                        var btn = document.getElementById('ctl00_cphHeading_btnSubmit');
-                                        if (btn) {
-                                            setTimeout(function() { btn.click(); }, 350);
-                                        } else {
-                                            window.SkedLeaveBridge.onError('Submit button not found');
-                                        }
-                                    } catch(e) {
-                                        window.SkedLeaveBridge.onError('Error populating form: ' + e.toString());
-                                    }
-                                })();
-                            """.trimIndent()
-                            webView.evaluateJavascript(jsFillAndSubmit, null)
-                        }
-
-                        3 -> {
-                            // Step 4: After submit postback, wait for DOM and alert events to settle, then verify table
+                            // Step 3: After submit postback, wait for DOM and alert events to settle, then verify table
                             onStatus("Verifying leave submission...")
-                            webView.postDelayed({
+                            mainHandler.postDelayed({
                                 val jsCheckResult = """
                                     (function() {
                                         try {
@@ -614,10 +618,11 @@ object LeaveSubmitEngine {
             onStatus("Connecting to UMS hostel portal...")
             webView.loadUrl(LEAVE_URL)
 
-            // 20-second timeout safety net
-            webView.postDelayed({
+            // 25-second timeout safety net via main looper
+            timeoutRunnable = Runnable {
                 finishWith(Result.failure(Exception("Submission timed out. Please check your connection or UMS portal.")))
-            }, 20000)
+            }
+            mainHandler.postDelayed(timeoutRunnable!!, 25000)
         }
     }
 }

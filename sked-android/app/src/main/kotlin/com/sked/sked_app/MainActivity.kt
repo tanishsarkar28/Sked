@@ -949,6 +949,13 @@ fun DashboardScreen(
     val timetableBadge = if (todayClasses.isNotEmpty()) "${todayClasses.size}" else null
     val leaveBalance = remember(context) { com.sked.sked_app.leave.LeaveStorage.loadBalance(context) }
     val leaveBadge = if (leaveBalance.dayBalance > 0) "${leaveBalance.dayBalance}" else null
+    val recentLeaveRecord = remember(context) { com.sked.sked_app.leave.LeaveStorage.loadRecords(context).firstOrNull() }
+    val leaveSlipBadge = when {
+        recentLeaveRecord == null -> null
+        recentLeaveRecord.checkOut.isNotBlank() && recentLeaveRecord.checkIn.isBlank() -> "OUT"
+        recentLeaveRecord.status.equals("Approved", ignoreCase = true) -> "PASS"
+        else -> null
+    }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -1029,6 +1036,7 @@ fun DashboardScreen(
                                     "TIMETABLE" -> "TIMETABLE"
                                     "EXAMS" -> "EXAMS"
                                     "LEAVE" -> "HOSTEL LEAVE"
+                                    "LEAVE_SLIP" -> "LEAVE SLIP"
                                     else -> activeTab
                                 },
                                 fontFamily = BarlowCondensed,
@@ -1099,6 +1107,14 @@ fun DashboardScreen(
                 "LEAVE" -> {
                     com.sked.sked_app.leave.LeaveScreen(
                         onBack = { activeTab = "HOME" },
+                        onReSync = onFullReSync,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                "LEAVE_SLIP" -> {
+                    com.sked.sked_app.leave.LeaveSlipScreen(
+                        onBack = { activeTab = "HOME" },
+                        onApplyLeave = { activeTab = "LEAVE" },
                         onReSync = onFullReSync,
                         modifier = Modifier.fillMaxSize()
                     )
@@ -1709,7 +1725,7 @@ fun DashboardScreen(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                // Row: Timetable, Exams & Leave
+                                // 2 X 2 Grid: Row 1 [Timetable] [Exams], Row 2 [Leave] [Leave Slip]
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1732,12 +1748,27 @@ fun DashboardScreen(
                                         onClick = { activeTab = "EXAMS" },
                                         modifier = Modifier.weight(1f)
                                     )
+                                }
 
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
                                     QuickAccessFeatureBox(
                                         title = "Leave",
                                         icon = Icons.Default.ExitToApp,
                                         badgeText = leaveBadge,
                                         onClick = { activeTab = "LEAVE" },
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    QuickAccessFeatureBox(
+                                        title = "Leave Slip",
+                                        icon = Icons.Default.ConfirmationNumber,
+                                        badgeText = leaveSlipBadge,
+                                        onClick = { activeTab = "LEAVE_SLIP" },
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
@@ -3832,7 +3863,7 @@ fun QuickAccessFeatureBox(
         color = Slab,
         border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
         modifier = modifier
-            .height(140.dp)
+            .height(115.dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() }
     ) {
@@ -3858,7 +3889,7 @@ fun QuickAccessFeatureBox(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 8.dp, vertical = 12.dp),
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
@@ -3867,7 +3898,7 @@ fun QuickAccessFeatureBox(
                 // Icon in circular highlight
                 Box(
                     modifier = Modifier
-                        .size(46.dp)
+                        .size(44.dp)
                         .clip(CircleShape)
                         .background(Blaze.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
@@ -3896,7 +3927,7 @@ fun QuickAccessFeatureBox(
                         textAlign = TextAlign.Center,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                     )
                 }
             }
