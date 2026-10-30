@@ -139,6 +139,28 @@ object LeaveSubmitEngine {
             var stage = 0 // 0: initial load, 1: leaveType set postback, 2: submitted
             var executeSubmitFn: (() -> Unit)? = null
 
+            fun isSuccessMessage(msg: String): Boolean {
+                val lower = msg.lowercase()
+                if (lower.contains("already applied") ||
+                    lower.contains("already exist") ||
+                    lower.contains("still pending") ||
+                    lower.contains("cannot") ||
+                    lower.contains("not allow") ||
+                    lower.contains("reject") ||
+                    lower.contains("fail") ||
+                    lower.contains("error") ||
+                    lower.contains("invalid") ||
+                    lower.contains("exceed") ||
+                    lower.contains("exhaust") ||
+                    lower.contains("not permissible") ||
+                    lower.contains("curfew")) {
+                    return false
+                }
+                return lower.contains("success") || 
+                       (lower.contains("applied") && !lower.contains("already")) || 
+                       lower.contains("approved")
+            }
+
             class LeaveJsBridge {
                 @JavascriptInterface
                 fun onInitialTopLeaveId(id: String) {
@@ -160,7 +182,7 @@ object LeaveSubmitEngine {
                     android.util.Log.i("SkedLeave", "Intercepted UMS Alert via bridge: $msg")
                     capturedAlert = msg
                     if (stage >= 1) {
-                        if (msg.contains("success", ignoreCase = true) || msg.contains("applied", ignoreCase = true)) {
+                        if (isSuccessMessage(msg)) {
                             finishWith(Result.success(msg))
                         } else {
                             finishWith(Result.failure(Exception(msg)))
@@ -196,7 +218,7 @@ object LeaveSubmitEngine {
                     capturedAlert = msg
                     result?.confirm()
                     if (stage >= 1) {
-                        if (msg.contains("success", ignoreCase = true) || msg.contains("applied", ignoreCase = true)) {
+                        if (isSuccessMessage(msg)) {
                             finishWith(Result.success(msg))
                         } else {
                             finishWith(Result.failure(Exception(msg)))
@@ -478,7 +500,7 @@ object LeaveSubmitEngine {
                     // Check if an alert was captured on submission
                     if (capturedAlert != null) {
                         val alertMsg = capturedAlert ?: ""
-                        if (alertMsg.contains("success", ignoreCase = true) || alertMsg.contains("applied", ignoreCase = true)) {
+                        if (isSuccessMessage(alertMsg)) {
                             finishWith(Result.success(alertMsg))
                             return
                         } else {
@@ -717,7 +739,7 @@ object LeaveSubmitEngine {
                                             else -> {
                                                 val alertMsg = capturedAlert
                                                 if (!alertMsg.isNullOrBlank()) {
-                                                    if (alertMsg.contains("success", ignoreCase = true) || alertMsg.contains("applied", ignoreCase = true)) {
+                                                    if (isSuccessMessage(alertMsg)) {
                                                         finishWith(Result.success(alertMsg))
                                                     } else {
                                                         finishWith(Result.failure(Exception(alertMsg)))
