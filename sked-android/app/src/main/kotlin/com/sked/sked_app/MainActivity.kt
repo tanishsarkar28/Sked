@@ -2327,7 +2327,7 @@ fun UmsAuthBridgeDialog(
                                                 for (var i = 0; i < results.length; i++) {
                                                     var h = results[i].html || '';
                                                     debugInfo.push(results[i].name + ':' + results[i].status + ':' + h.length);
-                                                    if (h && (/[A-Z]{2,5}\d{3,4}/.test(h) || /datesheet|seating|exam|result|grade|tgpa|cgpa/i.test(h))) {
+                                                    if (h && (/[A-Z]{2,5}\d{3,4}/.test(h) || /datesheet|seating|exam/i.test(h))) {
                                                         combinedHtml += '\n<!-- PAGE: ' + results[i].name + ' -->\n' + h;
                                                     }
                                                 }
@@ -2615,294 +2615,6 @@ fun UmsAuthBridgeDialog(
                                                             val exams = examsFound
 
 
-                                                            var resAttempts = 0
-                                                            val maxResAttempts = 0 // Result sync removed; bypass immediately
-                                                            while (resAttempts < maxResAttempts) {
-                                                                delay(500)
-                                                                resAttempts++
-                                                                val elapsedSec = resAttempts / 2
-                                                                withContext(Dispatchers.Main) {
-                                                                    statusText = "Syncing Result Summary & CGPA (${elapsedSec}s)..."
-                                                                }
-
-                                                                val resInfoJson = withContext(Dispatchers.Main) {
-                                                                    suspendCancellableCoroutine<String> { cont ->
-                                                                        val pollResJs = """
-                                                                            (function() {
-                                                                                try {
-                                                                                    var href = window.location.href;
-                                                                                    if (href.indexOf('studentdashboard') !== -1 && href.indexOf('resultsummary') === -1) {
-                                                                                        window.location.href = 'https://studentums.lpu.in/dashboard/examination/result/resultsummary';
-                                                                                    }
-
-                                                                                    var romanMap = { 'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5, 'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10 };
-
-                                                                                    if (!window._skedResultHooked) {
-                                                                                        window._skedResultHooked = true;
-                                                                                        window._skedCapturedResults = {
-                                                                                            coursewiseList: [],
-                                                                                            capturedSemesters: {}
-                                                                                        };
-
-                                                                                        // 1. Hook console.log
-                                                                                        var origLog = console.log;
-                                                                                        console.log = function() {
-                                                                                            try {
-                                                                                                var label = typeof arguments[0] === 'string' ? arguments[0] : '';
-                                                                                                var detectedSem = null;
-                                                                                                for (var m = 0; m < arguments.length; m++) {
-                                                                                                    var arg = arguments[m];
-                                                                                                    if (typeof arg === 'number' && arg >= 1 && arg <= 10) detectedSem = arg;
-                                                                                                    if (typeof arg === 'string') {
-                                                                                                        var match = arg.match(/(?:Semester|Term|Sem)\s*[:\-]?\s*(VIII|VII|III|VI|IV|IX|II|V|I|X|\d+)/i);
-                                                                                                        if (match) {
-                                                                                                            detectedSem = romanMap[match[1].toUpperCase()] || parseInt(match[1]);
-                                                                                                        }
-                                                                                                    }
-                                                                                                }
-                                                                                                if (!detectedSem && window._currentClickSem) {
-                                                                                                    detectedSem = window._currentClickSem;
-                                                                                                }
-
-                                                                                                for (var i = 0; i < arguments.length; i++) {
-                                                                                                    var a = arguments[i];
-                                                                                                    if (typeof a === 'object' && a !== null) {
-                                                                                                        var s = JSON.stringify(a);
-                                                                                                        if (label.indexOf('TGPA Data') !== -1 || s.indexOf('TGPASem') !== -1 || s.indexOf('Tgpa') !== -1) {
-                                                                                                            window._skedCapturedResults['tgpaData'] = a;
-                                                                                                        }
-                                                                                                        if (label.indexOf('CoursewiseGrade') !== -1 || s.indexOf('CourseCode') !== -1 || s.indexOf('Assessment') !== -1) {
-                                                                                                            var items = Array.isArray(a) ? a : [a];
-                                                                                                            for (var k = 0; k < items.length; k++) {
-                                                                                                                var item = items[k];
-                                                                                                                if (typeof item === 'object' && item !== null) {
-                                                                                                                    if (detectedSem && !item.Semester && !item.semester && !item.sem && !item.Sem) {
-                                                                                                                        item.semester = detectedSem;
-                                                                                                                    }
-                                                                                                                    window._skedCapturedResults['coursewiseList'].push(item);
-                                                                                                                }
-                                                                                                            }
-                                                                                                            window._skedCapturedResults['coursewise'] = window._skedCapturedResults['coursewiseList'];
-                                                                                                        }
-                                                                                                        if (s.indexOf('profileData') !== -1 || s.indexOf('cgpa') !== -1) {
-                                                                                                            window._skedCapturedResults['profile'] = a;
-                                                                                                        }
-                                                                                                    }
-                                                                                                }
-                                                                                            } catch(e) {}
-                                                                                            return origLog.apply(console, arguments);
-                                                                                        };
-
-                                                                                        // 2. Hook window.fetch
-                                                                                        var origFetch = window.fetch;
-                                                                                        window.fetch = function() {
-                                                                                            var args = arguments;
-                                                                                            var p = origFetch.apply(this, args);
-                                                                                            try {
-                                                                                                p.then(function(res) {
-                                                                                                    try {
-                                                                                                        var clone = res.clone();
-                                                                                                        clone.text().then(function(t) {
-                                                                                                            try {
-                                                                                                                if (t && (t.indexOf('CourseCode') !== -1 || t.indexOf('Grade') !== -1)) {
-                                                                                                                    var parsed = JSON.parse(t);
-                                                                                                                    var curSem = window._currentClickSem;
-                                                                                                                    var items = Array.isArray(parsed) ? parsed : (parsed.CoursewiseGrade || []);
-                                                                                                                    for (var j = 0; j < items.length; j++) {
-                                                                                                                        if (curSem && !items[j].semester && !items[j].Semester) {
-                                                                                                                            items[j].semester = curSem;
-                                                                                                                        }
-                                                                                                                        window._skedCapturedResults['coursewiseList'].push(items[j]);
-                                                                                                                    }
-                                                                                                                    window._skedCapturedResults['coursewise'] = window._skedCapturedResults['coursewiseList'];
-                                                                                                                }
-                                                                                                            } catch(e) {}
-                                                                                                        });
-                                                                                                    } catch(e) {}
-                                                                                                });
-                                                                                            } catch(e) {}
-                                                                                            return p;
-                                                                                        };
-                                                                                    }
-
-                                                                                    // 3. Extract Next.js script data if available
-                                                                                    var nextScript = document.getElementById('__NEXT_DATA__');
-                                                                                    if (nextScript && nextScript.textContent && !window._skedCapturedResults['nextData']) {
-                                                                                        try {
-                                                                                            window._skedCapturedResults['nextData'] = JSON.parse(nextScript.textContent);
-                                                                                        } catch(e) {}
-                                                                                    }
-
-                                                                                    // 4. Find all semester clickable tabs/buttons
-                                                                                    function simClick(node) {
-                                                                                        if (!node) return;
-                                                                                        try {
-                                                                                            var opts = { bubbles: true, cancelable: true, view: window };
-                                                                                            node.dispatchEvent(new MouseEvent('pointerdown', opts));
-                                                                                            node.dispatchEvent(new MouseEvent('mousedown', opts));
-                                                                                            node.dispatchEvent(new MouseEvent('pointerup', opts));
-                                                                                            node.dispatchEvent(new MouseEvent('mouseup', opts));
-                                                                                            node.click();
-                                                                                        } catch(e) {
-                                                                                            try { node.click(); } catch(e2) {}
-                                                                                        }
-                                                                                    }
-
-                                                                                    var allClickables = Array.from(document.querySelectorAll('button, a, [role="tab"], [role="button"], div, span, li, p'));
-                                                                                    var semTabs = [];
-                                                                                    for (var c = 0; c < allClickables.length; c++) {
-                                                                                        var el = allClickables[c];
-                                                                                        if (el.childElementCount > 4) continue;
-                                                                                        var txt = (el.innerText || el.textContent || '').trim();
-                                                                                        if (txt.length > 50) continue;
-                                                                                        var m = txt.match(/\b(?:Semester|Term|Sem)\s*[:\-]?\s*(VIII|VII|III|VI|IV|IX|II|V|I|X|\d+)\b/i) ||
-                                                                                                txt.match(/^(?:Semester|Term|Sem)\s*[:\-]?\s*(VIII|VII|III|VI|IV|IX|II|V|I|X|\d+)$/i);
-                                                                                        if (m) {
-                                                                                            var semNum = romanMap[m[1].toUpperCase()] || parseInt(m[1]);
-                                                                                            if (semNum >= 1 && semNum <= 10 && !semTabs.some(function(x) { return x.sem === semNum; })) {
-                                                                                                semTabs.push({ sem: semNum, el: el, txt: txt });
-                                                                                            }
-                                                                                        }
-                                                                                    }
-
-                                                                                    // Also check dropdowns
-                                                                                    var selects = Array.from(document.querySelectorAll('select'));
-                                                                                    for (var s = 0; s < selects.length; s++) {
-                                                                                        var sel = selects[s];
-                                                                                        for (var o = 0; o < sel.options.length; o++) {
-                                                                                            var opt = sel.options[o];
-                                                                                            var oTxt = opt.text || '';
-                                                                                            var oM = oTxt.match(/\b(?:Semester|Term|Sem)\s*[:\-]?\s*(VIII|VII|III|VI|IV|IX|II|V|I|X|\d+)\b/i);
-                                                                                            if (oM) {
-                                                                                                var sNum = romanMap[oM[1].toUpperCase()] || parseInt(oM[1]);
-                                                                                                if (sNum && !semTabs.some(function(x) { return x.sem === sNum; })) {
-                                                                                                    semTabs.push({ sem: sNum, el: sel, optIdx: o, txt: oTxt });
-                                                                                                }
-                                                                                            }
-                                                                                        }
-                                                                                    }
-                                                                                    semTabs.sort(function(a, b) { return a.sem - b.sem; });
-
-                                                                                    // Cycle through clicking the tabs every 2 ticks (1 second per tab)
-                                                                                    window._skedTick = (window._skedTick || 0) + 1;
-                                                                                    if (semTabs.length > 0 && window._skedTick % 2 === 0) {
-                                                                                        window._skedTabIdx = (window._skedTabIdx || 0) % semTabs.length;
-                                                                                        var targetTab = semTabs[window._skedTabIdx];
-                                                                                        window._currentClickSem = targetTab.sem;
-                                                                                        if (targetTab.el.tagName === 'SELECT') {
-                                                                                            if (targetTab.optIdx !== undefined) targetTab.el.selectedIndex = targetTab.optIdx;
-                                                                                            targetTab.el.dispatchEvent(new Event('change', { bubbles: true }));
-                                                                                        } else {
-                                                                                            simClick(targetTab.el);
-                                                                                        }
-                                                                                        window._skedTabIdx++;
-                                                                                    }
-
-                                                                                    // 5. Extract visible courses currently in the DOM
-                                                                                    try {
-                                                                                        var curSem = window._currentClickSem;
-                                                                                        if (!curSem) {
-                                                                                            var activeEl = document.querySelector('[aria-selected="true"], [data-state="active"], [data-selected="true"], [class*="active"], [class*="selected"]');
-                                                                                            if (activeEl) {
-                                                                                                var aTxt = (activeEl.innerText || activeEl.textContent || '').trim();
-                                                                                                var aM = aTxt.match(/\b(?:Semester|Term|Sem)\s*[:\-]?\s*(VIII|VII|III|VI|IV|IX|II|V|I|X|\d+)\b/i);
-                                                                                                if (aM) curSem = romanMap[aM[1].toUpperCase()] || parseInt(aM[1]);
-                                                                                            }
-                                                                                            if (!curSem && semTabs.length > 0) {
-                                                                                                curSem = semTabs[semTabs.length - 1].sem;
-                                                                                            }
-                                                                                            if (!curSem) curSem = 4;
-                                                                                        }
-
-                                                                                        var potentialRows = Array.from(document.querySelectorAll('tr, div, li'));
-                                                                                        var domList = [];
-                                                                                        var seenCodes = {};
-                                                                                        for (var r = 0; r < potentialRows.length; r++) {
-                                                                                            var rowEl = potentialRows[r];
-                                                                                            if (rowEl.childElementCount > 8) continue;
-                                                                                            var rowTxt = (rowEl.innerText || rowEl.textContent || '').trim();
-                                                                                            if (rowTxt.length > 250) continue;
-                                                                                            var cMatch = rowTxt.match(/\b([A-Z]{2,5}\d{3,4})\b/);
-                                                                                            if (cMatch) {
-                                                                                                var cCode = cMatch[1];
-                                                                                                if (seenCodes[cCode]) continue;
-                                                                                                var gMatch = rowTxt.match(/\b(A\+|B\+|O|A|B|C|D|E|F|S|U)\b/);
-                                                                                                if (gMatch) {
-                                                                                                    seenCodes[cCode] = true;
-                                                                                                    domList.push({
-                                                                                                        CourseCode: cCode,
-                                                                                                        Grade: gMatch[1],
-                                                                                                        Semester: curSem
-                                                                                                    });
-                                                                                                }
-                                                                                            }
-                                                                                        }
-                                                                                        if (domList.length > 0) {
-                                                                                            window._skedCapturedResults['domCourses_' + curSem] = domList;
-                                                                                            for (var d = 0; d < domList.length; d++) {
-                                                                                                window._skedCapturedResults['coursewiseList'].push(domList[d]);
-                                                                                            }
-                                                                                            window._skedCapturedResults['coursewise'] = window._skedCapturedResults['coursewiseList'];
-                                                                                        }
-                                                                                    } catch(e) {}
-
-                                                                                    var bodyTxt = document.body ? document.body.innerText : '';
-                                                                                    return JSON.stringify({
-                                                                                        url: href,
-                                                                                        len: bodyTxt.length,
-                                                                                        txt: bodyTxt,
-                                                                                        tabsFound: semTabs.length,
-                                                                                        rawJson: JSON.stringify(window._skedCapturedResults || {})
-                                                                                    });
-                                                                                } catch(e) {
-                                                                                    return JSON.stringify({ error: e.toString(), url: window.location.href, len: 0, txt: '', rawJson: '{}' });
-                                                                                }
-                                                                            })()
-                                                                        """.trimIndent()
-                                                                        wv.evaluateJavascript(pollResJs) { res ->
-                                                                            cont.resume(res ?: "{}")
-                                                                        }
-                                                                    }
-                                                                }
-
-                                                                val cleanResInfo = if (resInfoJson.startsWith("\"") && resInfoJson.endsWith("\"")) {
-                                                                    try {
-                                                                        JSONObject("{\"v\":$resInfoJson}").getString("v")
-                                                                    } catch (_: Exception) { resInfoJson }
-                                                                } else resInfoJson
-
-                                                                val resObj = try { JSONObject(cleanResInfo) } catch (_: Exception) { JSONObject() }
-                                                                val resText = resObj.optString("txt")
-                                                                val resRawJson = resObj.optString("rawJson")
-                                                                val tabsCount = resObj.optInt("tabsFound", 0)
-
-                                                                if (resAttempts % 2 == 0 || resAttempts == 1) {
-                                                                    android.util.Log.i("SkedSync", "Result attempt #$resAttempts [len=${resText.length}, tabs=$tabsCount] snippet: ${resText.replace(Regex("""\s+"""), " ").take(120)}")
-                                                                }
-
-                                                                var hasAllCourses = false
-                                                                if (resRawJson.isNotBlank() && resRawJson != "{}") {
-                                                                    val parsed = com.sked.sked_app.gpa.ResultParser.parse(resRawJson)
-                                                                    if (parsed.terms.isNotEmpty() || parsed.cgpa != null) {
-                                                                        com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, parsed, entries)
-                                                                        if (parsed.terms.isNotEmpty() && parsed.cgpa != null) {
-                                                                            hasAllCourses = true
-                                                                        }
-                                                                    }
-                                                                }
-
-                                                                if (resText.isNotBlank()) {
-                                                                    val parsed = com.sked.sked_app.gpa.ResultParser.parse(resText)
-                                                                    if (parsed.terms.isNotEmpty() || parsed.cgpa != null) {
-                                                                        com.sked.sked_app.gpa.ResultParser.mergeIntoStorage(context, parsed, entries)
-                                                                    }
-                                                                }
-
-                                                                if (hasAllCourses || (resAttempts >= 36 && (resRawJson.isNotBlank() || resText.isNotBlank()))) {
-                                                                    android.util.Log.i("SkedSync", "Result sync completed at attempt #$resAttempts (allCourses=$hasAllCourses)")
-                                                                    break
-                                                                }
-                                                            }
 
                                                         try {
                                                             val manager = GlanceAppWidgetManager(context)
@@ -3203,7 +2915,6 @@ fun UmsAuthBridgeDialog(
 
                             val titleText = when {
                                 isAllDone || statusText.contains("Complete", true) -> "SYNC COMPLETE"
-                                statusText.contains("CGPA", true) || statusText.contains("Result", true) || statusText.contains("Grade", true) -> "SYNCING RESULTS & CGPA"
                                 statusText.contains("Exam", true) || statusText.contains("Datesheet", true) || statusText.contains("Seating", true) -> "SYNCING EXAMS"
                                 statusText.contains("schedule", true) || statusText.contains("timetable", true) || statusText.contains("classes", true) -> "SYNCING TIMETABLE"
                                 statusText.contains("Authenticating", true) || statusText.contains("Submitting", true) || statusText.contains("Logging", true) -> "LOGGING IN"
@@ -3232,8 +2943,7 @@ fun UmsAuthBridgeDialog(
 
                             // Smooth continuous asymptotic trickle progress: NEVER pauses or freezes at any percent
                             val currentStage = when {
-                                isAllDone || statusText.contains("Complete", true) -> 6
-                                statusText.contains("CGPA", true) || statusText.contains("Result", true) || statusText.contains("Grade", true) -> 5
+                                isAllDone || statusText.contains("Complete", true) -> 5
                                 statusText.contains("Exam", true) || statusText.contains("Datesheet", true) || statusText.contains("Seating", true) -> 4
                                 statusText.contains("schedule", true) || statusText.contains("timetable", true) || statusText.contains("classes", true) -> 3
                                 isSyncing || statusText.contains("Authenticating", true) || statusText.contains("Submitting", true) || statusText.contains("Logging", true) -> 2
@@ -3253,16 +2963,15 @@ fun UmsAuthBridgeDialog(
                             val stageElapsed = ((currentTime - stageStartTime) / 1000.0).coerceAtLeast(0.0)
 
                             val (floor, ceiling, timeConstant) = when (currentStage) {
-                                6 -> Triple(1.00f, 1.00f, 1.0)
-                                5 -> Triple(0.88f, 0.98f, 7.0)
-                                4 -> Triple(0.70f, 0.88f, 8.0)
+                                5 -> Triple(1.00f, 1.00f, 1.0)
+                                4 -> Triple(0.70f, 0.95f, 6.0)
                                 3 -> Triple(0.55f, 0.70f, 4.0)
                                 2 -> Triple(0.42f, 0.55f, 4.0)
                                 1 -> if (statusText.contains("verified", true)) Triple(0.38f, 0.42f, 2.0) else Triple(0.20f, 0.38f, 6.0)
                                 else -> Triple(0.10f, 0.20f, 4.0)
                             }
 
-                            val calculatedProgress = if (currentStage == 6) {
+                            val calculatedProgress = if (currentStage == 5) {
                                 1.0f
                             } else {
                                 floor + (ceiling - floor) * (1.0 - kotlin.math.exp(-stageElapsed / timeConstant)).toFloat()

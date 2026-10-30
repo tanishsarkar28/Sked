@@ -242,16 +242,10 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                     '/frmSeatingPlan.aspx',
                     '/lpuums/frmStudentSeatingPlan.aspx',
                     '/frmStudentSeatingPlan.aspx',
-                    '/lpuums/frmExamSeatingPlan.aspx',
-                    '/frmStudentResult.aspx',
-                    '/lpuums/frmStudentResult.aspx',
-                    '/frmGradeCard.aspx',
-                    '/lpuums/frmGradeCard.aspx',
-                    '/frmResultSummary.aspx',
-                    '/lpuums/frmResultSummary.aspx'
+                    '/lpuums/frmExamSeatingPlan.aspx'
                 ];
                 try {
-                    var regex = /href=["']([^"']*(?:datesheet|seating|exam|schedule|result|grade)[^"']*)["']/gi;
+                    var regex = /href=["']([^"']*(?:datesheet|seating|exam|schedule)[^"']*)["']/gi;
                     var match;
                     while ((match = regex.exec(loginHtml)) !== null) {
                         var u = match[1];
@@ -262,7 +256,7 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                     var links = document.querySelectorAll('a[href]');
                     for (var li = 0; li < links.length; li++) {
                         var href = links[li].getAttribute('href') || '';
-                        if (href && /(?:datesheet|seating|exam|result|grade)/i.test(href) && !href.startsWith('javascript:') && !href.startsWith('#') && href.indexOf('openapp.aspx') === -1 && dsUrls.indexOf(href) === -1) {
+                        if (href && /(?:datesheet|seating|exam)/i.test(href) && !href.startsWith('javascript:') && !href.startsWith('#') && href.indexOf('openapp.aspx') === -1 && dsUrls.indexOf(href) === -1) {
                             dsUrls.push(href);
                         }
                     }
@@ -276,7 +270,7 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                     var combinedHtml = '';
                     for (var i = 0; i < results.length; i++) {
                         var h = results[i].html || '';
-                        if (h && (/[A-Z]{2,5}\\d{3,4}/.test(h) || /datesheet|seating|exam|result|grade|tgpa|cgpa/i.test(h))) {
+                        if (h && (/[A-Z]{2,5}\\d{3,4}/.test(h) || /datesheet|seating|exam/i.test(h))) {
                             combinedHtml += '\\n<!-- PAGE: ' + results[i].name + ' -->\\n' + h;
                         }
                     }
@@ -484,12 +478,6 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
         if (classicExams.isNotEmpty && hasRealAllocations) {
           examsFound = classicExams;
         }
-
-        // Fast path: parse classic results if any
-        final classicResults = ResultParser.parse(dsRaw);
-        if (classicResults.terms.isNotEmpty || classicResults.cgpa != null) {
-          await ResultParser.mergeIntoStorage(classicResults, entries);
-        }
       }
 
       // 2. MODERN PORTAL PATH (1st & 2nd Year): Load via official UMS SSO redirect
@@ -604,106 +592,6 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
       }
       final exams = examsFound;
 
-      // 3. RESULT SUMMARY SYNC: Fetch CGPA & Past Semesters TGPA
-      if (mounted) {
-        setState(() => _statusText = 'Syncing Result Summary & CGPA...');
-      }
-
-      await _controller.loadRequest(
-        Uri.parse('https://ums.lpu.in/lpuums/openapp.aspx?from=ums&toApp=nextproject&pagename=dashboard/examination/result/resultsummary'),
-      );
-
-      for (var resAttempt = 0; resAttempt < 40; resAttempt++) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        if (!mounted) return;
-
-        try {
-          final pollResJs = '''
-(function() {
-    try {
-        var href = window.location.href;
-        if (href.indexOf('studentdashboard') !== -1 && href.indexOf('resultsummary') === -1) {
-            window.location.href = 'https://studentums.lpu.in/dashboard/examination/result/resultsummary';
-        }
-        if (!window._skedResultHooked) {
-            window._skedResultHooked = true;
-            window._skedCapturedResults = {};
-            var origLog = console.log;
-            console.log = function() {
-                try {
-                    var label = typeof arguments[0] === 'string' ? arguments[0] : '';
-                    for (var i = 0; i < arguments.length; i++) {
-                        var a = arguments[i];
-                        if (typeof a === 'object' && a !== null) {
-                            try {
-                                var s = JSON.stringify(a);
-                                if (label.indexOf('TGPA Data') !== -1 || s.indexOf('TGPASem') !== -1 || s.indexOf('Tgpa') !== -1) {
-                                    window._skedCapturedResults['tgpaData'] = a;
-                                }
-                                if (label.indexOf('CoursewiseGrade') !== -1 || s.indexOf('CourseCode') !== -1 || s.indexOf('Assessment') !== -1) {
-                                    window._skedCapturedResults['coursewise'] = a;
-                                }
-                                if (s.indexOf('profileData') !== -1 || s.indexOf('cgpa') !== -1) {
-                                    window._skedCapturedResults['profile'] = a;
-                                }
-                            } catch(e) {}
-                        }
-                    }
-                } catch(e) {}
-                return origLog.apply(console, arguments);
-            };
-        }
-        var txt = document.body ? document.body.innerText : '';
-        return JSON.stringify({
-            txt: txt,
-            rawJson: JSON.stringify(window._skedCapturedResults || {})
-        });
-    } catch(e) {
-        return JSON.stringify({ txt: '', rawJson: '{}' });
-    }
-})()
-''';
-          final resObj = await _controller.runJavaScriptReturningResult(pollResJs);
-          var resStr = resObj.toString();
-          if (resStr.startsWith('"') && resStr.endsWith('"')) {
-            try {
-              final dec = jsonDecode('{"v":$resStr}') as Map<String, dynamic>;
-              resStr = dec['v'] as String? ?? '';
-            } catch (_) {}
-          }
-
-          var resText = '';
-          var resRawJson = '';
-          try {
-            final payload = jsonDecode(resStr) as Map<String, dynamic>;
-            resText = payload['txt'] as String? ?? '';
-            resRawJson = payload['rawJson'] as String? ?? '';
-          } catch (_) {
-            resText = resStr;
-          }
-
-          if (resRawJson.isNotEmpty && resRawJson != '{}') {
-            final parsed = ResultParser.parse(resRawJson);
-            if (parsed.terms.isNotEmpty || parsed.cgpa != null) {
-              await ResultParser.mergeIntoStorage(parsed, entries);
-              break;
-            }
-          }
-
-          if (resText.isNotEmpty) {
-            final parsed = ResultParser.parse(resText);
-            if (parsed.terms.isNotEmpty || parsed.cgpa != null) {
-              await ResultParser.mergeIntoStorage(parsed, entries);
-              break;
-            }
-          }
-
-          if (resAttempt >= 16 && (resText.toLowerCase().contains('no data available') || resText.toLowerCase().contains('no record found'))) {
-            break;
-          }
-        } catch (_) {}
-      }
-
       if (mounted) {
         if (entries.isNotEmpty) {
           setState(() {
@@ -713,11 +601,9 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
           await Future.delayed(const Duration(milliseconds: 400));
           if (!mounted) return;
           final examSuffix = exams.isNotEmpty ? ' & ${exams.length} exams' : '';
-          final gpaState = await GpaStorage.load(entries);
-          final cgpaSuffix = gpaState.displayCgpa != null ? ' • CGPA: ${gpaState.displayCgpa!.toStringAsFixed(2)}' : '';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Synced timetable (${entries.length} classes$examSuffix$cgpaSuffix)'),
+              content: Text('Synced timetable (${entries.length} classes$examSuffix)'),
               backgroundColor: SkedColors.slab,
             ),
           );
@@ -750,9 +636,6 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
 
   String _computeTitle() {
     final s = _statusText.toLowerCase();
-    if (s.contains('cgpa') || s.contains('result') || s.contains('grade')) {
-      return 'SYNCING RESULTS & CGPA';
-    }
     if (s.contains('exam') || s.contains('datesheet') || s.contains('seating')) {
       return 'SYNCING EXAMS';
     }
@@ -967,8 +850,6 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                               final st = _statusText.toLowerCase();
                               int stage;
                               if (st.contains('complete') || _maxProgress >= 1.0) {
-                                stage = 6;
-                              } else if (st.contains('cgpa') || st.contains('result') || st.contains('grade')) {
                                 stage = 5;
                               } else if (st.contains('exam') || st.contains('datesheet') || st.contains('seating')) {
                                 stage = 4;
@@ -995,9 +876,8 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                               double ceiling;
                               double timeConstant;
                               switch (stage) {
-                                case 6: floor = 1.0; ceiling = 1.0; timeConstant = 1.0; break;
-                                case 5: floor = 0.88; ceiling = 0.98; timeConstant = 7.0; break;
-                                case 4: floor = 0.70; ceiling = 0.88; timeConstant = 8.0; break;
+                                case 5: floor = 1.0; ceiling = 1.0; timeConstant = 1.0; break;
+                                case 4: floor = 0.70; ceiling = 0.95; timeConstant = 6.0; break;
                                 case 3: floor = 0.55; ceiling = 0.70; timeConstant = 4.0; break;
                                 case 2: floor = 0.42; ceiling = 0.55; timeConstant = 4.0; break;
                                 case 1:
@@ -1008,7 +888,7 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                                 default: floor = 0.10; ceiling = 0.20; timeConstant = 4.0; break;
                               }
 
-                              final current = stage == 6
+                              final current = stage == 5
                                   ? 1.0
                                   : floor + (ceiling - floor) * (1.0 - math.exp(-stageElapsed / timeConstant));
 
