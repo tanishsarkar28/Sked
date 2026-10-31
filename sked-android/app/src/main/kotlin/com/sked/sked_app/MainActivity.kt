@@ -1759,7 +1759,7 @@ fun DashboardScreen(
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     QuickAccessFeatureBox(
-                                        title = "Leave",
+                                        title = "Leave Application",
                                         icon = Icons.Default.ExitToApp,
                                         badgeText = leaveBadge,
                                         onClick = { activeTab = "LEAVE" },
@@ -3644,7 +3644,7 @@ fun QuickAccessFeatureBox(
         color = Slab,
         border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
         modifier = modifier
-            .height(115.dp)
+            .height(132.dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() }
     ) {
@@ -3670,7 +3670,7 @@ fun QuickAccessFeatureBox(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                    .padding(horizontal = 8.dp, vertical = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
@@ -3679,7 +3679,7 @@ fun QuickAccessFeatureBox(
                 // Icon in circular highlight
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
                         .background(Blaze.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
@@ -3688,7 +3688,7 @@ fun QuickAccessFeatureBox(
                         imageVector = icon,
                         contentDescription = title,
                         tint = Blaze,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(26.dp)
                     )
                 }
 
@@ -3708,7 +3708,7 @@ fun QuickAccessFeatureBox(
                         textAlign = TextAlign.Center,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
                     )
                 }
             }
