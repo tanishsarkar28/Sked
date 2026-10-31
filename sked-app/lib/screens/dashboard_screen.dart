@@ -300,11 +300,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
-  Future<void> _showFullReAuthDialog() async {
+  Future<void> _showFullReAuthDialog({String? prefill, String? errorMsg}) async {
     final prefs = await SharedPreferences.getInstance();
     final savedPwd = prefs.getString('saved_ums_pwd') ?? '';
 
-    if (savedPwd.isNotEmpty) {
+    if (savedPwd.isNotEmpty && errorMsg == null) {
       setState(() {
         _resyncPassword = savedPwd;
         _showWebViewBridge = true;
@@ -312,7 +312,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       return;
     }
 
-    final pwdCtrl = TextEditingController();
+    final initial = prefill ?? savedPwd;
+    final pwdCtrl = TextEditingController(text: initial);
     var passVisible = false;
 
     if (!mounted) return;
@@ -340,6 +341,26 @@ class _DashboardScreenState extends State<DashboardScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (errorMsg != null && errorMsg.isNotEmpty) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: SkedColors.dangerRed.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: SkedColors.dangerRed.withOpacity(0.35)),
+                  ),
+                  child: Text(
+                    errorMsg,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFF87171),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
               Text(
                 'Enter your UMS password to refresh your latest schedule for ${widget.userId}:',
                 style: const TextStyle(fontSize: 13, color: SkedColors.slate),
@@ -605,14 +626,26 @@ class _DashboardScreenState extends State<DashboardScreen>
         userId: widget.userId,
         password: _resyncPassword,
         onDismiss: () => setState(() => _showWebViewBridge = false),
-        onError: (errMsg) {
+        onError: (errMsg) async {
           setState(() => _showWebViewBridge = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errMsg),
-              backgroundColor: SkedColors.dangerRed,
-            ),
-          );
+          final isAuthError = errMsg.toLowerCase().contains('password') ||
+              errMsg.toLowerCase().contains('invalid') ||
+              errMsg.toLowerCase().contains('locked') ||
+              errMsg.toLowerCase().contains('credential');
+          if (isAuthError) {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove('saved_ums_pwd');
+            if (mounted) {
+              _showFullReAuthDialog(prefill: _resyncPassword, errorMsg: errMsg);
+            }
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(errMsg),
+                backgroundColor: SkedColors.dangerRed,
+              ),
+            );
+          }
         },
         onSuccess: (_) {
           setState(() => _showWebViewBridge = false);

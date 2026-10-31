@@ -501,9 +501,18 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
             onError = { err ->
                 loginErrorMessage = err
                 showWebViewBridge = false
-                showReSyncDialog = false
-                if (currentUserId.isNotBlank()) {
-                    Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                val isAuthError = err.contains("password", ignoreCase = true) ||
+                        err.contains("invalid", ignoreCase = true) ||
+                        err.contains("locked", ignoreCase = true) ||
+                        err.contains("credential", ignoreCase = true)
+                if (isAuthError && currentUserId.isNotBlank()) {
+                    prefs.edit().remove("saved_ums_pwd").apply()
+                    showReSyncDialog = true
+                } else {
+                    showReSyncDialog = false
+                    if (currentUserId.isNotBlank()) {
+                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                    }
                 }
             }
         )
@@ -512,11 +521,15 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
     // ── Re-Sync Password Dialog ──────────────────────────────────────────────
     if (showReSyncDialog) {
         val savedPwd = prefs.getString("saved_ums_pwd", "") ?: ""
-        var resyncPassword by remember { mutableStateOf(savedPwd) }
+        val initialPwd = if (savedPwd.isNotBlank()) savedPwd else loginPasswordInput
+        var resyncPassword by remember(showReSyncDialog) { mutableStateOf(initialPwd) }
         var passwordVisible by remember { mutableStateOf(false) }
 
         AlertDialog(
-            onDismissRequest = { showReSyncDialog = false },
+            onDismissRequest = {
+                loginErrorMessage = ""
+                showReSyncDialog = false
+            },
             containerColor = SurfaceCard,
             shape = RoundedCornerShape(20.dp),
             title = {
@@ -528,6 +541,23 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
             },
             text = {
                 Column {
+                    if (loginErrorMessage.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFEF4444).copy(alpha = 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = loginErrorMessage,
+                                color = Color(0xFFF87171),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
                     Text(
                         "Enter your UMS password to refresh your latest schedule for $currentUserId:",
                         color = TextSecondary,
@@ -568,6 +598,7 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                         if (resyncPassword.isNotBlank()) {
                             prefs.edit().putString("saved_ums_pwd", resyncPassword).apply()
                             loginPasswordInput = resyncPassword
+                            loginErrorMessage = ""
                             showReSyncDialog = false
                             showWebViewBridge = true
                         }
@@ -579,7 +610,10 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showReSyncDialog = false }) {
+                TextButton(onClick = {
+                    loginErrorMessage = ""
+                    showReSyncDialog = false
+                }) {
                     Text("Cancel", color = TextSecondary)
                 }
             }
