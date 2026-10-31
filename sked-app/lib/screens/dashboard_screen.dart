@@ -794,7 +794,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         OutlinedButton.icon(
                           onPressed: _isLoading
                               ? null
-                              : () => _showFullReAuthDialog(),
+                              : () => _triggerReSync(),
                           style: OutlinedButton.styleFrom(
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                             side: BorderSide(color: _isLoading ? SkedColors.blaze : SkedColors.rule),

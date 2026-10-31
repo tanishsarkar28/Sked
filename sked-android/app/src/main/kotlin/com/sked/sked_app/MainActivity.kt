@@ -468,9 +468,9 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
             isLoading = isLoading,
             lastSyncTimestamp = lastSyncTimestamp,
             exams = examList,
-            onRefresh = triggerFullReSync,
+            onRefresh = triggerForcedSync,
             onPinWidget = onPinWidget,
-            onReSync = triggerFullReSync,
+            onReSync = triggerForcedSync,
             onFullReSync = triggerFullReSync,
             onLogoutClick = { showLogoutDialog = true }
         )
@@ -1143,7 +1143,7 @@ fun DashboardScreen(
                 "LEAVE" -> {
                     com.sked.sked_app.leave.LeaveScreen(
                         onBack = { activeTab = "HOME" },
-                        onReSync = onFullReSync,
+                        onReSync = onReSync,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -1151,7 +1151,7 @@ fun DashboardScreen(
                     com.sked.sked_app.leave.LeaveSlipScreen(
                         onBack = { activeTab = "HOME" },
                         onApplyLeave = { activeTab = "LEAVE" },
-                        onReSync = onFullReSync,
+                        onReSync = onReSync,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -1229,7 +1229,7 @@ fun DashboardScreen(
                                 // Re-sync
                                 Column(horizontalAlignment = Alignment.End) {
                                     OutlinedButton(
-                                        onClick = { onFullReSync() },
+                                        onClick = { onReSync() },
                                         enabled = !isLoading,
                                         shape = RoundedCornerShape(4.dp),
                                         border = androidx.compose.foundation.BorderStroke(1.dp, if (isLoading) Blaze else Rule),
@@ -2278,8 +2278,11 @@ fun UmsAuthBridgeDialog(
                                             window._skedStatus = 'Fetching schedule & datesheet...';
 
                                             function safeFetch(url, name) {
-                                                return fetch(url, { credentials: 'include' })
+                                                var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+                                                var timeoutId = controller ? setTimeout(function() { controller.abort(); }, 3500) : null;
+                                                return fetch(url, { credentials: 'include', signal: controller ? controller.signal : undefined })
                                                     .then(function(r) {
+                                                        if (timeoutId) clearTimeout(timeoutId);
                                                         if (!r.ok) return { name: name, status: r.status, html: '' };
                                                         return r.text().then(function(t) {
                                                             if (t.includes('LoginNew') || t.includes('lockerror') || t.includes('lblError')) {
@@ -2289,6 +2292,7 @@ fun UmsAuthBridgeDialog(
                                                         });
                                                     })
                                                     .catch(function(e) {
+                                                        if (timeoutId) clearTimeout(timeoutId);
                                                         return { name: name, status: 0, html: '', error: e.toString() };
                                                     });
                                             }
@@ -2322,16 +2326,7 @@ fun UmsAuthBridgeDialog(
 
                                             var dsUrls = [
                                                 '/lpuums/frmStudentDateSheet.aspx',
-                                                '/frmStudentDateSheet.aspx',
-                                                '/lpuums/frmDateSheet.aspx',
-                                                '/frmDateSheet.aspx',
-                                                '/lpuums/frmStudentExamSchedule.aspx',
-                                                '/frmStudentExamSchedule.aspx',
-                                                '/lpuums/frmSeatingPlan.aspx',
-                                                '/frmSeatingPlan.aspx',
-                                                '/lpuums/frmStudentSeatingPlan.aspx',
-                                                '/frmStudentSeatingPlan.aspx',
-                                                '/lpuums/frmExamSeatingPlan.aspx'
+                                                '/lpuums/frmSeatingPlan.aspx'
                                             ];
                                             try {
                                                 var regex = /href=["']([^"']*(?:datesheet|seating|exam|schedule)[^"']*)["']/gi;

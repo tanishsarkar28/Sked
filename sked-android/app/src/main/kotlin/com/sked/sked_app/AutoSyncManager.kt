@@ -344,6 +344,37 @@ object AutoSyncManager {
                     )
                 }
 
+                // Step 3: Fast live hostel leave data sync using active cookies
+                try {
+                    val leaveUrl = URL("https://ums.lpu.in/lpuums/frmStudentHostelLeaveApplicationTermWise.aspx")
+                    val leaveConn = leaveUrl.openConnection() as HttpURLConnection
+                    leaveConn.requestMethod = "GET"
+                    leaveConn.connectTimeout = 6_000
+                    leaveConn.readTimeout = 8_000
+                    leaveConn.instanceFollowRedirects = false
+                    leaveConn.setRequestProperty("User-Agent", userAgent)
+                    leaveConn.setRequestProperty("Cookie", cookies)
+                    val leaveCode = leaveConn.responseCode
+                    if (leaveCode in 200..299) {
+                        val leaveHtml = leaveConn.inputStream.bufferedReader().use { it.readText() }
+                        if (leaveHtml.contains("ctl00_cphHeading") || leaveHtml.contains("RadGrid") || leaveHtml.contains("LeaveDetail") || leaveHtml.contains("Hostel Leave")) {
+                            val parsedLeave = com.sked.sked_app.leave.LeaveParser.parse(leaveHtml)
+                            if (parsedLeave.balance.dayTotal > 0 || parsedLeave.balance.nightTotal > 0) {
+                                com.sked.sked_app.leave.LeaveStorage.saveBalance(context, parsedLeave.balance)
+                                Log.i("AutoSyncManager", "Fast live leave balance saved: ${parsedLeave.balance.dayAvailed}/${parsedLeave.balance.dayTotal}")
+                            }
+                            if (parsedLeave.profile.uid.isNotBlank() || parsedLeave.profile.name.isNotBlank()) {
+                                com.sked.sked_app.leave.LeaveStorage.saveProfile(context, parsedLeave.profile)
+                            }
+                            if (parsedLeave.records.isNotEmpty()) {
+                                com.sked.sked_app.leave.LeaveStorage.saveRecords(context, parsedLeave.records)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("AutoSyncManager", "Fast leave sync skipped: ${e.message}")
+                }
+
                 // Rule 4: Diffing & Makeup Class Tracking
                 val oldActiveKeys = prefs.getStringSet(KEY_ACTIVE_MAKEUP_KEYS, emptySet())?.toMutableSet() ?: mutableSetOf()
                 val notifiedKeys = prefs.getStringSet(KEY_NOTIFIED_MAKEUP_KEYS, emptySet())?.toMutableSet() ?: mutableSetOf()

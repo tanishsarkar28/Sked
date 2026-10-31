@@ -189,8 +189,11 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                 window._skedStatus = 'Fetching schedule & datesheet...';
 
                 function safeFetch(url, name) {
-                    return fetch(url, { credentials: 'include' })
+                    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+                    var timeoutId = controller ? setTimeout(function() { controller.abort(); }, 3500) : null;
+                    return fetch(url, { credentials: 'include', signal: controller ? controller.signal : undefined })
                         .then(function(r) {
+                            if (timeoutId) clearTimeout(timeoutId);
                             if (!r.ok) return { name: name, status: r.status, html: '' };
                             return r.text().then(function(t) {
                                 if (t.includes('LoginNew') || t.includes('lockerror') || t.includes('lblError')) {
@@ -200,6 +203,7 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
                             });
                         })
                         .catch(function(e) {
+                            if (timeoutId) clearTimeout(timeoutId);
                             return { name: name, status: 0, html: '', error: e.toString() };
                         });
                 }
@@ -233,16 +237,7 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
 
                 var dsUrls = [
                     '/lpuums/frmStudentDateSheet.aspx',
-                    '/frmStudentDateSheet.aspx',
-                    '/lpuums/frmDateSheet.aspx',
-                    '/frmDateSheet.aspx',
-                    '/lpuums/frmStudentExamSchedule.aspx',
-                    '/frmStudentExamSchedule.aspx',
-                    '/lpuums/frmSeatingPlan.aspx',
-                    '/frmSeatingPlan.aspx',
-                    '/lpuums/frmStudentSeatingPlan.aspx',
-                    '/frmStudentSeatingPlan.aspx',
-                    '/lpuums/frmExamSeatingPlan.aspx'
+                    '/lpuums/frmSeatingPlan.aspx'
                 ];
                 try {
                     var regex = /href=["']([^"']*(?:datesheet|seating|exam|schedule)[^"']*)["']/gi;
