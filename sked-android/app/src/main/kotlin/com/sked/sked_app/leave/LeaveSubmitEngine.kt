@@ -24,24 +24,51 @@ object LeaveSubmitEngine {
 
     const val LEAVE_URL = "https://ums.lpu.in/lpuums/frmStudentHostelLeaveApplicationTermWise.aspx"
 
+    fun getBestUmsCookies(context: Context): String {
+        val cm = CookieManager.getInstance()
+        cm.flush()
+        val prefs = context.getSharedPreferences(com.sked.sked_app.widget.PREFS_NAME, Context.MODE_PRIVATE)
+        val savedCookies = prefs.getString(com.sked.sked_app.AutoSyncManager.KEY_UMS_COOKIES, "") ?: ""
+
+        if (savedCookies.isNotBlank()) {
+            for (cookie in savedCookies.split(";")) {
+                val trimmed = cookie.trim()
+                if (trimmed.isNotBlank()) {
+                    cm.setCookie("https://ums.lpu.in", trimmed)
+                }
+            }
+            cm.flush()
+        }
+
+        val cmCookies = cm.getCookie("https://ums.lpu.in") ?: ""
+
+        val cookieMap = LinkedHashMap<String, String>()
+        fun parseCookies(str: String) {
+            for (part in str.split(";")) {
+                val trimmed = part.trim()
+                val eqIdx = trimmed.indexOf('=')
+                if (eqIdx > 0) {
+                    val k = trimmed.substring(0, eqIdx).trim()
+                    val v = trimmed.substring(eqIdx + 1).trim()
+                    if (k.isNotBlank() && v.isNotBlank()) {
+                        cookieMap[k] = v
+                    }
+                }
+            }
+        }
+        parseCookies(cmCookies)
+        parseCookies(savedCookies)
+
+        return cookieMap.entries.joinToString("; ") { "${it.key}=${it.value}" }
+    }
+
     /**
      * Fast-path: Fetches leave balance & past history via OkHttpClient with session cookies.
      * Takes ~300ms, completely invisible.
      */
     suspend fun fetchLatestData(context: Context): LeaveSyncResult = withContext(Dispatchers.IO) {
         try {
-            val cm = CookieManager.getInstance()
-            cm.flush()
-            var cookies = cm.getCookie(LEAVE_URL)
-                ?.takeIf { it.isNotBlank() }
-                ?: cm.getCookie("https://ums.lpu.in/lpuums")
-                ?.takeIf { it.isNotBlank() }
-                ?: cm.getCookie("https://ums.lpu.in")
-                ?: ""
-            if (cookies.isBlank()) {
-                val prefs = context.getSharedPreferences(com.sked.sked_app.widget.PREFS_NAME, Context.MODE_PRIVATE)
-                cookies = prefs.getString(com.sked.sked_app.AutoSyncManager.KEY_UMS_COOKIES, "") ?: ""
-            }
+            val cookies = getBestUmsCookies(context)
             if (cookies.isBlank()) {
                 return@withContext LeaveSyncResult.SessionExpired
             }
@@ -115,20 +142,7 @@ object LeaveSubmitEngine {
      */
     suspend fun fetchGatePass(context: Context): Result<HostelGatePass> = withContext(Dispatchers.IO) {
         try {
-            val cm = CookieManager.getInstance()
-            cm.flush()
-            var cookies = cm.getCookie(LEAVE_SLIP_URL)
-                ?.takeIf { it.isNotBlank() }
-                ?: cm.getCookie(LEAVE_URL)
-                ?.takeIf { it.isNotBlank() }
-                ?: cm.getCookie("https://ums.lpu.in/lpuums")
-                ?.takeIf { it.isNotBlank() }
-                ?: cm.getCookie("https://ums.lpu.in")
-                ?: ""
-            if (cookies.isBlank()) {
-                val prefs = context.getSharedPreferences(com.sked.sked_app.widget.PREFS_NAME, Context.MODE_PRIVATE)
-                cookies = prefs.getString(com.sked.sked_app.AutoSyncManager.KEY_UMS_COOKIES, "") ?: ""
-            }
+            val cookies = getBestUmsCookies(context)
             if (cookies.isBlank()) {
                 return@withContext Result.failure(Exception("UMS session cookies missing"))
             }

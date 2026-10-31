@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -14,6 +15,9 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
+import java.util.concurrent.TimeUnit
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
@@ -62,6 +66,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.window.Dialog
@@ -1434,6 +1440,8 @@ fun LeaveSlipFetchBridgeDialog(
     var statusText by remember { mutableStateOf("Connecting to UMS...") }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var isDone by remember { mutableStateOf(false) }
+    var showTurnstileManual by remember { mutableStateOf(false) }
+    var waitTicks by remember { mutableIntStateOf(0) }
 
     if (showPasswordInput) {
         Dialog(onDismissRequest = onDismiss) {
@@ -1563,7 +1571,7 @@ fun LeaveSlipFetchBridgeDialog(
         return
     }
 
-    // ── Dedicated Bridge Dialog (Invisible WebView with sleek compact loading card) ──
+    // ── Dedicated Bridge Dialog (Runs full layout behind clean loading card) ──
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -1571,17 +1579,26 @@ fun LeaveSlipFetchBridgeDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.65f)),
+                .background(Ink),
             contentAlignment = Alignment.Center
         ) {
-            // 1. AndroidView WebView (Runs completely hidden in background)
+            // 1. AndroidView WebView (Full layout size so Cloudflare Turnstile auto-solves in ~1.5s)
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
                         settings.useWideViewPort = true
                         settings.loadWithOverviewMode = true
+                        settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+
+                        if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+                            WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
+                        }
 
                         val cm = CookieManager.getInstance()
                         cm.setAcceptCookie(true)
@@ -1648,6 +1665,9 @@ fun LeaveSlipFetchBridgeDialog(
                             fun onStatus(msg: String) {
                                 coroutineScope.launch(Dispatchers.Main) {
                                     statusText = msg
+                                    if (msg.contains("verified", ignoreCase = true) || msg.contains("Submitting", ignoreCase = true)) {
+                                        showTurnstileManual = false
+                                    }
                                 }
                             }
 
@@ -1663,6 +1683,40 @@ fun LeaveSlipFetchBridgeDialog(
                         addJavascriptInterface(SlipJsBridge(), "SlipBridge")
 
                         webViewClient = object : WebViewClient() {
+                            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                                val url = request?.url?.toString() ?: return null
+                                if (url.contains("LoginNew.aspx", ignoreCase = true) && request.method.equals("GET", ignoreCase = true)) {
+                                    try {
+                                        val cookies = cm.getCookie("https://ums.lpu.in") ?: ""
+                                        val client = OkHttpClient.Builder()
+                                            .connectTimeout(12, TimeUnit.SECONDS)
+                                            .readTimeout(12, TimeUnit.SECONDS)
+                                            .followRedirects(true)
+                                            .build()
+                                        val builder = Request.Builder()
+                                            .url(url)
+                                            .get()
+                                            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+                                        if (cookies.isNotBlank()) {
+                                            builder.header("Cookie", cookies)
+                                        }
+                                        val resp = client.newCall(builder.build()).execute()
+                                        val (mime, bodyBytes) = resp.use { r ->
+                                            val setCookies = r.headers("Set-Cookie")
+                                            for (sc in setCookies) {
+                                                cm.setCookie("https://ums.lpu.in", sc)
+                                            }
+                                            val m = r.header("Content-Type", "text/html")?.split(";")?.firstOrNull()?.trim() ?: "text/html"
+                                            Pair(m, r.body?.bytes())
+                                        }
+                                        if (bodyBytes != null) {
+                                            return WebResourceResponse(mime, "utf-8", java.io.ByteArrayInputStream(bodyBytes))
+                                        }
+                                    } catch (_: Exception) {}
+                                }
+                                return super.shouldInterceptRequest(view, request)
+                            }
+
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 val curUrl = url ?: ""
                                 if (curUrl.contains("frmHostelLeaveSlipTest.aspx", ignoreCase = true)) {
@@ -1681,10 +1735,7 @@ fun LeaveSlipFetchBridgeDialog(
                                         """.trimIndent(),
                                         null
                                     )
-                                } else if (curUrl.contains("StudentDashboard", ignoreCase = true) ||
-                                    curUrl.contains("Default3", ignoreCase = true) ||
-                                    curUrl.contains("w-schedule", ignoreCase = true)
-                                ) {
+                                } else if (!curUrl.contains("Login", ignoreCase = true) && !curUrl.contains("about:blank", ignoreCase = true)) {
                                     statusText = "Authenticated! Opening hostel leave slip..."
                                     view?.loadUrl("https://ums.lpu.in/lpuums/frmHostelLeaveSlipTest.aspx")
                                 } else if (curUrl.contains("Login", ignoreCase = true)) {
@@ -1697,61 +1748,115 @@ fun LeaveSlipFetchBridgeDialog(
                         webViewRef = this
                     }
                 },
-                modifier = Modifier
-                    .size(1.dp)
-                    .alpha(0.001f)
+                modifier = Modifier.fillMaxSize()
             )
 
-            // 2. Sleek compact loading card directly on Leave Slip screen
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Slab,
-                border = BorderStroke(1.dp, Rule),
-                modifier = Modifier
-                    .widthIn(min = 280.dp, max = 340.dp)
-                    .padding(24.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+            // 2. Foreground UI: Sleek compact loading card OR Manual Turnstile Check header
+            if (!showTurnstileManual) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Ink)
+                        .clickable(enabled = false) {}, // absorb touches
+                    contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(
-                        color = Blaze,
-                        strokeWidth = 3.dp,
-                        modifier = Modifier.size(36.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "FETCHING LEAVE SLIP",
-                        fontFamily = BarlowCondensed,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = Chalk,
-                        letterSpacing = 0.5.sp
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = statusText,
-                        fontSize = 12.sp,
-                        color = Slate,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(18.dp))
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = SlabElevated,
-                        border = BorderStroke(0.5.dp, Rule),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Slab,
+                        border = BorderStroke(1.dp, Rule),
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onDismiss() }
+                            .widthIn(min = 280.dp, max = 340.dp)
+                            .padding(24.dp)
                     ) {
-                        Text(
-                            text = "CANCEL",
-                            color = Slate,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.5.sp,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-                        )
+                        Column(
+                            modifier = Modifier.padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            CircularProgressIndicator(
+                                color = Blaze,
+                                strokeWidth = 3.dp,
+                                modifier = Modifier.size(36.dp)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "FETCHING LEAVE SLIP",
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = Chalk,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = statusText,
+                                fontSize = 12.sp,
+                                color = Slate,
+                                textAlign = TextAlign.Center
+                            )
+                            if (waitTicks >= 8) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                TextButton(onClick = { showTurnstileManual = true }) {
+                                    Text(
+                                        text = "Taking longer? Tap to verify",
+                                        color = Blaze,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(18.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = SlabElevated,
+                                border = BorderStroke(0.5.dp, Rule),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onDismiss() }
+                            ) {
+                                Text(
+                                    text = "CANCEL",
+                                    color = Slate,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.5.sp,
+                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding(),
+                    color = Slab,
+                    border = BorderStroke(1.dp, Rule)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "VERIFY HUMAN CHECK",
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = Chalk
+                            )
+                            Text(
+                                text = "Tap the Cloudflare checkbox below to finish",
+                                fontSize = 11.sp,
+                                color = Blaze
+                            )
+                        }
+                        TextButton(onClick = { showTurnstileManual = false }) {
+                            Text("HIDE", color = Slate, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
                     }
                 }
             }
@@ -1762,7 +1867,7 @@ fun LeaveSlipFetchBridgeDialog(
                 val safeUser = JSONObject.quote(userId)
                 val safePass = JSONObject.quote(password)
 
-                var waitTicks = 0
+                waitTicks = 0
                 while (!isDone) {
                     delay(700)
                     waitTicks++
@@ -1782,8 +1887,12 @@ fun LeaveSlipFetchBridgeDialog(
                                 var cf = document.querySelector('[name="cf-turnstile-response"]');
                                 var form = document.querySelector('form');
 
-                                if (u && $safeUser && (!u.value || u.value.length === 0)) {
-                                    u.value = $safeUser;
+                                if (u) {
+                                    u.removeAttribute('onchange');
+                                    u.onchange = null;
+                                    if ($safeUser && (!u.value || u.value.length === 0)) {
+                                        u.value = $safeUser;
+                                    }
                                 }
                                 if (p && $safePass && (!p.value || p.value.length === 0)) {
                                     p.value = $safePass;
@@ -1793,7 +1902,7 @@ fun LeaveSlipFetchBridgeDialog(
 
                                 if (cf && cf.value && cf.value.length > 0) {
                                     window._skedSubmitting = true;
-                                    if (window.SlipBridge) window.SlipBridge.onStatus('Turnstile verified! Submitting login...');
+                                    if (window.SlipBridge) window.SlipBridge.onStatus('Security verified! Submitting login...');
                                     var submitBtn = form ? form.querySelector('input[type="submit"]') : null;
                                     if (submitBtn) {
                                         submitBtn.click();
