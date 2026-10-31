@@ -94,6 +94,7 @@ val returnTimeSlots: List<UmsTimeSlot> by lazy {
 fun LeaveScreen(
     onBack: () -> Unit,
     onReSync: (() -> Unit)? = null,
+    onRefreshSession: (((Boolean) -> Unit) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -234,7 +235,7 @@ fun LeaveScreen(
         }
     }
 
-    fun refreshLeaveData() {
+    fun refreshLeaveData(isUserInitiated: Boolean = false) {
         if (isRefreshing) return
         isRefreshing = true
         coroutineScope.launch {
@@ -253,6 +254,32 @@ fun LeaveScreen(
                         relativeMobile = res.data.profile.registeredMobile
                     }
                 }
+                is LeaveSyncResult.SessionExpired -> {
+                    // CRITICAL: Never trigger full interactive session refresh automatically on screen open!
+                    // Only prompt if explicitly requested by the user, and perform a single non-recursive retry.
+                    if (isUserInitiated && onRefreshSession != null) {
+                        onRefreshSession.invoke { success ->
+                            if (success) {
+                                coroutineScope.launch {
+                                    val retry = LeaveSubmitEngine.fetchLatestData(context)
+                                    if (retry is LeaveSyncResult.Success) {
+                                        if (retry.data.balance.dayTotal > 0 || retry.data.balance.nightTotal > 0) {
+                                            balance = retry.data.balance
+                                        }
+                                        if (retry.data.profile.uid.isNotBlank() || retry.data.profile.name.isNotBlank()) {
+                                            profile = retry.data.profile
+                                        }
+                                        if (retry.data.records.isNotEmpty()) {
+                                            records = retry.data.records
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else if (isUserInitiated && onReSync != null) {
+                        onReSync.invoke()
+                    }
+                }
                 else -> {
                     // Silent background update; live data is provided by main app re-sync
                 }
@@ -261,11 +288,73 @@ fun LeaveScreen(
         }
     }
 
+    fun executeSubmitLeave() {
+        isSubmitting = true
+        submitStatusText = "Connecting to UMS..."
+        val finalStay = if (selectedPlace == VisitPlaceOption.HOME) profile.homeAddress else stayAddress
+
+        fun doSubmit(allowSessionRefresh: Boolean = true) {
+            coroutineScope.launch {
+                val res = LeaveSubmitEngine.submitLeave(
+                    context = context,
+                    leaveTypeCode = selectedType.code,
+                    visitPlace = selectedPlace.code,
+                    stayAddress = finalStay,
+                    relativeMobile = relativeMobile,
+                    startCal = startCal,
+                    endCal = endCal,
+                    reason = reason,
+                    onStatus = { status -> submitStatusText = status }
+                )
+
+                if (res.isSuccess) {
+                    isSubmitting = false
+                    val resMsg = res.getOrNull() ?: "Leave Applied"
+                    successLeaveIdDialog = if (resMsg.startsWith("Leave ID", ignoreCase = true)) resMsg else "Leave ID #$resMsg"
+                    refreshLeaveData(isUserInitiated = false)
+                    coroutineScope.launch(Dispatchers.IO) {
+                        try {
+                            LeaveSubmitEngine.fetchGatePass(context)
+                        } catch (_: Exception) {}
+                    }
+                } else {
+                    val err = res.exceptionOrNull()?.message ?: "Submission rejected by UMS"
+                    val isExpired = err.contains("session", ignoreCase = true) ||
+                            err.contains("login", ignoreCase = true) ||
+                            err.contains("re-auth", ignoreCase = true) ||
+                            err.contains("expired", ignoreCase = true)
+
+                    if (isExpired && allowSessionRefresh && onRefreshSession != null) {
+                        isSubmitting = false
+                        Toast.makeText(context, "UMS session expired. Refreshing session...", Toast.LENGTH_SHORT).show()
+                        onRefreshSession.invoke { success ->
+                            if (success) {
+                                isSubmitting = true
+                                doSubmit(allowSessionRefresh = false)
+                            } else {
+                                errorMessageDialog = "UMS session could not be refreshed. Please try again."
+                            }
+                        }
+                    } else if (isExpired && allowSessionRefresh && onReSync != null) {
+                        isSubmitting = false
+                        Toast.makeText(context, "UMS session expired. Refreshing session...", Toast.LENGTH_SHORT).show()
+                        onReSync.invoke()
+                    } else {
+                        isSubmitting = false
+                        errorMessageDialog = err
+                    }
+                }
+            }
+        }
+
+        doSubmit(allowSessionRefresh = true)
+    }
+
     LaunchedEffect(Unit) {
         balance = LeaveStorage.loadBalance(context)
         profile = LeaveStorage.loadProfile(context)
         records = LeaveStorage.loadRecords(context)
-        refreshLeaveData()
+        refreshLeaveData(isUserInitiated = false)
     }
 
     val dateFormat = remember { SimpleDateFormat("EEE, MMM d, yyyy", Locale.US) }
@@ -284,14 +373,47 @@ fun LeaveScreen(
             // ── 1. Header & Live Balance Summary Cards ────────────────────────
             item {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "HOSTEL LEAVE BALANCE",
-                        fontFamily = BarlowCondensed,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = Slate,
-                        letterSpacing = 0.8.sp
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "HOSTEL LEAVE BALANCE",
+                            fontFamily = BarlowCondensed,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = Slate,
+                            letterSpacing = 0.8.sp
+                        )
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable(enabled = !isRefreshing) {
+                                    refreshLeaveData(isUserInitiated = true)
+                                }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            if (isRefreshing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(12.dp),
+                                    strokeWidth = 1.5.dp,
+                                    color = Blaze
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+                            Text(
+                                text = if (isRefreshing) "SYNCING..." else "REFRESH",
+                                fontFamily = BarlowCondensed,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                color = if (isRefreshing) Blaze else Slate,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -868,7 +990,7 @@ fun LeaveScreen(
                                         title = "Authorize Leave Application",
                                         subtitle = "${selectedType.displayName} • ${timeFormat.format(startCal.time)} to ${timeFormat.format(endCal.time)}",
                                         onSuccess = {
-                                            showApplyBridge = true
+                                            executeSubmitLeave()
                                         },
                                         onError = { err ->
                                             if (!err.contains("Cancelled", ignoreCase = true)) {
@@ -877,7 +999,7 @@ fun LeaveScreen(
                                         }
                                     )
                                 } else {
-                                    showApplyBridge = true
+                                    executeSubmitLeave()
                                 }
                             },
                             shape = RoundedCornerShape(8.dp),

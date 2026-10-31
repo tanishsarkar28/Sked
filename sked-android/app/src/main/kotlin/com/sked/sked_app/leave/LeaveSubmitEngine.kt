@@ -62,6 +62,14 @@ object LeaveSubmitEngine {
         return cookieMap.entries.joinToString("; ") { "${it.key}=${it.value}" }
     }
 
+    fun getDefaultUserAgent(context: Context): String {
+        return try {
+            android.webkit.WebSettings.getDefaultUserAgent(context)
+        } catch (_: Exception) {
+            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+        }
+    }
+
     /**
      * Fast-path: Fetches leave balance & past history via OkHttpClient with session cookies.
      * Takes ~300ms, completely invisible.
@@ -82,7 +90,7 @@ object LeaveSubmitEngine {
             val req = Request.Builder()
                 .url(LEAVE_URL)
                 .header("Cookie", cookies)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+                .header("User-Agent", getDefaultUserAgent(context))
                 .build()
 
             client.newCall(req).execute().use { resp ->
@@ -156,7 +164,7 @@ object LeaveSubmitEngine {
             val req = Request.Builder()
                 .url(LEAVE_SLIP_URL)
                 .header("Cookie", cookies)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+                .header("User-Agent", getDefaultUserAgent(context))
                 .build()
 
             client.newCall(req).execute().use { resp ->
@@ -180,7 +188,7 @@ object LeaveSubmitEngine {
                                 val photoReq = Request.Builder()
                                     .url(STUDENT_PHOTO_URL)
                                     .header("Cookie", cookies)
-                                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+                                    .header("User-Agent", getDefaultUserAgent(context))
                                     .build()
                                 client.newCall(photoReq).execute().use { photoResp ->
                                     val bytes = photoResp.body?.bytes()
@@ -226,6 +234,12 @@ object LeaveSubmitEngine {
             val webView = WebView(context)
             webView.settings.javaScriptEnabled = true
             webView.settings.domStorageEnabled = true
+            webView.settings.useWideViewPort = true
+            webView.settings.loadWithOverviewMode = true
+            webView.settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+                androidx.webkit.WebSettingsCompat.setRequestedWithHeaderOriginAllowList(webView.settings, emptySet())
+            }
 
             fun finishWith(result: Result<String>) {
                 if (!isResumed) {
@@ -239,14 +253,13 @@ object LeaveSubmitEngine {
                 }
             }
 
-            // Ensure CookieManager has the latest saved UMS session cookies
+            // Ensure CookieManager has the latest merged UMS session cookies
             val cm = CookieManager.getInstance()
             cm.setAcceptCookie(true)
             cm.setAcceptThirdPartyCookies(webView, true)
-            val prefs = context.getSharedPreferences(com.sked.sked_app.widget.PREFS_NAME, Context.MODE_PRIVATE)
-            val savedCookies = prefs.getString(com.sked.sked_app.AutoSyncManager.KEY_UMS_COOKIES, "") ?: ""
-            if (savedCookies.isNotBlank()) {
-                for (cookie in savedCookies.split(";")) {
+            val bestCookies = getBestUmsCookies(context)
+            if (bestCookies.isNotBlank()) {
+                for (cookie in bestCookies.split(";")) {
                     val trimmed = cookie.trim()
                     if (trimmed.isNotBlank()) {
                         cm.setCookie("https://ums.lpu.in", trimmed)
@@ -613,7 +626,7 @@ object LeaveSubmitEngine {
             webView.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-                    if (url != null && (url.contains("LoginNew.aspx", ignoreCase = true) || url.contains("Login.aspx", ignoreCase = true))) {
+                    if (url != null && (url.contains("LoginNew.aspx", ignoreCase = true) || url.contains("Login.aspx", ignoreCase = true) || url.contains("Default3.aspx", ignoreCase = true) || url.contains("lockerror", ignoreCase = true))) {
                         finishWith(Result.failure(Exception("UMS session expired. Please re-authenticate.")))
                         return
                     }

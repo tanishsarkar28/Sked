@@ -379,6 +379,7 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
 
     var showAdminDashboard by remember { mutableStateOf(false) }
     var loginErrorMessage by remember { mutableStateOf("") }
+    var sessionRefreshCallback by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
 
     // ── SCREEN SWITCHING: Admin / Login / Dashboard ──────────────
     if (showAdminDashboard) {
@@ -424,6 +425,8 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                             } else {
                                 Toast.makeText(context, "Timetable up to date.", Toast.LENGTH_SHORT).show()
                             }
+                            sessionRefreshCallback?.invoke(true)
+                            sessionRefreshCallback = null
                         }
                         AndroidSyncResultType.AUTH_EXPIRED, AndroidSyncResultType.SERVER_ERROR -> {
                             val savedPwd = prefs.getString("saved_ums_pwd", "") ?: ""
@@ -440,6 +443,8 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                         }
                         else -> {
                             loadLocalData()
+                            sessionRefreshCallback?.invoke(false)
+                            sessionRefreshCallback = null
                         }
                     }
                 }
@@ -451,6 +456,20 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
             loginUserIdInput = currentUserId
             if (savedPwd.isNotBlank()) {
                 loginPasswordInput = savedPwd
+                showWebViewBridge = true
+            } else {
+                showReSyncDialog = true
+            }
+        }
+
+        // Direct session refresh callback for hostel leave & slip actions
+        val triggerDirectSessionRefresh: ((Boolean) -> Unit) -> Unit = { onComplete ->
+            sessionRefreshCallback = onComplete
+            val savedPwd = prefs.getString("saved_ums_pwd", "") ?: ""
+            loginUserIdInput = currentUserId
+            if (savedPwd.isNotBlank()) {
+                loginPasswordInput = savedPwd
+                Toast.makeText(context, "Refreshing UMS session...", Toast.LENGTH_SHORT).show()
                 showWebViewBridge = true
             } else {
                 showReSyncDialog = true
@@ -472,6 +491,7 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
             onPinWidget = onPinWidget,
             onReSync = triggerForcedSync,
             onFullReSync = triggerFullReSync,
+            onRefreshSession = triggerDirectSessionRefresh,
             onLogoutClick = { showLogoutDialog = true }
         )
     }
@@ -481,7 +501,11 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
         UmsAuthBridgeDialog(
             userId = loginUserIdInput,
             password = loginPasswordInput,
-            onDismiss = { showWebViewBridge = false },
+            onDismiss = {
+                showWebViewBridge = false
+                sessionRefreshCallback?.invoke(false)
+                sessionRefreshCallback = null
+            },
             onSuccess = { syncedUserId ->
                 loginErrorMessage = ""
                 currentUserId = syncedUserId
@@ -497,6 +521,8 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                 showReSyncDialog = false
                 loadLocalData()
                 onWidgetUpdate()
+                sessionRefreshCallback?.invoke(true)
+                sessionRefreshCallback = null
             },
             onError = { err ->
                 loginErrorMessage = err
@@ -513,6 +539,8 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                     if (currentUserId.isNotBlank()) {
                         Toast.makeText(context, err, Toast.LENGTH_LONG).show()
                     }
+                    sessionRefreshCallback?.invoke(false)
+                    sessionRefreshCallback = null
                 }
             }
         )
@@ -529,6 +557,8 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
             onDismissRequest = {
                 loginErrorMessage = ""
                 showReSyncDialog = false
+                sessionRefreshCallback?.invoke(false)
+                sessionRefreshCallback = null
             },
             containerColor = SurfaceCard,
             shape = RoundedCornerShape(20.dp),
@@ -613,6 +643,8 @@ fun SkedApp(onPinWidget: () -> Unit, onWidgetUpdate: () -> Unit) {
                 TextButton(onClick = {
                     loginErrorMessage = ""
                     showReSyncDialog = false
+                    sessionRefreshCallback?.invoke(false)
+                    sessionRefreshCallback = null
                 }) {
                     Text("Cancel", color = TextSecondary)
                 }
@@ -969,6 +1001,7 @@ fun DashboardScreen(
     onPinWidget: () -> Unit,
     onReSync: () -> Unit,
     onFullReSync: () -> Unit = onReSync,
+    onRefreshSession: ((Boolean) -> Unit) -> Unit = {},
     onLogoutClick: () -> Unit
 ) {
     val context = LocalContext.current
@@ -1144,6 +1177,7 @@ fun DashboardScreen(
                     com.sked.sked_app.leave.LeaveScreen(
                         onBack = { activeTab = "HOME" },
                         onReSync = onReSync,
+                        onRefreshSession = onRefreshSession,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -1152,6 +1186,7 @@ fun DashboardScreen(
                         onBack = { activeTab = "HOME" },
                         onApplyLeave = { activeTab = "LEAVE" },
                         onReSync = onReSync,
+                        onRefreshSession = onRefreshSession,
                         modifier = Modifier.fillMaxSize()
                     )
                 }

@@ -179,6 +179,7 @@ fun LeaveSlipScreen(
     onBack: () -> Unit,
     onApplyLeave: (() -> Unit)? = null,
     onReSync: (() -> Unit)? = null,
+    onRefreshSession: (((Boolean) -> Unit) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -213,28 +214,56 @@ fun LeaveSlipScreen(
     fun triggerFetchSlip() {
         if (isFetchingSlip) return
         isFetchingSlip = true
-        coroutineScope.launch {
-            val passRes = LeaveSubmitEngine.fetchGatePass(context)
-            if (passRes.isSuccess) {
-                val pass = passRes.getOrThrow()
-                gatePass = pass
-                isFetchingSlip = false
-                val expired = isLeaveExpired(pass.dateOfReturn, 10)
-                if (pass.hasActivePass && !expired && pass.checkInTime.isBlank() && pass.leaveCode != "6000") {
-                    Toast.makeText(context, "Leave slip fetched from UMS", Toast.LENGTH_SHORT).show()
-                } else if (!pass.hasActivePass || pass.leaveCode == "6000") {
-                    Toast.makeText(context, "UMS reports: No active leave slip", Toast.LENGTH_SHORT).show()
-                } else if (expired) {
-                    Toast.makeText(context, "Leave slip fetched (Expired 10m post-return)", Toast.LENGTH_SHORT).show()
+
+        fun doFetch() {
+            coroutineScope.launch {
+                val passRes = LeaveSubmitEngine.fetchGatePass(context)
+                if (passRes.isSuccess) {
+                    val pass = passRes.getOrThrow()
+                    gatePass = pass
+                    isFetchingSlip = false
+                    val expired = isLeaveExpired(pass.dateOfReturn, 10)
+                    if (pass.hasActivePass && !expired && pass.checkInTime.isBlank() && pass.leaveCode != "6000") {
+                        Toast.makeText(context, "Leave slip fetched from UMS", Toast.LENGTH_SHORT).show()
+                    } else if (!pass.hasActivePass || pass.leaveCode == "6000") {
+                        Toast.makeText(context, "UMS reports: No active leave slip", Toast.LENGTH_SHORT).show()
+                    } else if (expired) {
+                        Toast.makeText(context, "Leave slip fetched (Expired 10m post-return)", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Leave slip fetched (Checked in / completed)", Toast.LENGTH_SHORT).show()
+                    }
+                    // Auto-sync leave records in background
+                    LeaveSubmitEngine.fetchLatestData(context)
                 } else {
-                    Toast.makeText(context, "Leave slip fetched (Checked in / completed)", Toast.LENGTH_SHORT).show()
+                    val err = passRes.exceptionOrNull()?.message ?: ""
+                    val isSessionExpired = err.contains("session", ignoreCase = true) ||
+                            err.contains("login", ignoreCase = true) ||
+                            err.contains("re-auth", ignoreCase = true) ||
+                            err.contains("expired", ignoreCase = true)
+
+                    if (isSessionExpired && onRefreshSession != null) {
+                        Toast.makeText(context, "UMS session expired. Refreshing session...", Toast.LENGTH_SHORT).show()
+                        onRefreshSession.invoke { success ->
+                            if (success) {
+                                doFetch()
+                            } else {
+                                isFetchingSlip = false
+                                showSlipBridge = true
+                            }
+                        }
+                    } else if (isSessionExpired && onReSync != null) {
+                        isFetchingSlip = false
+                        Toast.makeText(context, "UMS session expired. Refreshing session...", Toast.LENGTH_SHORT).show()
+                        onReSync.invoke()
+                    } else {
+                        isFetchingSlip = false
+                        showSlipBridge = true
+                    }
                 }
-            } else {
-                // Cookies expired or missing -> launch dedicated login & slip scraper dialog
-                isFetchingSlip = false
-                showSlipBridge = true
             }
         }
+
+        doFetch()
     }
 
     fun refreshData() {
@@ -254,7 +283,20 @@ fun LeaveSlipScreen(
                     Toast.makeText(context, "Gate pass updated", Toast.LENGTH_SHORT).show()
                 }
                 is LeaveSyncResult.SessionExpired -> {
-                    // Never trigger full timetable re-sync from leave slip screen!
+                    if (onRefreshSession != null) {
+                        onRefreshSession.invoke { success ->
+                            if (success) {
+                                coroutineScope.launch {
+                                    val retryPass = LeaveSubmitEngine.fetchGatePass(context)
+                                    if (retryPass.isSuccess) gatePass = retryPass.getOrThrow()
+                                    val retryData = LeaveSubmitEngine.fetchLatestData(context)
+                                    if (retryData is LeaveSyncResult.Success) {
+                                        records = retryData.data.records
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 is LeaveSyncResult.Error -> {
                     if (passRes.isSuccess) {
@@ -492,7 +534,8 @@ fun LeaveSlipScreen(
             }
             LeaveSlipMode.UMS_PORTAL -> {
                 UmsPortalWebView(
-                    onReSync = onReSync
+                    onReSync = onReSync,
+                    onRefreshSession = onRefreshSession
                 )
             }
         }
@@ -1144,7 +1187,8 @@ private fun SlipFieldRow(
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun UmsPortalWebView(
-    onReSync: (() -> Unit)? = null
+    onReSync: (() -> Unit)? = null,
+    onRefreshSession: (((Boolean) -> Unit) -> Unit)? = null
 ) {
     val context = LocalContext.current
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
@@ -1381,7 +1425,30 @@ private fun UmsPortalWebView(
                             textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(18.dp))
-                        if (onReSync != null) {
+                        if (onRefreshSession != null) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Blaze,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        onRefreshSession.invoke { success ->
+                                            if (success) {
+                                                webViewRef?.reload()
+                                            }
+                                        }
+                                    }
+                            ) {
+                                Text(
+                                    text = "RE-AUTHENTICATE ON UMS",
+                                    fontFamily = BarlowCondensed,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = Ink,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                                )
+                            }
+                        } else if (onReSync != null) {
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = Blaze,
@@ -1696,7 +1763,7 @@ fun LeaveSlipFetchBridgeDialog(
                                         val builder = Request.Builder()
                                             .url(url)
                                             .get()
-                                            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+                                            .header("User-Agent", LeaveSubmitEngine.getDefaultUserAgent(context))
                                         if (cookies.isNotBlank()) {
                                             builder.header("Cookie", cookies)
                                         }
