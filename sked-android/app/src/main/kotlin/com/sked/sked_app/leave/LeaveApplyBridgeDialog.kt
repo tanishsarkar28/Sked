@@ -24,6 +24,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -103,10 +104,8 @@ fun LeaveApplyBridgeDialog(
     var passwordVisible by remember { mutableStateOf(false) }
 
     var statusText by remember { mutableStateOf("Connecting to UMS hostel portal...") }
-    var showRawWebView by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var isDone by remember { mutableStateOf(false) }
-    var turnstileWaitTicks by remember { mutableIntStateOf(0) }
 
     // ── Credential Input Dialog (If not saved yet) ─────────────────────────
     if (showPasswordInput) {
@@ -237,7 +236,7 @@ fun LeaveApplyBridgeDialog(
         return
     }
 
-    // ── Dedicated Bridge Dialog ────────────────────────────────────────────
+    // ── Dedicated Bridge Dialog (Invisible WebView with sleek compact loading card) ──
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -245,417 +244,331 @@ fun LeaveApplyBridgeDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Ink)
+                .background(Color.Black.copy(alpha = 0.65f)),
+            contentAlignment = Alignment.Center
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)
-            ) {
-                // Top Header Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Fingerprint,
-                            contentDescription = null,
-                            tint = Blaze,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "APPLYING HOSTEL LEAVE",
-                                fontFamily = BarlowCondensed,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = Blaze,
-                                letterSpacing = 0.5.sp
-                            )
-                            Text(
-                                text = "Direct UMS submission • No full sync",
-                                fontSize = 10.5.sp,
-                                color = Slate
+            // 1. AndroidView WebView (Runs completely hidden in background)
+            AndroidView(
+                factory = { ctx ->
+                    WebView(ctx).apply {
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.useWideViewPort = true
+                        settings.loadWithOverviewMode = true
+
+                        val cm = CookieManager.getInstance()
+                        cm.setAcceptCookie(true)
+                        cm.setAcceptThirdPartyCookies(this, true)
+
+                        // Prime CookieManager with saved cookies
+                        val savedCookies = prefs.getString(AutoSyncManager.KEY_UMS_COOKIES, "") ?: ""
+                        if (savedCookies.isNotBlank()) {
+                            for (cookie in savedCookies.split(";")) {
+                                val trimmed = cookie.trim()
+                                if (trimmed.isNotBlank()) {
+                                    cm.setCookie("https://ums.lpu.in", trimmed)
+                                }
+                            }
+                            cm.flush()
+                        }
+
+                        var initialTopLeaveId: String? = null
+                        var stage = 0 // 0: initial load, 1: leaveType set postback, 2: submitted
+                        var capturedAlert: String? = null
+
+                        fun isSuccessAlert(msg: String): Boolean {
+                            val lower = msg.lowercase()
+                            if (lower.contains("already applied") ||
+                                lower.contains("already exist") ||
+                                lower.contains("still pending") ||
+                                lower.contains("cannot") ||
+                                lower.contains("not allow") ||
+                                lower.contains("reject") ||
+                                lower.contains("fail") ||
+                                lower.contains("error") ||
+                                lower.contains("invalid") ||
+                                lower.contains("exceed") ||
+                                lower.contains("exhaust") ||
+                                lower.contains("not permissible") ||
+                                lower.contains("curfew")
+                            ) {
+                                return false
+                            }
+                            return lower.contains("success") ||
+                                    (lower.contains("applied") && !lower.contains("already")) ||
+                                    lower.contains("approved")
+                        }
+
+                        fun extractLeaveId(msg: String): String {
+                            val regex = "\\b\\d{5,8}\\b".toRegex()
+                            val match = regex.find(msg)
+                            return match?.value ?: msg
+                        }
+
+                        fun populateAndSubmitForm(wv: WebView) {
+                            if (stage >= 2) return
+                            stage = 2
+                            statusText = "Configuring leave details & dates..."
+                            executeFormFillAndSubmit(
+                                wv = wv,
+                                visitPlace = selectedPlace.code,
+                                stayAddress = stayAddress,
+                                relativeMobile = relativeMobile,
+                                startCal = startCal,
+                                endCal = endCal,
+                                reason = reason
                             )
                         }
+
+                        class LeaveBridge {
+                            @JavascriptInterface
+                            fun onInitialTopLeaveId(id: String) {
+                                if (initialTopLeaveId == null && id.isNotBlank()) {
+                                    initialTopLeaveId = id.trim()
+                                    android.util.Log.i("SkedLeaveBridge", "Recorded initial leave ID: '$initialTopLeaveId'")
+                                }
+                            }
+
+                            @JavascriptInterface
+                            fun onLeaveTypeReady() {
+                                coroutineScope.launch(Dispatchers.Main) {
+                                    populateAndSubmitForm(this@apply)
+                                }
+                            }
+
+                            @JavascriptInterface
+                            fun onAlert(msg: String) {
+                                capturedAlert = msg
+                                coroutineScope.launch(Dispatchers.Main) {
+                                    if (stage >= 1) {
+                                        if (isSuccessAlert(msg)) {
+                                            if (!isDone) {
+                                                isDone = true
+                                                val cleanId = extractLeaveId(msg)
+                                                saveFreshCookies(cm, prefs)
+                                                onSuccess(cleanId)
+                                            }
+                                        } else {
+                                            if (!isDone) {
+                                                isDone = true
+                                                onError(msg)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            @JavascriptInterface
+                            fun onError(err: String) {
+                                coroutineScope.launch(Dispatchers.Main) {
+                                    if (!isDone) {
+                                        isDone = true
+                                        onError(err)
+                                    }
+                                }
+                            }
+
+                            @JavascriptInterface
+                            fun onStatus(msg: String) {
+                                coroutineScope.launch(Dispatchers.Main) {
+                                    statusText = msg
+                                }
+                            }
+                        }
+
+                        addJavascriptInterface(LeaveBridge(), "LeaveBridge")
+
+                        webChromeClient = object : WebChromeClient() {
+                            override fun onJsAlert(
+                                view: WebView?,
+                                url: String?,
+                                message: String?,
+                                result: JsResult?
+                            ): Boolean {
+                                val msg = message ?: "Unknown alert"
+                                capturedAlert = msg
+                                result?.confirm()
+                                if (stage >= 1) {
+                                    coroutineScope.launch(Dispatchers.Main) {
+                                        if (isSuccessAlert(msg)) {
+                                            if (!isDone) {
+                                                isDone = true
+                                                val cleanId = extractLeaveId(msg)
+                                                saveFreshCookies(cm, prefs)
+                                                onSuccess(cleanId)
+                                            }
+                                        } else {
+                                            if (!isDone) {
+                                                isDone = true
+                                                onError(msg)
+                                            }
+                                        }
+                                    }
+                                }
+                                return true
+                            }
+
+                            override fun onJsConfirm(
+                                view: WebView?,
+                                url: String?,
+                                message: String?,
+                                result: JsResult?
+                            ): Boolean {
+                                result?.confirm()
+                                return true
+                            }
+                        }
+
+                        webViewClient = object : WebViewClient() {
+                            override fun onPageFinished(view: WebView?, url: String?) {
+                                val curUrl = url ?: ""
+                                if (curUrl.contains("Login", ignoreCase = true)) {
+                                    statusText = "Authenticating with UMS..."
+                                } else if (curUrl.contains("StudentDashboard", ignoreCase = true) ||
+                                    curUrl.contains("Default3", ignoreCase = true) ||
+                                    curUrl.contains("w-schedule", ignoreCase = true)
+                                ) {
+                                    statusText = "Authenticated! Opening hostel portal..."
+                                    saveFreshCookies(cm, prefs)
+                                    view?.loadUrl(LEAVE_PORTAL_URL)
+                                } else if (curUrl.contains("frmStudentHostelLeaveApplicationTermWise", ignoreCase = true)) {
+                                    saveFreshCookies(cm, prefs)
+                                    when (stage) {
+                                        0 -> {
+                                            // Step 1: Capture initial top leave ID & set leave type
+                                            statusText = "Setting leave type..."
+                                            stage = 1
+                                            val jsSetType = """
+                                                (function() {
+                                                    try {
+                                                        window.alert = function(msg) { window.LeaveBridge.onAlert(msg); };
+                                                        window.confirm = function() { return true; };
+
+                                                        try {
+                                                            var fr = document.querySelector('#ctl00_cphHeading_grdLeaveDetail tr:nth-child(2)');
+                                                            if (fr && fr.cells[0]) {
+                                                                window.LeaveBridge.onInitialTopLeaveId(fr.cells[0].innerText.trim());
+                                                            }
+                                                        } catch(e) {}
+
+                                                        var sel = document.getElementById('ctl00_cphHeading_drpLeaveType');
+                                                        if (sel) {
+                                                            if (sel.value === '${selectedType.code}') {
+                                                                window.LeaveBridge.onLeaveTypeReady();
+                                                            } else {
+                                                                sel.value = '${selectedType.code}';
+                                                                if (typeof __doPostBack === 'function') {
+                                                                    __doPostBack('ctl00${'$'}cphHeading${'$'}drpLeaveType', '');
+                                                                } else {
+                                                                    sel.dispatchEvent(new Event('change', { bubbles: true }));
+                                                                }
+                                                            }
+                                                        } else {
+                                                            window.LeaveBridge.onLeaveTypeReady();
+                                                        }
+                                                    } catch(e) {
+                                                        window.LeaveBridge.onError('Failed to set leave type: ' + e.toString());
+                                                    }
+                                                })();
+                                            """.trimIndent()
+                                            view?.evaluateJavascript(jsSetType, null)
+                                        }
+
+                                        1 -> {
+                                            // PostBack completed after setting leave type -> fill and submit!
+                                            populateAndSubmitForm(this@apply)
+                                        }
+
+                                        2 -> {
+                                            // PostBack completed after clicking submit! Verify result!
+                                            statusText = "Verifying submission with UMS..."
+                                            view?.postDelayed({
+                                                if (isDone) return@postDelayed
+                                                verifySubmissionResult(
+                                                    wv = this@apply,
+                                                    initialTopLeaveId = initialTopLeaveId,
+                                                    capturedAlert = capturedAlert,
+                                                    startCal = startCal,
+                                                    onSuccess = { id ->
+                                                        if (!isDone) {
+                                                            isDone = true
+                                                            saveFreshCookies(cm, prefs)
+                                                            onSuccess(id)
+                                                        }
+                                                    },
+                                                    onError = { err ->
+                                                        if (!isDone) {
+                                                            isDone = true
+                                                            onError(err)
+                                                        }
+                                                    }
+                                                )
+                                            }, 800)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        loadUrl(LEAVE_PORTAL_URL)
+                        webViewRef = this
                     }
+                },
+                modifier = Modifier
+                    .size(1.dp)
+                    .alpha(0.001f)
+            )
 
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Slate)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-                LinearProgressIndicator(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(2.dp),
-                    color = Blaze,
-                    trackColor = Slab
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Status message & Captcha toggle
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+            // 2. Small, sleek loading card directly on the Leave page
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Slab,
+                border = BorderStroke(1.dp, Rule),
+                modifier = Modifier
+                    .widthIn(min = 280.dp, max = 340.dp)
+                    .padding(24.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    CircularProgressIndicator(
+                        color = Blaze,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "APPLYING HOSTEL LEAVE",
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = Chalk,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = statusText,
                         fontSize = 12.sp,
-                        color = Chalk,
-                        modifier = Modifier.weight(1f)
+                        color = Slate,
+                        textAlign = TextAlign.Center
                     )
-
+                    Spacer(modifier = Modifier.height(18.dp))
                     Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Slab,
+                        shape = RoundedCornerShape(8.dp),
+                        color = SlabElevated,
                         border = BorderStroke(0.5.dp, Rule),
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable { showRawWebView = !showRawWebView }
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onDismiss() }
                     ) {
                         Text(
-                            text = if (showRawWebView) "HIDE VIEW" else "SHOW BROWSER",
-                            fontSize = 10.5.sp,
+                            text = "CANCEL",
+                            color = Slate,
                             fontWeight = FontWeight.Bold,
-                            color = Blaze,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            fontSize = 11.5.sp,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
                         )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                fun populateAndSubmitForm(wv: WebView) {
-                    executeFormFillAndSubmit(
-                        wv = wv,
-                        visitPlace = selectedPlace.code,
-                        stayAddress = stayAddress,
-                        relativeMobile = relativeMobile,
-                        startCal = startCal,
-                        endCal = endCal,
-                        reason = reason
-                    )
-                }
-
-                // WebView Container
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (showRawWebView) Color.White else Slab)
-                        .border(1.dp, Rule, RoundedCornerShape(8.dp))
-                ) {
-                    AndroidView(
-                        factory = { ctx ->
-                            WebView(ctx).apply {
-                                settings.javaScriptEnabled = true
-                                settings.domStorageEnabled = true
-                                settings.useWideViewPort = true
-                                settings.loadWithOverviewMode = true
-
-                                val cm = CookieManager.getInstance()
-                                cm.setAcceptCookie(true)
-                                cm.setAcceptThirdPartyCookies(this, true)
-
-                                // Prime CookieManager with saved cookies
-                                val savedCookies = prefs.getString(AutoSyncManager.KEY_UMS_COOKIES, "") ?: ""
-                                if (savedCookies.isNotBlank()) {
-                                    for (cookie in savedCookies.split(";")) {
-                                        val trimmed = cookie.trim()
-                                        if (trimmed.isNotBlank()) {
-                                            cm.setCookie("https://ums.lpu.in", trimmed)
-                                        }
-                                    }
-                                    cm.flush()
-                                }
-
-                                var initialTopLeaveId: String? = null
-                                var stage = 0 // 0: initial load, 1: leaveType set postback, 2: submitted
-                                var capturedAlert: String? = null
-
-                                fun isSuccessAlert(msg: String): Boolean {
-                                    val lower = msg.lowercase()
-                                    if (lower.contains("already applied") ||
-                                        lower.contains("already exist") ||
-                                        lower.contains("still pending") ||
-                                        lower.contains("cannot") ||
-                                        lower.contains("not allow") ||
-                                        lower.contains("reject") ||
-                                        lower.contains("fail") ||
-                                        lower.contains("error") ||
-                                        lower.contains("invalid") ||
-                                        lower.contains("exceed") ||
-                                        lower.contains("exhaust") ||
-                                        lower.contains("not permissible") ||
-                                        lower.contains("curfew")
-                                    ) {
-                                        return false
-                                    }
-                                    return lower.contains("success") ||
-                                            (lower.contains("applied") && !lower.contains("already")) ||
-                                            lower.contains("approved")
-                                }
-
-                                fun extractLeaveId(msg: String): String {
-                                    val regex = "\\b\\d{5,8}\\b".toRegex()
-                                    val match = regex.find(msg)
-                                    return match?.value ?: msg
-                                }
-
-                                class LeaveBridge {
-                                    @JavascriptInterface
-                                    fun onInitialTopLeaveId(id: String) {
-                                        if (initialTopLeaveId == null && id.isNotBlank()) {
-                                            initialTopLeaveId = id.trim()
-                                            android.util.Log.i("SkedLeaveBridge", "Recorded initial leave ID: '$initialTopLeaveId'")
-                                        }
-                                    }
-
-                                    @JavascriptInterface
-                                    fun onLeaveTypeReady() {
-                                        coroutineScope.launch(Dispatchers.Main) {
-                                            statusText = "Form configured! Populating & submitting..."
-                                            populateAndSubmitForm(this@apply)
-                                        }
-                                    }
-
-                                    @JavascriptInterface
-                                    fun onAlert(msg: String) {
-                                        capturedAlert = msg
-                                        coroutineScope.launch(Dispatchers.Main) {
-                                            if (stage >= 1) {
-                                                if (isSuccessAlert(msg)) {
-                                                    if (!isDone) {
-                                                        isDone = true
-                                                        val cleanId = extractLeaveId(msg)
-                                                        saveFreshCookies(cm, prefs)
-                                                        onSuccess(cleanId)
-                                                    }
-                                                } else {
-                                                    if (!isDone) {
-                                                        isDone = true
-                                                        onError(msg)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    @JavascriptInterface
-                                    fun onError(err: String) {
-                                        coroutineScope.launch(Dispatchers.Main) {
-                                            if (!isDone) {
-                                                isDone = true
-                                                onError(err)
-                                            }
-                                        }
-                                    }
-
-                                    @JavascriptInterface
-                                    fun onStatus(msg: String) {
-                                        coroutineScope.launch(Dispatchers.Main) {
-                                            statusText = msg
-                                        }
-                                    }
-                                }
-
-                                addJavascriptInterface(LeaveBridge(), "LeaveBridge")
-
-                                webChromeClient = object : WebChromeClient() {
-                                    override fun onJsAlert(
-                                        view: WebView?,
-                                        url: String?,
-                                        message: String?,
-                                        result: JsResult?
-                                    ): Boolean {
-                                        val msg = message ?: "Unknown alert"
-                                        capturedAlert = msg
-                                        result?.confirm()
-                                        if (stage >= 1) {
-                                            coroutineScope.launch(Dispatchers.Main) {
-                                                if (isSuccessAlert(msg)) {
-                                                    if (!isDone) {
-                                                        isDone = true
-                                                        val cleanId = extractLeaveId(msg)
-                                                        saveFreshCookies(cm, prefs)
-                                                        onSuccess(cleanId)
-                                                    }
-                                                } else {
-                                                    if (!isDone) {
-                                                        isDone = true
-                                                        onError(msg)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        return true
-                                    }
-
-                                    override fun onJsConfirm(
-                                        view: WebView?,
-                                        url: String?,
-                                        message: String?,
-                                        result: JsResult?
-                                    ): Boolean {
-                                        result?.confirm()
-                                        return true
-                                    }
-                                }
-
-                                webViewClient = object : WebViewClient() {
-                                    override fun onPageFinished(view: WebView?, url: String?) {
-                                        val curUrl = url ?: ""
-                                        if (curUrl.contains("Login", ignoreCase = true)) {
-                                            statusText = "Solving Cloudflare & authenticating..."
-                                        } else if (curUrl.contains("StudentDashboard", ignoreCase = true) ||
-                                            curUrl.contains("Default3", ignoreCase = true) ||
-                                            curUrl.contains("w-schedule", ignoreCase = true)
-                                        ) {
-                                            statusText = "Login successful! Opening hostel leave portal..."
-                                            saveFreshCookies(cm, prefs)
-                                            view?.loadUrl(LEAVE_PORTAL_URL)
-                                        } else if (curUrl.contains("frmStudentHostelLeaveApplicationTermWise", ignoreCase = true)) {
-                                            saveFreshCookies(cm, prefs)
-                                            when (stage) {
-                                                0 -> {
-                                                    // Step 1: Capture initial top leave ID & set leave type
-                                                    statusText = "Setting leave type..."
-                                                    stage = 1
-                                                    val jsSetType = """
-                                                        (function() {
-                                                            try {
-                                                                window.alert = function(msg) { window.LeaveBridge.onAlert(msg); };
-                                                                window.confirm = function() { return true; };
-
-                                                                try {
-                                                                    var fr = document.querySelector('#ctl00_cphHeading_grdLeaveDetail tr:nth-child(2)');
-                                                                    if (fr && fr.cells[0]) {
-                                                                        window.LeaveBridge.onInitialTopLeaveId(fr.cells[0].innerText.trim());
-                                                                    }
-                                                                } catch(e) {}
-
-                                                                var sel = document.getElementById('ctl00_cphHeading_drpLeaveType');
-                                                                if (sel) {
-                                                                    if (sel.value === '${selectedType.code}') {
-                                                                        window.LeaveBridge.onLeaveTypeReady();
-                                                                    } else {
-                                                                        sel.value = '${selectedType.code}';
-                                                                        if (typeof __doPostBack === 'function') {
-                                                                            __doPostBack('ctl00${'$'}cphHeading${'$'}drpLeaveType', '');
-                                                                        } else {
-                                                                            sel.dispatchEvent(new Event('change', { bubbles: true }));
-                                                                        }
-                                                                    }
-                                                                } else {
-                                                                    window.LeaveBridge.onLeaveTypeReady();
-                                                                }
-                                                            } catch(e) {
-                                                                window.LeaveBridge.onError('Failed to set leave type: ' + e.toString());
-                                                            }
-                                                        })();
-                                                    """.trimIndent()
-                                                    view?.evaluateJavascript(jsSetType, null)
-                                                }
-
-                                                1 -> {
-                                                    // PostBack completed after setting leave type
-                                                    statusText = "Configuring leave details & dates..."
-                                                    populateAndSubmitForm(this@apply)
-                                                }
-
-                                                2 -> {
-                                                    // PostBack completed after clicking submit! Verify result!
-                                                    statusText = "Verifying submission with UMS..."
-                                                    view?.postDelayed({
-                                                        if (isDone) return@postDelayed
-                                                        verifySubmissionResult(
-                                                            wv = this@apply,
-                                                            initialTopLeaveId = initialTopLeaveId,
-                                                            capturedAlert = capturedAlert,
-                                                            startCal = startCal,
-                                                            onSuccess = { id ->
-                                                                if (!isDone) {
-                                                                    isDone = true
-                                                                    saveFreshCookies(cm, prefs)
-                                                                    onSuccess(id)
-                                                                }
-                                                            },
-                                                            onError = { err ->
-                                                                if (!isDone) {
-                                                                    isDone = true
-                                                                    onError(err)
-                                                                }
-                                                            }
-                                                        )
-                                                    }, 700)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                loadUrl(LEAVE_PORTAL_URL)
-                                webViewRef = this
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
-
-                    // Overlay when browser is hidden
-                    if (!showRawWebView) {
-                        Surface(
-                            color = Ink.copy(alpha = 0.96f),
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                CircularProgressIndicator(color = Blaze, strokeWidth = 3.dp)
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text(
-                                    text = statusText,
-                                    fontSize = 13.sp,
-                                    color = Chalk,
-                                    textAlign = TextAlign.Center
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "Direct leave submission on UMS.\nTimetable, exams, and attendance are skipped.",
-                                    fontSize = 11.sp,
-                                    color = Slate,
-                                    textAlign = TextAlign.Center
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = Slab,
-                                    border = BorderStroke(1.dp, Rule),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .clickable { showRawWebView = true }
-                                ) {
-                                    Text(
-                                        text = "SHOW BROWSER FOR CLOUDFLARE",
-                                        fontFamily = BarlowCondensed,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.5.sp,
-                                        color = Blaze,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                    )
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -666,12 +579,16 @@ fun LeaveApplyBridgeDialog(
                 val safeUser = JSONObject.quote(userId)
                 val safePass = JSONObject.quote(password)
 
+                var waitTicks = 0
                 while (!isDone) {
                     delay(700)
-                    turnstileWaitTicks++
-                    if (turnstileWaitTicks > 6 && !showRawWebView) {
-                        // Reveal browser if Cloudflare Turnstile takes > 4.5 seconds
-                        showRawWebView = true
+                    waitTicks++
+                    if (waitTicks >= 50) { // ~35 second safety timeout
+                        if (!isDone) {
+                            isDone = true
+                            onError("Leave application timed out. Please check your internet connection.")
+                        }
+                        break
                     }
 
                     val autoFillJs = """
@@ -693,7 +610,7 @@ fun LeaveApplyBridgeDialog(
 
                                 if (cf && cf.value && cf.value.length > 0) {
                                     window._skedSubmitting = true;
-                                    if (window.LeaveBridge) window.LeaveBridge.onStatus('Turnstile cleared! Submitting credentials...');
+                                    if (window.LeaveBridge) window.LeaveBridge.onStatus('Turnstile verified! Submitting credentials...');
                                     var submitBtn = form ? form.querySelector('input[type="submit"]') : null;
                                     if (submitBtn) {
                                         submitBtn.click();
@@ -861,9 +778,11 @@ fun executeFormFillAndSubmit(
 
                     var di = document.getElementById(baseId + '_dateInput');
                     if (di) {
+                        try { di.focus(); } catch(e) {}
                         di.value = textVal;
                         di.dispatchEvent(new Event('input', { bubbles: true }));
                         di.dispatchEvent(new Event('change', { bubbles: true }));
+                        try { di.blur(); } catch(e) {}
                     }
 
                     var hid = document.getElementById(baseId);
@@ -930,31 +849,57 @@ fun executeFormFillAndSubmit(
                     }
                 }
 
-                // 8. Client-side validation check
-                if (typeof Page_ClientValidate === 'function') {
-                    var valid = Page_ClientValidate('123');
-                    if (!valid) {
-                        var valMsgs = [];
-                        if (typeof Page_Validators !== 'undefined') {
-                            for (var vi = 0; vi < Page_Validators.length; vi++) {
-                                var vItem = Page_Validators[vi];
-                                if (vItem && !vItem.isvalid && vItem.errormessage) {
-                                    valMsgs.push(vItem.errormessage);
-                                }
-                            }
+                // Clear/re-evaluate client validators
+                if (typeof Page_Validators !== 'undefined') {
+                    for (var vi = 0; vi < Page_Validators.length; vi++) {
+                        var valItem = Page_Validators[vi];
+                        if (valItem && typeof ValidatorValidate === 'function') {
+                            ValidatorValidate(valItem);
                         }
-                        var combined = valMsgs.join('\n');
-                        window.LeaveBridge.onError(combined || 'Validation failed. Please verify form details.');
-                        return;
                     }
                 }
 
-                // 9. Click Submit Button
+                // 8. Client-side validation check
+                if (typeof Page_ClientValidate === 'function') {
+                    try {
+                        var valid = Page_ClientValidate('123');
+                        if (!valid) {
+                            var valMsgs = [];
+                            if (typeof Page_Validators !== 'undefined') {
+                                for (var v = 0; v < Page_Validators.length; v++) {
+                                    var vItem = Page_Validators[v];
+                                    if (vItem && !vItem.isvalid && vItem.errormessage) {
+                                        valMsgs.push(vItem.errormessage);
+                                    }
+                                }
+                            }
+                            if (valMsgs.length > 0) {
+                                var combined = valMsgs.join('\n');
+                                window.LeaveBridge.onError(combined || 'Validation failed. Please verify form details.');
+                                return;
+                            }
+                        }
+                    } catch(e) {}
+                }
+
+                // 9. Click Submit Button with PostBack fallback cascade
                 var btn = document.getElementById('ctl00_cphHeading_btnSubmit');
                 if (btn) {
-                    setTimeout(function() { btn.click(); }, 350);
+                    btn.focus();
+                    btn.click();
+                    setTimeout(function() {
+                        if (typeof WebForm_DoPostBackWithOptions === 'function') {
+                            try {
+                                WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions('ctl00${'$'}cphHeading${'$'}btnSubmit', '', true, '123', '', false, false));
+                            } catch(e) {}
+                        } else if (typeof __doPostBack === 'function') {
+                            try {
+                                __doPostBack('ctl00${'$'}cphHeading${'$'}btnSubmit', '');
+                            } catch(e) {}
+                        }
+                    }, 400);
                 } else {
-                    window.LeaveBridge.onError('Submit button not found');
+                    window.LeaveBridge.onError('Submit button not found on UMS');
                 }
             } catch(e) {
                 window.LeaveBridge.onError('Error populating form: ' + e.toString());

@@ -78,6 +78,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -1431,10 +1432,8 @@ fun LeaveSlipFetchBridgeDialog(
     var passwordVisible by remember { mutableStateOf(false) }
 
     var statusText by remember { mutableStateOf("Connecting to UMS...") }
-    var showRawWebView by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var isDone by remember { mutableStateOf(false) }
-    var turnstileWaitTicks by remember { mutableIntStateOf(0) }
 
     if (showPasswordInput) {
         Dialog(onDismissRequest = onDismiss) {
@@ -1564,6 +1563,7 @@ fun LeaveSlipFetchBridgeDialog(
         return
     }
 
+    // ── Dedicated Bridge Dialog (Invisible WebView with sleek compact loading card) ──
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -1571,262 +1571,187 @@ fun LeaveSlipFetchBridgeDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Ink)
+                .background(Color.Black.copy(alpha = 0.65f)),
+            contentAlignment = Alignment.Center
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)
-            ) {
-                // Top Header Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Sync,
-                            contentDescription = null,
-                            tint = Blaze,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "FETCHING LEAVE SLIP",
-                                fontFamily = BarlowCondensed,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = Blaze,
-                                letterSpacing = 0.5.sp
-                            )
-                            Text(
-                                text = "Logging in & scraping hostel slip only...",
-                                fontSize = 10.5.sp,
-                                color = Slate
-                            )
+            // 1. AndroidView WebView (Runs completely hidden in background)
+            AndroidView(
+                factory = { ctx ->
+                    WebView(ctx).apply {
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.useWideViewPort = true
+                        settings.loadWithOverviewMode = true
+
+                        val cm = CookieManager.getInstance()
+                        cm.setAcceptCookie(true)
+                        cm.setAcceptThirdPartyCookies(this, true)
+
+                        // Prime CookieManager with saved cookies
+                        val savedCookies = prefs.getString(AutoSyncManager.KEY_UMS_COOKIES, "") ?: ""
+                        if (savedCookies.isNotBlank()) {
+                            for (cookie in savedCookies.split(";")) {
+                                val trimmed = cookie.trim()
+                                if (trimmed.isNotBlank()) {
+                                    cm.setCookie("https://ums.lpu.in", trimmed)
+                                }
+                            }
+                            cm.flush()
                         }
+
+                        class SlipJsBridge {
+                            @JavascriptInterface
+                            fun onSlipHtml(html: String) {
+                                if (isDone) return
+                                isDone = true
+                                coroutineScope.launch(Dispatchers.Main) {
+                                    statusText = "Slip received! Parsing..."
+                                    cm.flush()
+                                    val freshCookies = cm.getCookie("https://ums.lpu.in/lpuums/frmHostelLeaveSlipTest.aspx")
+                                        ?.takeIf { it.isNotBlank() }
+                                        ?: cm.getCookie("https://ums.lpu.in/lpuums")
+                                        ?.takeIf { it.isNotBlank() }
+                                        ?: cm.getCookie("https://ums.lpu.in")
+                                        ?: ""
+                                    if (freshCookies.isNotBlank()) {
+                                        prefs.edit().putString(AutoSyncManager.KEY_UMS_COOKIES, freshCookies).apply()
+                                    }
+                                    val parsed = LeaveParser.parseGatePass(html)
+                                    val finalPass = parsed ?: HostelGatePass(
+                                        universityTitle = "Lovely Professional University",
+                                        passSubtitle = "Hostel Leave Gate Pass",
+                                        hasActivePass = false
+                                    )
+                                    LeaveStorage.saveGatePass(context, finalPass)
+                                    if (finalPass.hasActivePass) {
+                                        coroutineScope.launch(Dispatchers.IO) {
+                                            try {
+                                                val client = OkHttpClient()
+                                                val photoReq = Request.Builder()
+                                                    .url("https://ums.lpu.in/lpuums/DisplayImageForPowerBi.aspx")
+                                                    .header("Cookie", freshCookies)
+                                                    .build()
+                                                client.newCall(photoReq).execute().use { photoResp ->
+                                                    val bytes = photoResp.body?.bytes()
+                                                    if (bytes != null && bytes.size > 200) {
+                                                        File(context.filesDir, "student_photo.jpg").writeBytes(bytes)
+                                                    }
+                                                }
+                                            } catch (_: Exception) {}
+                                        }
+                                    }
+                                    onSuccess(finalPass)
+                                }
+                            }
+
+                            @JavascriptInterface
+                            fun onStatus(msg: String) {
+                                coroutineScope.launch(Dispatchers.Main) {
+                                    statusText = msg
+                                }
+                            }
+
+                            @JavascriptInterface
+                            fun onAuthError(err: String) {
+                                coroutineScope.launch(Dispatchers.Main) {
+                                    statusText = "Login error: $err"
+                                    onError(err)
+                                }
+                            }
+                        }
+
+                        addJavascriptInterface(SlipJsBridge(), "SlipBridge")
+
+                        webViewClient = object : WebViewClient() {
+                            override fun onPageFinished(view: WebView?, url: String?) {
+                                val curUrl = url ?: ""
+                                if (curUrl.contains("frmHostelLeaveSlipTest.aspx", ignoreCase = true)) {
+                                    statusText = "Hostel slip reached! Extracting pass..."
+                                    view?.evaluateJavascript(
+                                        """
+                                        (function() {
+                                            try {
+                                                if (window.SlipBridge) {
+                                                    window.SlipBridge.onSlipHtml(document.documentElement.outerHTML);
+                                                }
+                                            } catch(e) {
+                                                if (window.SlipBridge) window.SlipBridge.onAuthError(e.toString());
+                                            }
+                                        })();
+                                        """.trimIndent(),
+                                        null
+                                    )
+                                } else if (curUrl.contains("StudentDashboard", ignoreCase = true) ||
+                                    curUrl.contains("Default3", ignoreCase = true) ||
+                                    curUrl.contains("w-schedule", ignoreCase = true)
+                                ) {
+                                    statusText = "Authenticated! Opening hostel leave slip..."
+                                    view?.loadUrl("https://ums.lpu.in/lpuums/frmHostelLeaveSlipTest.aspx")
+                                } else if (curUrl.contains("Login", ignoreCase = true)) {
+                                    statusText = "Authenticating with UMS..."
+                                }
+                            }
+                        }
+
+                        loadUrl("https://ums.lpu.in/lpuums/frmHostelLeaveSlipTest.aspx")
+                        webViewRef = this
                     }
+                },
+                modifier = Modifier
+                    .size(1.dp)
+                    .alpha(0.001f)
+            )
 
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Slate)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth().height(2.dp),
-                    color = Blaze,
-                    trackColor = Slab
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Status message & Captcha toggle
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+            // 2. Sleek compact loading card directly on Leave Slip screen
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Slab,
+                border = BorderStroke(1.dp, Rule),
+                modifier = Modifier
+                    .widthIn(min = 280.dp, max = 340.dp)
+                    .padding(24.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    CircularProgressIndicator(
+                        color = Blaze,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "FETCHING LEAVE SLIP",
+                        fontFamily = BarlowCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = Chalk,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = statusText,
                         fontSize = 12.sp,
-                        color = Chalk,
-                        modifier = Modifier.weight(1f)
+                        color = Slate,
+                        textAlign = TextAlign.Center
                     )
-
+                    Spacer(modifier = Modifier.height(18.dp))
                     Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Slab,
+                        shape = RoundedCornerShape(8.dp),
+                        color = SlabElevated,
                         border = BorderStroke(0.5.dp, Rule),
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable { showRawWebView = !showRawWebView }
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onDismiss() }
                     ) {
                         Text(
-                            text = if (showRawWebView) "HIDE VIEW" else "SHOW BROWSER",
-                            fontSize = 10.5.sp,
+                            text = "CANCEL",
+                            color = Slate,
                             fontWeight = FontWeight.Bold,
-                            color = Blaze,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            fontSize = 11.5.sp,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
                         )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // WebView Container (Shown either full or minimal height)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (showRawWebView) Color.White else Slab)
-                        .border(1.dp, Rule, RoundedCornerShape(8.dp))
-                ) {
-                    AndroidView(
-                        factory = { ctx ->
-                            WebView(ctx).apply {
-                                settings.javaScriptEnabled = true
-                                settings.domStorageEnabled = true
-                                settings.useWideViewPort = true
-                                settings.loadWithOverviewMode = true
-
-                                val cm = CookieManager.getInstance()
-                                cm.setAcceptCookie(true)
-                                cm.setAcceptThirdPartyCookies(this, true)
-
-                                class SlipJsBridge {
-                                    @JavascriptInterface
-                                    fun onSlipHtml(html: String) {
-                                        if (isDone) return
-                                        isDone = true
-                                        coroutineScope.launch(Dispatchers.Main) {
-                                            statusText = "Slip received! Parsing..."
-                                            cm.flush()
-                                            val freshCookies = cm.getCookie("https://ums.lpu.in/lpuums/frmHostelLeaveSlipTest.aspx")
-                                                ?.takeIf { it.isNotBlank() }
-                                                ?: cm.getCookie("https://ums.lpu.in/lpuums")
-                                                ?.takeIf { it.isNotBlank() }
-                                                ?: cm.getCookie("https://ums.lpu.in")
-                                                ?: ""
-                                            if (freshCookies.isNotBlank()) {
-                                                prefs.edit().putString(AutoSyncManager.KEY_UMS_COOKIES, freshCookies).apply()
-                                            }
-                                            val parsed = LeaveParser.parseGatePass(html)
-                                            val finalPass = parsed ?: HostelGatePass(
-                                                universityTitle = "Lovely Professional University",
-                                                passSubtitle = "Hostel Leave Gate Pass",
-                                                hasActivePass = false
-                                            )
-                                            LeaveStorage.saveGatePass(context, finalPass)
-                                            if (finalPass.hasActivePass) {
-                                                coroutineScope.launch(Dispatchers.IO) {
-                                                    try {
-                                                        val client = OkHttpClient()
-                                                        val photoReq = Request.Builder()
-                                                            .url("https://ums.lpu.in/lpuums/DisplayImageForPowerBi.aspx")
-                                                            .header("Cookie", freshCookies)
-                                                            .build()
-                                                        client.newCall(photoReq).execute().use { photoResp ->
-                                                            val bytes = photoResp.body?.bytes()
-                                                            if (bytes != null && bytes.size > 200) {
-                                                                File(context.filesDir, "student_photo.jpg").writeBytes(bytes)
-                                                            }
-                                                        }
-                                                    } catch (_: Exception) {}
-                                                }
-                                            }
-                                            onSuccess(finalPass)
-                                        }
-                                    }
-
-                                    @JavascriptInterface
-                                    fun onStatus(msg: String) {
-                                        coroutineScope.launch(Dispatchers.Main) {
-                                            statusText = msg
-                                        }
-                                    }
-
-                                    @JavascriptInterface
-                                    fun onAuthError(err: String) {
-                                        coroutineScope.launch(Dispatchers.Main) {
-                                            statusText = "Login error: $err"
-                                            onError(err)
-                                        }
-                                    }
-                                }
-
-                                addJavascriptInterface(SlipJsBridge(), "SlipBridge")
-
-                                webViewClient = object : WebViewClient() {
-                                    override fun onPageFinished(view: WebView?, url: String?) {
-                                        val curUrl = url ?: ""
-                                        if (curUrl.contains("frmHostelLeaveSlipTest.aspx", ignoreCase = true)) {
-                                            statusText = "Hostel slip page reached! Extracting..."
-                                            view?.evaluateJavascript(
-                                                """
-                                                (function() {
-                                                    try {
-                                                        if (window.SlipBridge) {
-                                                            window.SlipBridge.onSlipHtml(document.documentElement.outerHTML);
-                                                        }
-                                                    } catch(e) {
-                                                        if (window.SlipBridge) window.SlipBridge.onAuthError(e.toString());
-                                                    }
-                                                })();
-                                                """.trimIndent(),
-                                                null
-                                            )
-                                        } else if (curUrl.contains("StudentDashboard", ignoreCase = true) ||
-                                            curUrl.contains("Default3", ignoreCase = true) ||
-                                            curUrl.contains("w-schedule", ignoreCase = true)
-                                        ) {
-                                            statusText = "Login successful! Opening hostel leave slip..."
-                                            view?.loadUrl("https://ums.lpu.in/lpuums/frmHostelLeaveSlipTest.aspx")
-                                        } else if (curUrl.contains("Login", ignoreCase = true)) {
-                                            statusText = "Solving Cloudflare & authenticating..."
-                                        }
-                                    }
-                                }
-
-                                loadUrl("https://ums.lpu.in/lpuums/frmHostelLeaveSlipTest.aspx")
-                                webViewRef = this
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(if (showRawWebView) 0.dp else 0.dp)
-                    )
-
-                    // Overlay when browser is hidden
-                    if (!showRawWebView) {
-                        Surface(
-                            color = Ink.copy(alpha = 0.96f),
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                CircularProgressIndicator(color = Blaze, strokeWidth = 3.dp)
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text(
-                                    text = statusText,
-                                    fontSize = 13.sp,
-                                    color = Chalk,
-                                    textAlign = TextAlign.Center
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "Only the official leave slip is being fetched.\nTimetable, exams, and attendance are skipped.",
-                                    fontSize = 11.sp,
-                                    color = Slate,
-                                    textAlign = TextAlign.Center
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = Slab,
-                                    border = BorderStroke(1.dp, Rule),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .clickable { showRawWebView = true }
-                                ) {
-                                    Text(
-                                        text = "SHOW BROWSER FOR CLOUDFLARE",
-                                        fontFamily = BarlowCondensed,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.5.sp,
-                                        color = Blaze,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                    )
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -1837,13 +1762,16 @@ fun LeaveSlipFetchBridgeDialog(
                 val safeUser = JSONObject.quote(userId)
                 val safePass = JSONObject.quote(password)
 
+                var waitTicks = 0
                 while (!isDone) {
                     delay(700)
-                    turnstileWaitTicks++
-                    if (turnstileWaitTicks > 6 && !showRawWebView) {
-                        // Automatically show browser if Cloudflare Turnstile takes more than ~4.5 seconds
-                        // so student can tap the checkbox if needed
-                        showRawWebView = true
+                    waitTicks++
+                    if (waitTicks >= 50) { // ~35 second safety timeout
+                        if (!isDone) {
+                            isDone = true
+                            onError("Leave slip fetch timed out. Please check your network connection.")
+                        }
+                        break
                     }
 
                     val autoFillJs = """
