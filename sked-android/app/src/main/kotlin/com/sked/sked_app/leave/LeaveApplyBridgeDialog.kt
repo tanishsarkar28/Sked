@@ -296,26 +296,35 @@ fun LeaveApplyBridgeDialog(
                         var capturedAlert: String? = null
 
                         fun isSuccessAlert(msg: String): Boolean {
-                            val lower = msg.lowercase()
-                            if (lower.contains("already applied") ||
+                            val lower = msg.lowercase().trim()
+                            if (lower.contains("cannot") ||
+                                lower.contains("can not") ||
+                                lower.contains("not be applied") ||
+                                lower.contains("not applied") ||
+                                lower.contains("already applied") ||
                                 lower.contains("already exist") ||
                                 lower.contains("still pending") ||
-                                lower.contains("cannot") ||
                                 lower.contains("not allow") ||
+                                lower.contains("not permissible") ||
+                                lower.contains("warden") ||
                                 lower.contains("reject") ||
                                 lower.contains("fail") ||
                                 lower.contains("error") ||
                                 lower.contains("invalid") ||
                                 lower.contains("exceed") ||
                                 lower.contains("exhaust") ||
-                                lower.contains("not permissible") ||
-                                lower.contains("curfew")
+                                lower.contains("curfew") ||
+                                lower.contains("denied") ||
+                                lower.contains("restricted") ||
+                                lower.contains("sorry") ||
+                                lower.contains("unable")
                             ) {
                                 return false
                             }
-                            return lower.contains("success") ||
-                                    (lower.contains("applied") && !lower.contains("already")) ||
-                                    lower.contains("approved")
+                            return (lower.contains("success") && !lower.contains("not success") && !lower.contains("unsuccess")) ||
+                                    (lower.contains("applied") && lower.contains("success")) ||
+                                    (lower.contains("applied") && lower.contains("leave id")) ||
+                                    (lower.contains("approved") && !lower.contains("not approved"))
                         }
 
                         fun extractLeaveId(msg: String): String {

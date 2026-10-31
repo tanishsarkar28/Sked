@@ -308,14 +308,35 @@ fun LeaveScreen(
                 )
 
                 if (res.isSuccess) {
-                    isSubmitting = false
-                    val resMsg = res.getOrNull() ?: "Leave Applied"
-                    successLeaveIdDialog = if (resMsg.startsWith("Leave ID", ignoreCase = true)) resMsg else "Leave ID #$resMsg"
-                    refreshLeaveData(isUserInitiated = false)
-                    coroutineScope.launch(Dispatchers.IO) {
-                        try {
-                            LeaveSubmitEngine.fetchGatePass(context)
-                        } catch (_: Exception) {}
+                    val resMsg = res.getOrNull() ?: ""
+                    val isRealSuccess = !resMsg.contains("warden", ignoreCase = true) &&
+                            !resMsg.contains("can not", ignoreCase = true) &&
+                            !resMsg.contains("cannot", ignoreCase = true) &&
+                            !resMsg.contains("not be applied", ignoreCase = true) &&
+                            !resMsg.contains("not applied", ignoreCase = true) &&
+                            !resMsg.contains("reject", ignoreCase = true) &&
+                            !resMsg.contains("fail", ignoreCase = true) &&
+                            !resMsg.contains("error", ignoreCase = true) &&
+                            !resMsg.contains("curfew", ignoreCase = true)
+
+                    if (isRealSuccess) {
+                        isSubmitting = false
+                        val idMatch = "\\b\\d{5,8}\\b".toRegex().find(resMsg)
+                        successLeaveIdDialog = when {
+                            idMatch != null -> "Leave ID #${idMatch.value}"
+                            resMsg.startsWith("Leave ID", ignoreCase = true) -> resMsg
+                            resMsg.isNotBlank() && resMsg.length <= 15 -> "Leave ID #$resMsg"
+                            else -> "Leave ID Generated"
+                        }
+                        refreshLeaveData(isUserInitiated = false)
+                        coroutineScope.launch(Dispatchers.IO) {
+                            try {
+                                LeaveSubmitEngine.fetchGatePass(context)
+                            } catch (_: Exception) {}
+                        }
+                    } else {
+                        isSubmitting = false
+                        errorMessageDialog = resMsg
                     }
                 } else {
                     val err = res.exceptionOrNull()?.message ?: "Submission rejected by UMS"
@@ -1426,8 +1447,14 @@ fun LeaveScreen(
             reason = reason,
             onSuccess = { leaveId ->
                 showApplyBridge = false
-                successLeaveIdDialog = if (leaveId.startsWith("Leave ID", ignoreCase = true)) leaveId else "Leave ID #$leaveId"
-                refreshLeaveData()
+                val idMatch = "\\b\\d{5,8}\\b".toRegex().find(leaveId)
+                successLeaveIdDialog = when {
+                    idMatch != null -> "Leave ID #${idMatch.value}"
+                    leaveId.startsWith("Leave ID", ignoreCase = true) -> leaveId
+                    leaveId.isNotBlank() && leaveId.length <= 15 -> "Leave ID #$leaveId"
+                    else -> "Leave ID Generated"
+                }
+                refreshLeaveData(isUserInitiated = false)
                 coroutineScope.launch(Dispatchers.IO) {
                     try {
                         LeaveSubmitEngine.fetchGatePass(context)
