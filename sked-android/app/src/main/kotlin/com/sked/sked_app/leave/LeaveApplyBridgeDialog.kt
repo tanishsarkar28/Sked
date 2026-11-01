@@ -507,7 +507,9 @@ fun LeaveApplyBridgeDialog(
                                                 (function() {
                                                     try {
                                                         window.alert = function(msg) { window.LeaveBridge.onAlert(msg); };
+                                                        window.radalert = function(msg) { window.LeaveBridge.onAlert(msg); };
                                                         window.confirm = function() { return true; };
+                                                        window.radconfirm = function() { return true; };
 
                                                         try {
                                                             var fr = document.querySelector('#ctl00_cphHeading_grdLeaveDetail tr:nth-child(2)');
@@ -803,7 +805,9 @@ fun executeFormFillAndSubmit(
         (function() {
             try {
                 window.alert = function(msg) { window.LeaveBridge.onAlert(msg); };
+                window.radalert = function(msg) { window.LeaveBridge.onAlert(msg); };
                 window.confirm = function() { return true; };
+                window.radconfirm = function() { return true; };
 
                 // 1. Destination Dropdown (ddlVisitDay)
                 var vp = document.getElementById('ctl00_cphHeading_ddlVisitDay');
@@ -1054,7 +1058,17 @@ private fun verifySubmissionResult(
                     '#ctl00_cphHeading_lblMessage',
                     '#ctl00_cphHeading_lblWarning',
                     '#ctl00_cphHeading_lblAlert',
-                    '#ctl00_cphHeading_lblInfo'
+                    '#ctl00_cphHeading_lblInfo',
+                    '#ctl00_cphHeading_lblcurfew',
+                    '#ctl00_cphHeading_lblCurfew',
+                    '#ctl00_cphHeading_lbltime',
+                    '#ctl00_cphHeading_lblTime',
+                    '[id*="curfew" i]',
+                    '[id*="lblerror" i]',
+                    '[id*="lblmsg" i]',
+                    '.text-danger',
+                    '.error-message',
+                    '.alert-danger'
                 ];
                 for (var si = 0; si < errSelectors.length; si++) {
                     var el = document.querySelector(errSelectors[si]);
@@ -1066,12 +1080,41 @@ private fun verifySubmissionResult(
                     }
                 }
 
-                // 2. Telerik RadAlert
-                var radAlert = document.querySelector('.rwWindowContent, .rwDialogPopup, [id*="RadAlert"], [id*="radalert"]');
+                // 2. Telerik RadAlert & Dialog elements
+                var radAlert = document.querySelector('.rwDialogText, .rwDialogMessage, .rwWindowContent, .rwDialogPopup, [id*="RadAlert" i], [id*="radalert" i]');
                 if (radAlert) {
                     var rt = (radAlert.textContent || radAlert.innerText || '').trim();
                     if (rt.length > 0) {
                         return JSON.stringify({ status: 'error', message: rt });
+                    }
+                }
+
+                // Check inside any iframe dialogs
+                try {
+                    var iframes = document.querySelectorAll('iframe');
+                    for (var ifr = 0; ifr < iframes.length; ifr++) {
+                        var idoc = iframes[ifr].contentDocument || iframes[ifr].contentWindow.document;
+                        if (idoc) {
+                            var ifAlert = idoc.querySelector('.rwDialogText, .rwDialogMessage, [id*="RadAlert" i], [id*="lblError" i], [id*="lblcurfew" i]');
+                            if (ifAlert) {
+                                var ift = (ifAlert.textContent || ifAlert.innerText || '').trim();
+                                if (ift.length > 0) return JSON.stringify({ status: 'error', message: ift });
+                            }
+                        }
+                    }
+                } catch(e) {}
+
+                // Check any element with red/danger text color or curfew keywords
+                var allAlertSpans = document.querySelectorAll('span, div, p, label');
+                for (var asp = 0; asp < allAlertSpans.length; asp++) {
+                    var spanEl = allAlertSpans[asp];
+                    var sText = (spanEl.textContent || spanEl.innerText || '').trim();
+                    if (sText.length > 10 && (sText.toLowerCase().includes('curfew') || sText.toLowerCase().includes('greater than') || sText.toLowerCase().includes('less than') || sText.toLowerCase().includes('not allowed') || sText.toLowerCase().includes('extended leave'))) {
+                        return JSON.stringify({ status: 'error', message: sText });
+                    }
+                    var sCol = window.getComputedStyle(spanEl).color;
+                    if (sCol && (sCol.indexOf('255, 0, 0') !== -1 || sCol.indexOf('rgb(2') !== -1 || sCol === 'red') && sText.length > 3 && !sText.includes('*')) {
+                        return JSON.stringify({ status: 'error', message: sText });
                     }
                 }
 
@@ -1143,11 +1186,25 @@ private fun verifySubmissionResult(
 
                 "table_check" -> {
                     val leaveId = obj.optString("leaveId")
+                    val leaveType = obj.optString("leaveType")
+                    val applyDate = obj.optString("applyDate")
                     val leaveStatus = obj.optString("leaveStatus", "Existing")
                     val isDifferentId = initialTopLeaveId != null && leaveId.isNotBlank() && leaveId != initialTopLeaveId
                     val isFirstEverLeave = initialTopLeaveId.isNullOrBlank() && leaveId.isNotBlank()
 
-                    if (isDifferentId || isFirstEverLeave) {
+                    val dfYmd = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                    val dfMdy = SimpleDateFormat("M/d/yyyy", Locale.US)
+                    val dfDmy = SimpleDateFormat("dd/MM/yyyy", Locale.US)
+                    val todayYmd = dfYmd.format(startCal.time)
+                    val todayMdy = dfMdy.format(startCal.time)
+                    val todayDmy = dfDmy.format(startCal.time)
+                    val dateMatches = applyDate.isNotBlank() && (
+                        applyDate.contains(todayYmd) ||
+                        applyDate.contains(todayMdy) ||
+                        applyDate.contains(todayDmy)
+                    )
+
+                    if (isDifferentId || isFirstEverLeave || (dateMatches && leaveStatus.equals("Applied", ignoreCase = true))) {
                         onSuccess(leaveId)
                     } else {
                         // Leave ID was unchanged

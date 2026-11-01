@@ -1,13 +1,13 @@
 {
-  "versionCode": 11,
-  "versionName": "1.4.0",
+  "versionCode": 12,
+  "versionName": "1.4.1",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Live Digital Leave Pass with verified student photo, real-time status banner, and Code-128 security barcode\n• Instant on-device leave submission engine with zero-delay form filling and ASP.NET postback bypass\n• 2x2 Quick Access Dashboard grid with dedicated Leave Slip and Leave application tiles\n• Dynamic destination and hostel curfew validation with reactive time slot selection",
+  "releaseNotes": "• Live Digital Leave Pass displays immediately from offline cache without unexpected re-sync prompts\n• Intercepts real-time UMS and Telerik validation errors to show exact rejection reasons (curfew limits, timing violations)\n• Support for Parent OTP verification dialog when required by hostel rules\n• Performance optimizations and date parsing fixes for hostel leave engine",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
   "directIpaDownloadUrl": "/downloads/sked-ios.ipa",
   "fileSize": "12.8 MB",
   "ipaFileSize": "7.6 MB",
-  "updatedAt": "2026-10-30"
+  "updatedAt": "2026-11-01"
 }

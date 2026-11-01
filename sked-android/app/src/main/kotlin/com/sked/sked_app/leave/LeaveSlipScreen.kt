@@ -266,7 +266,7 @@ fun LeaveSlipScreen(
         doFetch()
     }
 
-    fun refreshData() {
+    fun refreshData(allowSessionRefresh: Boolean = false) {
         if (isSyncing) return
         isSyncing = true
         coroutineScope.launch {
@@ -283,7 +283,7 @@ fun LeaveSlipScreen(
                     Toast.makeText(context, "Gate pass updated", Toast.LENGTH_SHORT).show()
                 }
                 is LeaveSyncResult.SessionExpired -> {
-                    if (onRefreshSession != null) {
+                    if (allowSessionRefresh && onRefreshSession != null) {
                         onRefreshSession.invoke { success ->
                             if (success) {
                                 coroutineScope.launch {
@@ -308,12 +308,12 @@ fun LeaveSlipScreen(
         }
     }
 
-    // Refresh automatically on launch if cookies exist
+    // Refresh automatically on launch if cookies exist, silently in background without prompting for re-sync
     LaunchedEffect(Unit) {
         val prefs = context.getSharedPreferences(com.sked.sked_app.widget.PREFS_NAME, Context.MODE_PRIVATE)
         val cookies = prefs.getString(AutoSyncManager.KEY_UMS_COOKIES, "") ?: ""
         if (cookies.isNotBlank()) {
-            refreshData()
+            refreshData(allowSessionRefresh = false)
         }
     }
 

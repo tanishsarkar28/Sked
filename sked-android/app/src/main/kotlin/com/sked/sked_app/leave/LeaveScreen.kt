@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -111,6 +113,12 @@ fun LeaveScreen(
     var errorMessageDialog by remember { mutableStateOf<String?>(null) }
     var successLeaveIdDialog by remember { mutableStateOf<String?>(null) }
     var showApplyBridge by remember { mutableStateOf(false) }
+
+    // Parent OTP Dialog States
+    var showParentOtpDialog by remember { mutableStateOf(false) }
+    var parentOtpCode by remember { mutableStateOf("") }
+    var parentOtpSubmitAction by remember { mutableStateOf<((String) -> Unit)?>(null) }
+    var parentOtpCancelAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     // Dialog state for 15-minute time picker: null = hidden, "START" or "END"
     var timePickerTarget by remember { mutableStateOf<String?>(null) }
@@ -304,7 +312,14 @@ fun LeaveScreen(
                     startCal = startCal,
                     endCal = endCal,
                     reason = reason,
-                    onStatus = { status -> submitStatusText = status }
+                    onStatus = { status -> submitStatusText = status },
+                    onOtpRequired = { onSubmitOtp, onCancel ->
+                        isSubmitting = false
+                        parentOtpCode = ""
+                        parentOtpSubmitAction = onSubmitOtp
+                        parentOtpCancelAction = onCancel
+                        showParentOtpDialog = true
+                    }
                 )
 
                 if (res.isSuccess) {
@@ -1344,6 +1359,90 @@ fun LeaveScreen(
                 }
             }
         }
+    }
+
+    // ── Parent OTP Verification Dialog ───────────────────────────────────
+    if (showParentOtpDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showParentOtpDialog = false
+                parentOtpCancelAction?.invoke()
+            },
+            icon = {
+                Icon(
+                    Icons.Default.Security,
+                    contentDescription = null,
+                    tint = Blaze,
+                    modifier = Modifier.size(30.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "PARENT VERIFICATION REQUIRED",
+                    fontFamily = BarlowCondensed,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = Chalk
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "UMS has sent an OTP to your parent's registered mobile number. Please enter it below to authorize this hostel leave:",
+                        fontSize = 13.sp,
+                        color = Slate,
+                        lineHeight = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    OutlinedTextField(
+                        value = parentOtpCode,
+                        onValueChange = { parentOtpCode = it.filter { ch -> ch.isDigit() }.take(8) },
+                        label = { Text("Parent OTP Code", color = Slate, fontSize = 12.sp) },
+                        placeholder = { Text("Enter OTP", color = Slate.copy(alpha = 0.5f), fontSize = 13.sp) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Blaze,
+                            unfocusedBorderColor = Rule,
+                            focusedTextColor = Chalk,
+                            unfocusedTextColor = Chalk,
+                            cursorColor = Blaze,
+                            focusedContainerColor = Slab,
+                            unfocusedContainerColor = Slab
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (parentOtpCode.isNotBlank()) {
+                            showParentOtpDialog = false
+                            isSubmitting = true
+                            submitStatusText = "Submitting Parent OTP..."
+                            parentOtpSubmitAction?.invoke(parentOtpCode)
+                        }
+                    },
+                    enabled = parentOtpCode.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Blaze),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text("VERIFY & APPLY", color = Ink, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showParentOtpDialog = false
+                        parentOtpCancelAction?.invoke()
+                    }
+                ) {
+                    Text("CANCEL", color = Slate, fontWeight = FontWeight.Medium)
+                }
+            },
+            containerColor = SlabElevated
+        )
     }
 
     // ── Error Message Dialog ─────────────────────────────────────────────
