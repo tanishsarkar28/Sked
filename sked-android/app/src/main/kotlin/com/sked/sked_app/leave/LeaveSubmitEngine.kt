@@ -737,10 +737,45 @@ object LeaveSubmitEngine {
                             // Step 3: After submit postback, wait for DOM and alert events to settle, then verify table
                             onStatus("Verifying leave submission...")
                             mainHandler.postDelayed({
+                                val safeInitialId = org.json.JSONObject.quote(initialTopLeaveId ?: "")
                                 val jsCheckResult = """
                                     (function() {
                                         try {
-                                            // 1. Check for Telerik RadAlert or dialog content
+                                            var initId = $safeInitialId;
+
+                                            // 1. First check if a new Leave record appeared in the table
+                                            var firstRow = document.querySelector('#ctl00_cphHeading_grdLeaveDetail tr:nth-child(2)');
+                                            if (firstRow && firstRow.cells[0]) {
+                                                var curLeaveId = (firstRow.cells[0].textContent || firstRow.cells[0].innerText || '').trim();
+                                                var curStatus = firstRow.cells[6] ? (firstRow.cells[6].textContent || firstRow.cells[6].innerText || '').trim() : '';
+                                                var curApplyDate = firstRow.cells[2] ? (firstRow.cells[2].textContent || firstRow.cells[2].innerText || '').trim() : '';
+                                                // If leave ID changed, it is definitely a new leave!
+                                                if ((initId && curLeaveId && curLeaveId !== initId) || (!initId && curLeaveId)) {
+                                                    return JSON.stringify({
+                                                        status: 'table_check',
+                                                        leaveId: curLeaveId,
+                                                        leaveType: firstRow.cells[1] ? (firstRow.cells[1].textContent || '').trim() : '',
+                                                        applyDate: curApplyDate,
+                                                        leaveStatus: curStatus
+                                                    });
+                                                }
+                                            }
+
+                                            // 2. Check for OTP modal (RadToolTip1 / txtOTP)
+                                            var otpTip = document.getElementById('ctl00_cphHeading_RadToolTip1') || document.querySelector('[id*="RadToolTip"]');
+                                            var txtOtp = document.getElementById('ctl00_cphHeading_txtOTP') || document.querySelector('[id*="txtOTP"]');
+                                            var isOtpVisible = false;
+                                            if (otpTip && (otpTip.style.display !== 'none' && otpTip.style.visibility !== 'hidden')) {
+                                                isOtpVisible = true;
+                                            }
+                                            if (txtOtp && txtOtp.offsetParent !== null) {
+                                                isOtpVisible = true;
+                                            }
+                                            if (isOtpVisible) {
+                                                return JSON.stringify({ status: 'otp_required' });
+                                            }
+
+                                            // 3. Check for Telerik RadAlert or dialog content
                                             var radAlert = document.querySelector('.rwDialogText, .rwDialogMessage, .rwWindowContent, .rwDialogPopup, [id*="RadAlert" i], [id*="radalert" i]');
                                             if (radAlert) {
                                                 var rt = (radAlert.textContent || radAlert.innerText || '').trim();
@@ -749,7 +784,7 @@ object LeaveSubmitEngine {
                                                 }
                                             }
 
-                                            // 2. Check all iframes for Telerik dialog content
+                                            // 4. Check all iframes for Telerik dialog content
                                             var iframes = document.querySelectorAll('iframe');
                                             for (var fi = 0; fi < iframes.length; fi++) {
                                                 try {
@@ -763,7 +798,7 @@ object LeaveSubmitEngine {
                                                 } catch(e) {}
                                             }
 
-                                            // 3. Check for standard ASP.NET server error spans and labels
+                                            // 5. Check for standard ASP.NET server error spans and labels
                                             var errSelectors = [
                                                 '[id*="lblerror" i]',
                                                 '[id*="lbl_error" i]',
@@ -783,31 +818,22 @@ object LeaveSubmitEngine {
                                                 var matchingEls = document.querySelectorAll(errSelectors[si]);
                                                 for (var mi = 0; mi < matchingEls.length; mi++) {
                                                     var el = matchingEls[mi];
+                                                    if (el.tagName === 'A' || el.closest('a')) continue;
                                                     var t = (el.textContent || el.innerText || '').trim();
                                                     var tLower = t.toLowerCase();
-                                                    if (t.length > 3 && t !== '*' && !t.includes('Select Term') && !t.includes('VID') &&
-                                                        tLower.indexOf('disciplinary') === -1 && tLower.indexOf('misconduct') === -1 &&
-                                                        tLower.indexOf('rules and regulations') === -1 && tLower.indexOf('acknowledge') === -1) {
+                                                    if (tLower.indexOf('concept note') !== -1 || tLower.indexOf('disciplinary') !== -1 ||
+                                                        tLower.indexOf('misconduct') !== -1 || tLower.indexOf('rules and regulations') !== -1 ||
+                                                        tLower.indexOf('acknowledge') !== -1 || tLower.indexOf('select term') !== -1 ||
+                                                        tLower.indexOf('vid') !== -1 || t === '*') {
+                                                        continue;
+                                                    }
+                                                    if (t.length > 3) {
                                                         return JSON.stringify({ status: 'error', message: t });
                                                     }
                                                 }
                                             }
 
-                                            // 4. Check for OTP modal (RadToolTip1 / txtOTP)
-                                            var otpTip = document.getElementById('ctl00_cphHeading_RadToolTip1') || document.querySelector('[id*="RadToolTip"]');
-                                            var txtOtp = document.getElementById('ctl00_cphHeading_txtOTP') || document.querySelector('[id*="txtOTP"]');
-                                            var isOtpVisible = false;
-                                            if (otpTip && (otpTip.style.display !== 'none' && otpTip.style.visibility !== 'hidden')) {
-                                                isOtpVisible = true;
-                                            }
-                                            if (txtOtp && txtOtp.offsetParent !== null) {
-                                                isOtpVisible = true;
-                                            }
-                                            if (isOtpVisible) {
-                                                return JSON.stringify({ status: 'otp_required' });
-                                            }
-
-                                            // 5. Check for ASP.NET validation summaries
+                                            // 6. Check for ASP.NET validation summaries
                                             var valSummaries = document.querySelectorAll('[id*="ValidationSummary"]');
                                             for (var vs = 0; vs < valSummaries.length; vs++) {
                                                 var vSumEl = valSummaries[vs];
@@ -826,7 +852,7 @@ object LeaveSubmitEngine {
                                                 }
                                             }
 
-                                            // 6. Check for any failed ASP.NET validators
+                                            // 7. Check for any failed ASP.NET validators
                                             if (typeof Page_Validators !== 'undefined') {
                                                 var failedVals = [];
                                                 for (var pv = 0; pv < Page_Validators.length; pv++) {
@@ -840,10 +866,11 @@ object LeaveSubmitEngine {
                                                 }
                                             }
 
-                                            // 7. Check for red text spans or fonts using computed style
+                                            // 8. Check for any red text spans or fonts using computed style (ignoring links and headers)
                                             var allRedEls = document.querySelectorAll('span, div, p, font, td, label');
                                             for (var r = 0; r < allRedEls.length; r++) {
                                                 var redEl = allRedEls[r];
+                                                if (redEl.tagName === 'A' || redEl.closest('a')) continue;
                                                 if (redEl.children.length > 0) continue;
                                                 var cStyle = window.getComputedStyle(redEl).color || '';
                                                 var fCol = redEl.getAttribute('color') || '';
@@ -853,12 +880,15 @@ object LeaveSubmitEngine {
                                                 if (isRedColor) {
                                                     var redTxt = (redEl.textContent || redEl.innerText || '').trim();
                                                     var rLower = redTxt.toLowerCase();
-                                                    if (rLower.indexOf('disciplinary') !== -1 ||
+                                                    if (rLower.indexOf('concept note') !== -1 ||
+                                                        rLower.indexOf('disciplinary') !== -1 ||
                                                         rLower.indexOf('misconduct') !== -1 ||
                                                         rLower.indexOf('hostel leave application') !== -1 ||
                                                         rLower.indexOf('submitting this') !== -1 ||
                                                         rLower.indexOf('acknowledge') !== -1 ||
-                                                        rLower.indexOf('rules and regulations') !== -1) {
+                                                        rLower.indexOf('rules and regulations') !== -1 ||
+                                                        rLower.indexOf('click here') !== -1 ||
+                                                        rLower.indexOf('download') !== -1) {
                                                         continue;
                                                     }
                                                     if (redTxt && redTxt.length > 3 && redTxt !== '*' && !redTxt.includes('VID') && !redTxt.includes('Select')) {
@@ -867,8 +897,7 @@ object LeaveSubmitEngine {
                                                 }
                                             }
 
-                                            // 8. Check for top row in leave table
-                                            var firstRow = document.querySelector('#ctl00_cphHeading_grdLeaveDetail tr:nth-child(2)');
+                                            // 9. Leave table check if unchanged
                                             if (firstRow) {
                                                 var leaveId = firstRow.cells[0] ? (firstRow.cells[0].textContent || '').trim() : '';
                                                 var leaveType = firstRow.cells[1] ? (firstRow.cells[1].textContent || '').trim() : '';
@@ -957,7 +986,19 @@ object LeaveSubmitEngine {
                                                 val isDifferentId = initialTopLeaveId != null && leaveId.isNotBlank() && leaveId != initialTopLeaveId
                                                 val isFirstEverLeave = initialTopLeaveId.isNullOrBlank() && leaveId.isNotBlank()
 
-                                                if (isDifferentId || isFirstEverLeave) {
+                                                val dfYmd = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                                                val dfMdy = java.text.SimpleDateFormat("M/d/yyyy", java.util.Locale.US)
+                                                val dfDmy = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.US)
+                                                val todayDate = java.util.Date()
+                                                val applyDateRaw = obj.optString("applyDate", "").trim()
+                                                val dateMatches = applyDateRaw.isNotBlank() && (
+                                                    applyDateRaw.contains(dfYmd.format(todayDate)) ||
+                                                    applyDateRaw.contains(dfMdy.format(todayDate)) ||
+                                                    applyDateRaw.contains(dfDmy.format(todayDate))
+                                                )
+                                                val isStatusNew = leaveStatus.equals("Applied", true) || leaveStatus.equals("Approved", true)
+
+                                                if (isDifferentId || isFirstEverLeave || (dateMatches && isStatusNew)) {
                                                     // New leave ID successfully posted to UMS
                                                     finishWith(Result.success("Leave ID #$leaveId"))
                                                 } else {

@@ -1,8 +1,8 @@
 {
-  "versionCode": 12,
-  "versionName": "1.4.1",
+  "versionCode": 13,
+  "versionName": "1.4.2",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Live Digital Leave Pass displays immediately from offline cache without unexpected re-sync prompts\n• Intercepts real-time UMS and Telerik validation errors to show exact rejection reasons (curfew limits, timing violations)\n• Support for Parent OTP verification dialog when required by hostel rules\n• Performance optimizations and date parsing fixes for hostel leave engine",
+  "releaseNotes": "• Refined UMS leave rejection scanner to ignore static portal links and accurately capture all new curfew rules\n• Prioritized leave table verification to prevent false-positive rejection alerts\n• Enhanced Parent OTP dialog and background sync stability",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",

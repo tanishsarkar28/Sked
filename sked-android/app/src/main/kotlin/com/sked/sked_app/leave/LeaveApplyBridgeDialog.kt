@@ -1047,10 +1047,30 @@ private fun verifySubmissionResult(
     onSuccess: (String) -> Unit,
     onError: (String) -> Unit
 ) {
+    val safeInitialId = JSONObject.quote(initialTopLeaveId ?: "")
     val jsCheck = """
         (function() {
             try {
-                // 1. Standard server error spans
+                var initId = $safeInitialId;
+
+                // 1. First check if a new Leave record appeared in the table
+                var firstRow = document.querySelector('#ctl00_cphHeading_grdLeaveDetail tr:nth-child(2)');
+                if (firstRow && firstRow.cells[0]) {
+                    var curLeaveId = (firstRow.cells[0].textContent || firstRow.cells[0].innerText || '').trim();
+                    var curStatus = firstRow.cells[6] ? (firstRow.cells[6].textContent || firstRow.cells[6].innerText || '').trim() : '';
+                    var curApplyDate = firstRow.cells[2] ? (firstRow.cells[2].textContent || firstRow.cells[2].innerText || '').trim() : '';
+                    if ((initId && curLeaveId && curLeaveId !== initId) || (!initId && curLeaveId)) {
+                        return JSON.stringify({
+                            status: 'table_check',
+                            leaveId: curLeaveId,
+                            leaveType: firstRow.cells[1] ? (firstRow.cells[1].textContent || '').trim() : '',
+                            applyDate: curApplyDate,
+                            leaveStatus: curStatus
+                        });
+                    }
+                }
+
+                // 2. Standard server error spans
                 var errSelectors = [
                     '#ctl00_cphHeading_lblerror',
                     '#ctl00_cphHeading_lblError',
@@ -1073,18 +1093,26 @@ private fun verifySubmissionResult(
                 for (var si = 0; si < errSelectors.length; si++) {
                     var el = document.querySelector(errSelectors[si]);
                     if (el) {
+                        if (el.tagName === 'A' || el.closest('a')) continue;
                         var t = (el.textContent || el.innerText || '').trim();
-                        if (t.length > 0 && t !== '*' && !t.includes('Select Term')) {
+                        var tLower = t.toLowerCase();
+                        if (tLower.indexOf('concept note') !== -1 || tLower.indexOf('disciplinary') !== -1 ||
+                            tLower.indexOf('misconduct') !== -1 || tLower.indexOf('rules and regulations') !== -1 ||
+                            tLower.indexOf('acknowledge') !== -1 || tLower.indexOf('select term') !== -1 ||
+                            tLower.indexOf('vid') !== -1 || t === '*') {
+                            continue;
+                        }
+                        if (t.length > 3) {
                             return JSON.stringify({ status: 'error', message: t });
                         }
                     }
                 }
 
-                // 2. Telerik RadAlert & Dialog elements
+                // 3. Telerik RadAlert & Dialog elements
                 var radAlert = document.querySelector('.rwDialogText, .rwDialogMessage, .rwWindowContent, .rwDialogPopup, [id*="RadAlert" i], [id*="radalert" i]');
                 if (radAlert) {
                     var rt = (radAlert.textContent || radAlert.innerText || '').trim();
-                    if (rt.length > 0) {
+                    if (rt.length > 0 && rt.toLowerCase().indexOf('confirm') === -1) {
                         return JSON.stringify({ status: 'error', message: rt });
                     }
                 }
@@ -1104,12 +1132,20 @@ private fun verifySubmissionResult(
                     }
                 } catch(e) {}
 
-                // Check any element with red/danger text color or curfew keywords
+                // Check any element with red/danger text color or curfew keywords (ignoring links)
                 var allAlertSpans = document.querySelectorAll('span, div, p, label');
                 for (var asp = 0; asp < allAlertSpans.length; asp++) {
                     var spanEl = allAlertSpans[asp];
+                    if (spanEl.tagName === 'A' || spanEl.closest('a')) continue;
                     var sText = (spanEl.textContent || spanEl.innerText || '').trim();
-                    if (sText.length > 10 && (sText.toLowerCase().includes('curfew') || sText.toLowerCase().includes('greater than') || sText.toLowerCase().includes('less than') || sText.toLowerCase().includes('not allowed') || sText.toLowerCase().includes('extended leave'))) {
+                    var sLower = sText.toLowerCase();
+                    if (sLower.indexOf('concept note') !== -1 || sLower.indexOf('disciplinary') !== -1 ||
+                        sLower.indexOf('misconduct') !== -1 || sLower.indexOf('rules and regulations') !== -1 ||
+                        sLower.indexOf('acknowledge') !== -1 || sLower.indexOf('click here') !== -1 ||
+                        sLower.indexOf('download') !== -1) {
+                        continue;
+                    }
+                    if (sText.length > 10 && (sLower.includes('curfew') || sLower.includes('greater than') || sLower.includes('less than') || sLower.includes('not allowed') || sLower.includes('extended leave'))) {
                         return JSON.stringify({ status: 'error', message: sText });
                     }
                     var sCol = window.getComputedStyle(spanEl).color;
@@ -1118,7 +1154,7 @@ private fun verifySubmissionResult(
                     }
                 }
 
-                // 3. OTP modal
+                // 4. OTP modal
                 var otpTip = document.getElementById('ctl00_cphHeading_RadToolTip1');
                 var txtOtp = document.getElementById('ctl00_cphHeading_txtOTP');
                 var isOtpVisible = false;
@@ -1128,7 +1164,7 @@ private fun verifySubmissionResult(
                     return JSON.stringify({ status: 'error', message: 'UMS requires OTP validation for this leave. Please apply directly through UMS portal.' });
                 }
 
-                // 4. Validation summaries
+                // 5. Validation summaries
                 var valSummaries = document.querySelectorAll('[id*="ValidationSummary"]');
                 for (var vs = 0; vs < valSummaries.length; vs++) {
                     var vSumEl = valSummaries[vs];
@@ -1147,8 +1183,7 @@ private fun verifySubmissionResult(
                     }
                 }
 
-                // 5. Leave table check
-                var firstRow = document.querySelector('#ctl00_cphHeading_grdLeaveDetail tr:nth-child(2)');
+                // 6. Leave table check if unchanged
                 if (firstRow) {
                     var leaveId = firstRow.cells[0] ? (firstRow.cells[0].textContent || '').trim() : '';
                     var leaveType = firstRow.cells[1] ? (firstRow.cells[1].textContent || '').trim() : '';
