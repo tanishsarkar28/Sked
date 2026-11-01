@@ -215,7 +215,7 @@ fun LeaveSlipScreen(
         if (isFetchingSlip) return
         isFetchingSlip = true
 
-        fun doFetch() {
+        fun doFetch(isRetry: Boolean = false) {
             coroutineScope.launch {
                 val passRes = LeaveSubmitEngine.fetchGatePass(context)
                 if (passRes.isSuccess) {
@@ -241,17 +241,25 @@ fun LeaveSlipScreen(
                             err.contains("re-auth", ignoreCase = true) ||
                             err.contains("expired", ignoreCase = true)
 
-                    if (isSessionExpired && onRefreshSession != null) {
+                    if (!isRetry && isSessionExpired && onRefreshSession != null) {
                         Toast.makeText(context, "UMS session expired. Refreshing session...", Toast.LENGTH_SHORT).show()
                         onRefreshSession.invoke { success ->
                             if (success) {
-                                doFetch()
+                                // First check if UmsAuthBridgeDialog already fetched and saved the pass
+                                val syncedPass = LeaveStorage.loadGatePass(context)
+                                if (syncedPass.hasActivePass) {
+                                    gatePass = syncedPass
+                                    isFetchingSlip = false
+                                    Toast.makeText(context, "Leave slip fetched from UMS", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    doFetch(isRetry = true)
+                                }
                             } else {
                                 isFetchingSlip = false
                                 showSlipBridge = true
                             }
                         }
-                    } else if (isSessionExpired && onReSync != null) {
+                    } else if (!isRetry && isSessionExpired && onReSync != null) {
                         isFetchingSlip = false
                         Toast.makeText(context, "UMS session expired. Refreshing session...", Toast.LENGTH_SHORT).show()
                         onReSync.invoke()
@@ -263,7 +271,7 @@ fun LeaveSlipScreen(
             }
         }
 
-        doFetch()
+        doFetch(isRetry = false)
     }
 
     fun refreshData(allowSessionRefresh: Boolean = false) {

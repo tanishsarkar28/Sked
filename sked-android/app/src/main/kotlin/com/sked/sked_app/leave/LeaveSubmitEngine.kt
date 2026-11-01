@@ -30,17 +30,24 @@ object LeaveSubmitEngine {
         val prefs = context.getSharedPreferences(com.sked.sked_app.widget.PREFS_NAME, Context.MODE_PRIVATE)
         val savedCookies = prefs.getString(com.sked.sked_app.AutoSyncManager.KEY_UMS_COOKIES, "") ?: ""
 
+        val cookieUrls = listOf(
+            "https://ums.lpu.in/lpuums/frmHostelLeaveSlipTest.aspx",
+            "https://ums.lpu.in/lpuums/frmStudentHostelLeaveApplicationTermWise.aspx",
+            "https://ums.lpu.in/lpuums",
+            "https://ums.lpu.in"
+        )
+
         if (savedCookies.isNotBlank()) {
             for (cookie in savedCookies.split(";")) {
                 val trimmed = cookie.trim()
                 if (trimmed.isNotBlank()) {
-                    cm.setCookie("https://ums.lpu.in", trimmed)
+                    for (u in cookieUrls) {
+                        cm.setCookie(u, trimmed)
+                    }
                 }
             }
             cm.flush()
         }
-
-        val cmCookies = cm.getCookie("https://ums.lpu.in") ?: ""
 
         val cookieMap = LinkedHashMap<String, String>()
         fun parseCookies(str: String) {
@@ -56,7 +63,10 @@ object LeaveSubmitEngine {
                 }
             }
         }
-        parseCookies(cmCookies)
+        for (u in cookieUrls) {
+            val c = cm.getCookie(u) ?: ""
+            parseCookies(c)
+        }
         parseCookies(savedCookies)
 
         return cookieMap.entries.joinToString("; ") { "${it.key}=${it.value}" }
@@ -165,6 +175,10 @@ object LeaveSubmitEngine {
                 .url(LEAVE_SLIP_URL)
                 .header("Cookie", cookies)
                 .header("User-Agent", getDefaultUserAgent(context))
+                .header("Referer", "https://ums.lpu.in/lpuums/StudentDashboard.aspx")
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .header("Upgrade-Insecure-Requests", "1")
                 .build()
 
             client.newCall(req).execute().use { resp ->

@@ -1,8 +1,8 @@
 {
-  "versionCode": 14,
-  "versionName": "1.4.3",
+  "versionCode": 15,
+  "versionName": "1.4.4",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Displays registered parent mobile number in the Parent OTP dialog\n• Aligned automated submission with UMS Validate OTP button\n• Robust error and curfew verification logic for hostel leaves",
+  "releaseNotes": "• Fixed Leave Slip infinite re-sync loop with retry guard & bridge fallback\n• Fixed CookieManager path scoping for /lpuums ASP.NET session cookies\n• Added background gate pass pre-fetching during UMS sync",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",

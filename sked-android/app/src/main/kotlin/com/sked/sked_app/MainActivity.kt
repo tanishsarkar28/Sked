@@ -2424,13 +2424,25 @@ fun UmsAuthBridgeDialog(
                                                     window._skedLeaveResult = '';
                                                 });
 
-                                            Promise.all([ttPromise, dsPromise, leavePromise]).then(function() {
+                                            var slipPromise = safeFetch('/lpuums/frmHostelLeaveSlipTest.aspx', 'slipAspx')
+                                                .then(function(res) {
+                                                    if (res.html && !res.html.includes('LoginNew.aspx') && !res.html.includes('lockerror')) {
+                                                        window._skedSlipResult = res.html;
+                                                    } else {
+                                                        window._skedSlipResult = '';
+                                                    }
+                                                })
+                                                .catch(function(e) {
+                                                    window._skedSlipResult = '';
+                                                });
+
+                                            Promise.all([ttPromise, dsPromise, leavePromise, slipPromise]).then(function() {
                                                 window._skedAllDone = true;
                                             }).catch(function() {
                                                 window._skedAllDone = true;
                                             });
 
-                                            return Promise.all([ttPromise, dsPromise, leavePromise]);
+                                            return Promise.all([ttPromise, dsPromise, leavePromise, slipPromise]);
                                         }
 
                                         fetch(form ? form.action : window.location.href, {
@@ -2558,13 +2570,16 @@ fun UmsAuthBridgeDialog(
                                         wv.evaluateJavascript("window._skedTimetableResult") { ttRaw ->
                                             wv.evaluateJavascript("window._skedDatesheetResult || ''") { dsRaw ->
                                                 wv.evaluateJavascript("window._skedLeaveResult || ''") { leaveRaw ->
+                                                    wv.evaluateJavascript("window._skedSlipResult || ''") { slipRaw ->
                                                     wv.evaluateJavascript("window._skedDsDebug || ''") { dsDbg ->
                                                         wv.evaluateJavascript("window._skedLeaveDbg || ''") { leaveDbg ->
                                                         coroutineScope.launch(Dispatchers.IO) {
                                                             try {
                                                                 val cm = CookieManager.getInstance()
                                                                 cm.flush()
-                                                                val rawCookies = cm.getCookie("https://ums.lpu.in/lpuums/frmStudentHostelLeaveApplicationTermWise.aspx")
+                                                                val rawCookies = cm.getCookie("https://ums.lpu.in/lpuums/frmHostelLeaveSlipTest.aspx")
+                                                                    ?.takeIf { it.isNotBlank() }
+                                                                    ?: cm.getCookie("https://ums.lpu.in/lpuums/frmStudentHostelLeaveApplicationTermWise.aspx")
                                                                     ?.takeIf { it.isNotBlank() }
                                                                     ?: cm.getCookie("https://ums.lpu.in/lpuums")
                                                                     ?.takeIf { it.isNotBlank() }
@@ -2601,6 +2616,42 @@ fun UmsAuthBridgeDialog(
                                                                         }
                                                                     } catch (e: Exception) {
                                                                         android.util.Log.w("SkedSync", "Failed to parse hostel leave HTML: ${e.message}")
+                                                                    }
+                                                                }
+
+                                                            // Sync live gate pass data if available
+                                                                val cleanSlipHtml = if (!slipRaw.isNullOrBlank() && slipRaw != "\"\"" && slipRaw != "null") {
+                                                                    try {
+                                                                        if (slipRaw.startsWith("\"") && slipRaw.endsWith("\"")) {
+                                                                            JSONObject("{\"v\":$slipRaw}").getString("v")
+                                                                        } else slipRaw
+                                                                    } catch (_: Exception) { slipRaw }
+                                                                } else ""
+
+                                                                if (cleanSlipHtml.isNotBlank()) {
+                                                                    try {
+                                                                        val parsedPass = com.sked.sked_app.leave.LeaveParser.parseGatePass(cleanSlipHtml)
+                                                                        if (parsedPass != null) {
+                                                                            com.sked.sked_app.leave.LeaveStorage.saveGatePass(context, parsedPass)
+                                                                            android.util.Log.i("SkedSync", "Saved live gate pass: hasActive=${parsedPass.hasActivePass}, code=${parsedPass.leaveCode}")
+                                                                            if (parsedPass.hasActivePass) {
+                                                                                try {
+                                                                                    val photoClient = okhttp3.OkHttpClient()
+                                                                                    val photoReq = okhttp3.Request.Builder()
+                                                                                        .url("https://ums.lpu.in/lpuums/DisplayImageForPowerBi.aspx")
+                                                                                        .header("Cookie", rawCookies)
+                                                                                        .build()
+                                                                                    photoClient.newCall(photoReq).execute().use { photoResp ->
+                                                                                        val bytes = photoResp.body?.bytes()
+                                                                                        if (bytes != null && bytes.size > 200) {
+                                                                                            java.io.File(context.filesDir, "student_photo.jpg").writeBytes(bytes)
+                                                                                        }
+                                                                                    }
+                                                                                } catch (_: Exception) {}
+                                                                            }
+                                                                        }
+                                                                    } catch (e: Exception) {
+                                                                        android.util.Log.w("SkedSync", "Failed to parse hostel leave slip HTML: ${e.message}")
                                                                     }
                                                                 }
 
@@ -2787,6 +2838,7 @@ fun UmsAuthBridgeDialog(
                                             }
                                         }
                                     }
+                                }
                                 }
                             }
                             } catch (_: Exception) {}
