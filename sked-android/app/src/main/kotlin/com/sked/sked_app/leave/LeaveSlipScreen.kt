@@ -475,8 +475,8 @@ fun LeaveSlipScreen(
     val isCheckInDone = effectiveGatePass.checkInTime.isNotBlank()
     val isCheckedOut = effectiveGatePass.checkOutTime.isNotBlank() && !isCheckInDone
     val isCompleted = isCheckInDone
-    // Keep slip accessible to scan barcode even if return time passed, until student checks in!
-    val shouldDisplaySlip = effectiveGatePass.hasActivePass && !isCheckInDone
+    // Disappear leave slip 10 minutes after scheduled return time or when check-in is complete
+    val shouldDisplaySlip = effectiveGatePass.hasActivePass && !isCheckInDone && !isExpired
 
     if (showSlipBridge) {
         LeaveSlipFetchBridgeDialog(
