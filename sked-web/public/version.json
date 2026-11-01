@@ -1,8 +1,8 @@
 {
-  "versionCode": 15,
-  "versionName": "1.4.4",
+  "versionCode": 16,
+  "versionName": "1.4.5",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Fixed Leave Slip infinite re-sync loop with retry guard & bridge fallback\n• Fixed CookieManager path scoping for /lpuums ASP.NET session cookies\n• Added background gate pass pre-fetching during UMS sync",
+  "releaseNotes": "\u2022 Fixed Leave Slip active pass detection with resilient HTML and input tag matching\n\u2022 Added automatic synthesis from approved leave records when slip page is pending\n\u2022 Kept gate pass and barcode scannable even if scheduled return time has passed until gate check-in",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",

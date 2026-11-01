@@ -24,19 +24,19 @@ object LeaveStorage {
     )
 
     val DEFAULT_PROFILE = LeaveProfile(
-        uid = "12407229",
-        name = "TANISH SARKAR",
-        hostel = "Boys Hostel-01",
-        roomNo = "A706-Bed A",
+        uid = "",
+        name = "",
+        hostel = "",
+        roomNo = "",
         authority = "Warden",
-        registeredMobile = "8293118470",
-        homeAddress = "Village : Suravisthan, P.O. : Badkulla,,Badkulla,Nadia,West Bengal,India"
+        registeredMobile = "",
+        homeAddress = ""
     )
 
     val DEFAULT_GATE_PASS = HostelGatePass()
 
     val DEFAULT_RECORDS = listOf(
-        LeaveRecord("5821114", "Day Leave(Extended Leave Timing)", "10/30/2026 5:57:00 PM", "10/30/2026 6:00:00 PM", "10/30/2026 10:45:00 PM", "Approved", "10/30/2026 6:06:00 PM", ""),
+        LeaveRecord("5821114", "Day Leave(Extended Leave Timing)", "10/30/2026 5:57:00 PM", "10/30/2026 6:00:00 PM", "10/30/2026 10:45:00 PM", "Approved", "10/30/2026 6:06:00 PM", "10/30/2026 9:45:00 PM"),
         LeaveRecord("5768261", "Day Leave(Extended Leave Timing)", "10/20/2026 2:46:21 PM", "10/20/2026 3:00:00 PM", "10/20/2026 10:45:00 PM", "Approved", "10/20/2026 2:50:47 PM", "10/20/2026 9:43:22 PM"),
         LeaveRecord("5757328", "Day Leave(Extended Leave Timing)", "10/18/2026 5:25:49 PM", "10/18/2026 5:30:00 PM", "10/18/2026 10:45:00 PM", "Approved", "10/18/2026 5:39:33 PM", "10/18/2026 8:43:58 PM"),
         LeaveRecord("5725392", "Day Leave(Extended Leave Timing)", "10/7/2026 4:56:02 PM", "10/7/2026 5:00:00 PM", "10/7/2026 10:45:00 PM", "Approved", "10/7/2026 5:07:25 PM", "10/7/2026 9:07:07 PM"),
@@ -225,6 +225,7 @@ object LeaveStorage {
             put("roomNo", pass.roomNo)
             put("note", pass.note)
             put("hasActivePass", pass.hasActivePass)
+            put("photoUrl", pass.photoUrl)
 
             val gatesArr = JSONArray()
             for (g in pass.gates) {
@@ -277,9 +278,10 @@ object LeaveStorage {
                 contactNo = obj.optString("contactNo", DEFAULT_GATE_PASS.contactNo),
                 hostel = obj.optString("hostel", DEFAULT_GATE_PASS.hostel),
                 roomNo = obj.optString("roomNo", DEFAULT_GATE_PASS.roomNo),
-                gates = if (gatesList.isNotEmpty()) gatesList else DEFAULT_GATE_PASS.gates,
-                note = obj.optString("note", DEFAULT_GATE_PASS.note),
-                hasActivePass = obj.optBoolean("hasActivePass", true)
+                gates = if (gatesList.isNotEmpty()) gatesList else emptyList(),
+                note = obj.optString("note", "Note : Do not look back after checkout; please proceed forward only."),
+                hasActivePass = obj.optBoolean("hasActivePass", false),
+                photoUrl = obj.optString("photoUrl", "")
             )
         } catch (_: Exception) {
             DEFAULT_GATE_PASS

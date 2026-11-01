@@ -40,27 +40,23 @@ data class GateActivation(
 data class HostelGatePass(
     val universityTitle: String = "Lovely Professional University",
     val passSubtitle: String = "Hostel Leave Gate Pass",
-    val leaveType: String = "Day Leave(Extended Leave Timing)",
-    val leaveId: String = "5821114",
-    val leaveCode: String = "833168",
-    val regNo: String = "12407229",
-    val name: String = "Tanish Sarkar",
-    val dateOfApply: String = "30 Oct 2026 Time - 5:57PM",
-    val dateOfLeaving: String = "30 Oct 2026 Time - 6:00PM",
-    val dateOfReturn: String = "30 Oct 2026 Time - 10:45PM",
-    val checkOutTime: String = "30 Oct 2026 Time - 6:06PM",
+    val leaveType: String = "",
+    val leaveId: String = "",
+    val leaveCode: String = "",
+    val regNo: String = "",
+    val name: String = "",
+    val dateOfApply: String = "",
+    val dateOfLeaving: String = "",
+    val dateOfReturn: String = "",
+    val checkOutTime: String = "",
     val checkInTime: String = "",
-    val contactNo: String = "8293118470",
-    val hostel: String = "Boys Hostel-01",
-    val roomNo: String = "A706-Bed A",
-    val gates: List<GateActivation> = listOf(
-        GateActivation("CheckOut(Exit) Gate-G3", "✔ Activated"),
-        GateActivation("CheckOut(Exit) Gate-G4", "✔ Activated"),
-        GateActivation("CheckIn(Entry) Gate-G5", "✔ Activated"),
-        GateActivation("CheckIn(Entry) Gate-G6", "✔ Activated")
-    ),
+    val contactNo: String = "",
+    val hostel: String = "",
+    val roomNo: String = "",
+    val gates: List<GateActivation> = emptyList(),
     val note: String = "Note : Do not look back after checkout; please proceed forward only.",
-    val hasActivePass: Boolean = true
+    val hasActivePass: Boolean = false,
+    val photoUrl: String = ""
 )
 
 enum class LeaveTypeOption(
