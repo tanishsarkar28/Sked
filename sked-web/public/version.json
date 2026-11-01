@@ -1,8 +1,8 @@
 {
-  "versionCode": 13,
-  "versionName": "1.4.2",
+  "versionCode": 14,
+  "versionName": "1.4.3",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Refined UMS leave rejection scanner to ignore static portal links and accurately capture all new curfew rules\n• Prioritized leave table verification to prevent false-positive rejection alerts\n• Enhanced Parent OTP dialog and background sync stability",
+  "releaseNotes": "• Displays registered parent mobile number in the Parent OTP dialog\n• Aligned automated submission with UMS Validate OTP button\n• Robust error and curfew verification logic for hostel leaves",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",

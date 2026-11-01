@@ -225,7 +225,7 @@ object LeaveSubmitEngine {
         endCal: java.util.Calendar,
         reason: String,
         onStatus: (String) -> Unit,
-        onOtpRequired: (((String) -> Unit, () -> Unit) -> Unit)? = null
+        onOtpRequired: ((maskedPhone: String, submitCode: (String) -> Unit, cancelAction: () -> Unit) -> Unit)? = null
     ): Result<String> = withContext(Dispatchers.Main) {
         suspendCancellableCoroutine { continuation ->
             val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -761,9 +761,9 @@ object LeaveSubmitEngine {
                                                 }
                                             }
 
-                                            // 2. Check for OTP modal (RadToolTip1 / txtOTP)
+                                            // 2. Check for OTP modal (RadToolTip1 / txtOTP / OTP Validation)
                                             var otpTip = document.getElementById('ctl00_cphHeading_RadToolTip1') || document.querySelector('[id*="RadToolTip"]');
-                                            var txtOtp = document.getElementById('ctl00_cphHeading_txtOTP') || document.querySelector('[id*="txtOTP"]');
+                                            var txtOtp = document.getElementById('ctl00_cphHeading_txtOTP') || document.querySelector('input[id*="txtOTP" i], input[id*="otp" i]');
                                             var isOtpVisible = false;
                                             if (otpTip && (otpTip.style.display !== 'none' && otpTip.style.visibility !== 'hidden')) {
                                                 isOtpVisible = true;
@@ -771,8 +771,15 @@ object LeaveSubmitEngine {
                                             if (txtOtp && txtOtp.offsetParent !== null) {
                                                 isOtpVisible = true;
                                             }
+                                            var bodyText = document.body ? (document.body.innerText || document.body.textContent || '') : '';
+                                            if (bodyText.indexOf('OTP Validation') !== -1 || bodyText.indexOf('registered mobile number') !== -1) {
+                                                isOtpVisible = true;
+                                            }
                                             if (isOtpVisible) {
-                                                return JSON.stringify({ status: 'otp_required' });
+                                                var phoneMatch = bodyText.match(/(?:mobile number|registered mobile)\s*([xX\*\d]{8,14})/i) ||
+                                                                 bodyText.match(/([xX\*\d]{6,}\d{2,4})/);
+                                                var maskedPhone = phoneMatch ? phoneMatch[1].trim() : '';
+                                                return JSON.stringify({ status: 'otp_required', maskedPhone: maskedPhone });
                                             }
 
                                             // 3. Check for Telerik RadAlert or dialog content
@@ -933,6 +940,7 @@ object LeaveSubmitEngine {
                                                 finishWith(Result.failure(Exception(msg)))
                                             }
                                             "otp_required" -> {
+                                                val maskedPhone = obj.optString("maskedPhone", "")
                                                 if (onOtpRequired != null) {
                                                     onStatus("Parent verification OTP required...")
                                                     timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
@@ -942,23 +950,32 @@ object LeaveSubmitEngine {
                                                     mainHandler.postDelayed(timeoutRunnable!!, 180000)
 
                                                     onOtpRequired.invoke(
+                                                        maskedPhone,
                                                         { enteredOtp ->
                                                             onStatus("Submitting Parent OTP...")
                                                             val safeOtp = org.json.JSONObject.quote(enteredOtp.trim())
                                                             val jsSubmitOtp = """
                                                                 (function() {
                                                                     try {
-                                                                        var txt = document.getElementById('ctl00_cphHeading_txtOTP') || document.querySelector('[id*="txtOTP"]');
+                                                                        var txt = document.getElementById('ctl00_cphHeading_txtOTP') || 
+                                                                                  document.querySelector('input[id*="txtOTP" i], input[id*="otp" i]');
                                                                         if (txt) {
                                                                             txt.value = $safeOtp;
                                                                             txt.dispatchEvent(new Event('input', { bubbles: true }));
                                                                             txt.dispatchEvent(new Event('change', { bubbles: true }));
                                                                         }
-                                                                        var btn = document.getElementById('ctl00_cphHeading_btnSubmitOTP') ||
-                                                                                  document.getElementById('ctl00_cphHeading_btnValidate') ||
-                                                                                  document.getElementById('ctl00_cphHeading_btnOTPValidate') ||
-                                                                                  document.querySelector('[id*="btnOTP"]') ||
-                                                                                  document.querySelector('[id*="btnValidate"]');
+                                                                        var btn = (function() {
+                                                                            var inputs = document.querySelectorAll('input[type="submit"], input[type="button"], button');
+                                                                            for (var bi = 0; bi < inputs.length; bi++) {
+                                                                                var val = (inputs[bi].value || inputs[bi].textContent || '').trim().toLowerCase();
+                                                                                if (val === 'validate otp' || val === 'validate') return inputs[bi];
+                                                                            }
+                                                                            return document.getElementById('ctl00_cphHeading_btnSubmitOTP') ||
+                                                                                   document.getElementById('ctl00_cphHeading_btnValidate') ||
+                                                                                   document.getElementById('ctl00_cphHeading_btnOTPValidate') ||
+                                                                                   document.querySelector('[id*="btnOTP" i]') ||
+                                                                                   document.querySelector('[id*="btnValidate" i]');
+                                                                        })();
                                                                         if (btn) {
                                                                             setTimeout(function() { btn.click(); }, 250);
                                                                         } else {

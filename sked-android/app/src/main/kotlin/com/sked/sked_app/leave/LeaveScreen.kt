@@ -116,6 +116,7 @@ fun LeaveScreen(
 
     // Parent OTP Dialog States
     var showParentOtpDialog by remember { mutableStateOf(false) }
+    var parentOtpPhoneTarget by remember { mutableStateOf("") }
     var parentOtpCode by remember { mutableStateOf("") }
     var parentOtpSubmitAction by remember { mutableStateOf<((String) -> Unit)?>(null) }
     var parentOtpCancelAction by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -313,8 +314,9 @@ fun LeaveScreen(
                     endCal = endCal,
                     reason = reason,
                     onStatus = { status -> submitStatusText = status },
-                    onOtpRequired = { onSubmitOtp, onCancel ->
+                    onOtpRequired = { maskedPhone, onSubmitOtp, onCancel ->
                         isSubmitting = false
+                        parentOtpPhoneTarget = maskedPhone
                         parentOtpCode = ""
                         parentOtpSubmitAction = onSubmitOtp
                         parentOtpCancelAction = onCancel
@@ -1387,13 +1389,31 @@ fun LeaveScreen(
             },
             text = {
                 Column {
-                    Text(
-                        text = "UMS has sent an OTP to your parent's registered mobile number. Please enter it below to authorize this hostel leave:",
-                        fontSize = 13.sp,
-                        color = Slate,
-                        lineHeight = 18.sp
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
+                    if (parentOtpPhoneTarget.isNotBlank()) {
+                        Text(
+                            text = "OTP sent to parent's registered mobile:",
+                            fontSize = 12.sp,
+                            color = Slate
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = parentOtpPhoneTarget,
+                            fontSize = 17.sp,
+                            fontFamily = BarlowCondensed,
+                            fontWeight = FontWeight.Bold,
+                            color = Blaze,
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                    } else {
+                        Text(
+                            text = "UMS has sent an OTP to your parent's registered mobile number. Please enter it below to authorize this hostel leave:",
+                            fontSize = 13.sp,
+                            color = Slate,
+                            lineHeight = 18.sp
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                    }
                     OutlinedTextField(
                         value = parentOtpCode,
                         onValueChange = { parentOtpCode = it.filter { ch -> ch.isDigit() }.take(8) },
