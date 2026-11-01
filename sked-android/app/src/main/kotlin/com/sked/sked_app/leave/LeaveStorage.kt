@@ -179,7 +179,13 @@ object LeaveStorage {
                 registeredMobile = obj.optString("registeredMobile", ""),
                 homeAddress = obj.optString("homeAddress", "")
             )
-            if (prof.uid.isNotBlank() || prof.name.isNotBlank()) prof else DEFAULT_PROFILE
+            if (prof.name.equals("Tanish Sarkar", ignoreCase = true) || prof.uid == "12407229") {
+                DEFAULT_PROFILE
+            } else if (prof.uid.isNotBlank() || prof.name.isNotBlank()) {
+                prof
+            } else {
+                DEFAULT_PROFILE
+            }
         } catch (_: Exception) {
             DEFAULT_PROFILE
         }
@@ -262,7 +268,7 @@ object LeaveStorage {
                     )
                 }
             }
-            HostelGatePass(
+            val pass = HostelGatePass(
                 universityTitle = obj.optString("universityTitle", DEFAULT_GATE_PASS.universityTitle),
                 passSubtitle = obj.optString("passSubtitle", DEFAULT_GATE_PASS.passSubtitle),
                 leaveType = obj.optString("leaveType", DEFAULT_GATE_PASS.leaveType),
@@ -283,6 +289,11 @@ object LeaveStorage {
                 hasActivePass = obj.optBoolean("hasActivePass", false),
                 photoUrl = obj.optString("photoUrl", "")
             )
+            if (pass.name.isBlank() || pass.name.equals("Tanish Sarkar", ignoreCase = true)) {
+                DEFAULT_GATE_PASS
+            } else {
+                pass
+            }
         } catch (_: Exception) {
             DEFAULT_GATE_PASS
         }

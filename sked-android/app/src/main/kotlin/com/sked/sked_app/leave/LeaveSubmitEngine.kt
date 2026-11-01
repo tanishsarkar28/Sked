@@ -63,13 +63,19 @@ object LeaveSubmitEngine {
                 }
             }
         }
+        // Baseline: saved cookies
+        parseCookies(savedCookies)
+        // Fresh live cookies from CookieManager overwrite baseline
         for (u in cookieUrls) {
             val c = cm.getCookie(u) ?: ""
             parseCookies(c)
         }
-        parseCookies(savedCookies)
 
-        return cookieMap.entries.joinToString("; ") { "${it.key}=${it.value}" }
+        val result = cookieMap.entries.joinToString("; ") { "${it.key}=${it.value}" }
+        if (result.isNotBlank() && result != savedCookies) {
+            prefs.edit().putString(com.sked.sked_app.AutoSyncManager.KEY_UMS_COOKIES, result).apply()
+        }
+        return result
     }
 
     fun getDefaultUserAgent(context: Context): String {
@@ -197,21 +203,8 @@ object LeaveSubmitEngine {
                     if (pass != null) {
                         LeaveStorage.saveGatePass(context, pass)
                         if (pass.hasActivePass) {
-                            // Download student photo
-                            try {
-                                val photoReq = Request.Builder()
-                                    .url(STUDENT_PHOTO_URL)
-                                    .header("Cookie", cookies)
-                                    .header("User-Agent", getDefaultUserAgent(context))
-                                    .build()
-                                client.newCall(photoReq).execute().use { photoResp ->
-                                    val bytes = photoResp.body?.bytes()
-                                    if (bytes != null && bytes.size > 200) {
-                                        val photoFile = java.io.File(context.filesDir, "student_photo.jpg")
-                                        photoFile.writeBytes(bytes)
-                                    }
-                                }
-                            } catch (_: Exception) {}
+                            val targetPhotoUrl = if (pass.photoUrl.isNotBlank()) pass.photoUrl else STUDENT_PHOTO_URL
+                            downloadPhoto(context, targetPhotoUrl, cookies)
                         }
                         return@withContext Result.success(pass)
                     }
@@ -221,6 +214,34 @@ object LeaveSubmitEngine {
         } catch (e: Exception) {
             android.util.Log.w("SkedLeave", "fetchGatePass error: ${e.message}")
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Downloads and caches the student photo locally to filesDir/student_photo.jpg.
+     */
+    fun downloadPhoto(context: Context, photoUrl: String, cookies: String) {
+        if (photoUrl.isBlank()) return
+        try {
+            val client = OkHttpClient.Builder()
+                .connectTimeout(12, TimeUnit.SECONDS)
+                .readTimeout(12, TimeUnit.SECONDS)
+                .build()
+            val req = Request.Builder()
+                .url(photoUrl)
+                .header("Cookie", cookies)
+                .header("User-Agent", getDefaultUserAgent(context))
+                .header("Referer", LEAVE_SLIP_URL)
+                .build()
+            client.newCall(req).execute().use { photoResp ->
+                val bytes = photoResp.body?.bytes()
+                if (bytes != null && bytes.size > 200) {
+                    val photoFile = java.io.File(context.filesDir, "student_photo.jpg")
+                    photoFile.writeBytes(bytes)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("SkedLeave", "downloadPhoto error: ${e.message}")
         }
     }
 

@@ -125,6 +125,75 @@ private val Slate = Color(0xFF7A7774)
 
 private const val UMS_LEAVE_SLIP_URL = "https://ums.lpu.in/lpuums/frmHostelLeaveSlipTest.aspx"
 
+private const val INJECT_EXTRACTION_SCRIPT = """
+(function() {
+    function doExtract() {
+        try {
+            var lidEl = document.getElementById('ctl00_cphHeading_lblLid');
+            var lcodeEl = document.getElementById('ctl00_cphHeading_lblLCode');
+            var nameEl = document.getElementById('ctl00_cphHeading_lblName');
+            var regEl = document.getElementById('ctl00_cphHeading_lblRegNo');
+            var applyEl = document.getElementById('ctl00_cphHeading_lblDateofapply');
+            var leaveEl = document.getElementById('ctl00_cphHeading_lblDateofleaveing');
+            var retEl = document.getElementById('ctl00_cphHeading_lblDateofreturn');
+            var coutEl = document.getElementById('ctl00_cphHeading_lblcheckouttime');
+            var cinEl = document.getElementById('ctl00_cphHeading_lblcheckintime');
+            var mobEl = document.getElementById('ctl00_cphHeading_lblmobile');
+            var hostEl = document.getElementById('ctl00_cphHeading_lblhostel');
+            var roomEl = document.getElementById('ctl00_cphHeading_lblroomno');
+            var imgEl = document.getElementById('ctl00_cphHeading_Image1');
+
+            var lid = lidEl ? (lidEl.innerText || lidEl.textContent || '').trim() : '';
+            var lcode = lcodeEl ? (lcodeEl.innerText || lcodeEl.textContent || '').trim() : '';
+            var name = nameEl ? (nameEl.innerText || nameEl.textContent || '').trim() : '';
+            var regNo = regEl ? (regEl.innerText || regEl.textContent || '').trim() : '';
+            var photoUrl = imgEl ? (imgEl.src || '') : '';
+
+            var gates = [];
+            var grid = document.getElementById('ctl00_cphHeading_grdGateStatus');
+            if (grid) {
+                var rows = grid.getElementsByTagName('tr');
+                for (var i = 0; i < rows.length; i++) {
+                    var tds = rows[i].getElementsByTagName('td');
+                    if (tds.length >= 2) {
+                        gates.push({
+                            gateName: (tds[0].innerText || tds[0].textContent || '').trim(),
+                            status: (tds[1].innerText || tds[1].textContent || '✔ Activated').trim()
+                        });
+                    }
+                }
+            }
+
+            if (lid || lcode || name) {
+                var data = {
+                    leaveId: lid,
+                    leaveCode: lcode || lid,
+                    name: name,
+                    regNo: regNo,
+                    dateOfApply: applyEl ? (applyEl.innerText || applyEl.textContent || '').trim() : '',
+                    dateOfLeaving: leaveEl ? (leaveEl.innerText || leaveEl.textContent || '').trim() : '',
+                    dateOfReturn: retEl ? (retEl.innerText || retEl.textContent || '').trim() : '',
+                    checkOutTime: coutEl ? (coutEl.innerText || coutEl.textContent || '').trim() : '',
+                    checkInTime: cinEl ? (cinEl.innerText || cinEl.textContent || '').trim() : '',
+                    contactNo: mobEl ? (mobEl.innerText || mobEl.textContent || '').trim() : '',
+                    hostel: hostEl ? (hostEl.innerText || hostEl.textContent || '').trim() : '',
+                    roomNo: roomEl ? (roomEl.innerText || roomEl.textContent || '').trim() : '',
+                    photoUrl: photoUrl,
+                    gates: gates
+                };
+                if (window.PortalBridge && window.PortalBridge.onSlipJson) {
+                    window.PortalBridge.onSlipJson(JSON.stringify(data));
+                }
+            }
+        } catch(e) {}
+    }
+    doExtract();
+    setTimeout(doExtract, 500);
+    setTimeout(doExtract, 1500);
+    setTimeout(doExtract, 3000);
+})();
+"""
+
 enum class LeaveSlipMode {
     DIGITAL_PASS,
     UMS_PORTAL
@@ -357,9 +426,18 @@ fun LeaveSlipScreen(
 
     // Effective gate pass: use parsed pass if active; otherwise synthesize from approved leave record
     val effectiveGatePass = remember(gatePass, approvedRecord, profile) {
-        if (gatePass.hasActivePass && gatePass.leaveId.isNotBlank()) {
+        val isComplete = gatePass.hasActivePass && gatePass.leaveId.isNotBlank() && gatePass.name.isNotBlank()
+        if (isComplete) {
             gatePass
-        } else if (approvedRecord != null) {
+        } else if (gatePass.hasActivePass && gatePass.leaveId.isNotBlank() && profile.name.isNotBlank()) {
+            gatePass.copy(
+                regNo = gatePass.regNo.ifBlank { profile.uid },
+                name = gatePass.name.ifBlank { profile.name },
+                contactNo = gatePass.contactNo.ifBlank { profile.registeredMobile },
+                hostel = gatePass.hostel.ifBlank { profile.hostel },
+                roomNo = gatePass.roomNo.ifBlank { profile.roomNo }
+            )
+        } else if (approvedRecord != null && (profile.name.isNotBlank() || gatePass.name.isNotBlank())) {
             HostelGatePass(
                 universityTitle = "Lovely Professional University",
                 passSubtitle = "Hostel Leave Gate Pass",
@@ -385,9 +463,9 @@ fun LeaveSlipScreen(
         }
     }
 
-    // Keep cached gate pass in sync if synthesized
+    // Keep cached gate pass in sync only if it contains verified student identity
     LaunchedEffect(effectiveGatePass) {
-        if (effectiveGatePass.hasActivePass && !gatePass.hasActivePass) {
+        if (effectiveGatePass.hasActivePass && effectiveGatePass.name.isNotBlank() && !gatePass.hasActivePass) {
             gatePass = effectiveGatePass
             LeaveStorage.saveGatePass(context, effectiveGatePass)
         }
@@ -651,36 +729,146 @@ fun LeaveSlipScreen(
         HorizontalDivider(color = Rule, thickness = 1.dp)
 
         // ── Body Content by Mode ────────────────────────────────────────────
-        when (selectedMode) {
-            LeaveSlipMode.DIGITAL_PASS -> {
-                DigitalPassView(
-                    gatePass = effectiveGatePass,
-                    liveTimeText = liveTimeText,
-                    liveDateText = liveDateText,
-                    isCheckedOut = isCheckedOut,
-                    isApproved = effectiveGatePass.hasActivePass,
-                    isCompleted = isCompleted,
-                    isExpired = isExpired,
-                    shouldDisplaySlip = shouldDisplaySlip,
-                    onFetchSlip = { triggerFetchSlip() },
-                    isFetchingSlip = isFetchingSlip,
-                    onCopyCode = {
-                        val c = effectiveGatePass.leaveCode.ifBlank { effectiveGatePass.leaveId }
-                        clipboardManager.setText(AnnotatedString(c))
-                        Toast.makeText(context, "Leave Code copied: $c", Toast.LENGTH_SHORT).show()
-                    },
-                    onApplyNewLeave = onApplyLeave,
-                    onSwitchToPortal = { selectedMode = LeaveSlipMode.UMS_PORTAL }
-                )
+        Box(modifier = Modifier.fillMaxSize()) {
+            when (selectedMode) {
+                LeaveSlipMode.DIGITAL_PASS -> {
+                    DigitalPassView(
+                        gatePass = effectiveGatePass,
+                        liveTimeText = liveTimeText,
+                        liveDateText = liveDateText,
+                        isCheckedOut = isCheckedOut,
+                        isApproved = effectiveGatePass.hasActivePass,
+                        isCompleted = isCompleted,
+                        isExpired = isExpired,
+                        shouldDisplaySlip = shouldDisplaySlip,
+                        onFetchSlip = { triggerFetchSlip() },
+                        isFetchingSlip = isFetchingSlip,
+                        onCopyCode = {
+                            val c = effectiveGatePass.leaveCode.ifBlank { effectiveGatePass.leaveId }
+                            clipboardManager.setText(AnnotatedString(c))
+                            Toast.makeText(context, "Leave Code copied: $c", Toast.LENGTH_SHORT).show()
+                        },
+                        onApplyNewLeave = onApplyLeave,
+                        onSwitchToPortal = { selectedMode = LeaveSlipMode.UMS_PORTAL }
+                    )
+                }
+                LeaveSlipMode.UMS_PORTAL -> {
+                    UmsPortalWebView(
+                        onReSync = onReSync,
+                        onRefreshSession = onRefreshSession,
+                        onPassExtracted = { extracted ->
+                            gatePass = extracted
+                            LeaveStorage.saveGatePass(context, extracted)
+                            if (extracted.name.isNotBlank()) {
+                                val p = LeaveStorage.loadProfile(context).copy(
+                                    name = extracted.name,
+                                    uid = extracted.regNo,
+                                    registeredMobile = extracted.contactNo,
+                                    hostel = extracted.hostel,
+                                    roomNo = extracted.roomNo
+                                )
+                                LeaveStorage.saveProfile(context, p)
+                            }
+                        }
+                    )
+                }
             }
-            LeaveSlipMode.UMS_PORTAL -> {
-                UmsPortalWebView(
-                    onReSync = onReSync,
-                    onRefreshSession = onRefreshSession,
-                    onPassExtracted = { extracted ->
-                        gatePass = extracted
-                        LeaveStorage.saveGatePass(context, extracted)
-                    }
+
+            // Headless background sync WebView when on Digital Pass
+            if (selectedMode == LeaveSlipMode.DIGITAL_PASS && (!effectiveGatePass.hasActivePass || effectiveGatePass.name.isBlank() || isFetchingSlip)) {
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            layoutParams = ViewGroup.LayoutParams(1, 1)
+                            visibility = View.INVISIBLE
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            val cm = CookieManager.getInstance()
+                            cm.setAcceptCookie(true)
+                            cm.setAcceptThirdPartyCookies(this, true)
+
+                            class HeadlessBridge {
+                                @JavascriptInterface
+                                fun onSlipJson(jsonStr: String) {
+                                    if (jsonStr.isBlank()) return
+                                    try {
+                                        val obj = JSONObject(jsonStr)
+                                        val lid = obj.optString("leaveId", "").trim()
+                                        val lcode = obj.optString("leaveCode", "").trim()
+                                        val name = obj.optString("name", "").trim()
+                                        val regNo = obj.optString("regNo", "").trim()
+                                        val photoUrl = obj.optString("photoUrl", "").trim()
+
+                                        val gatesList = mutableListOf<GateActivation>()
+                                        val gArr = obj.optJSONArray("gates")
+                                        if (gArr != null) {
+                                            for (i in 0 until gArr.length()) {
+                                                val g = gArr.getJSONObject(i)
+                                                gatesList.add(GateActivation(
+                                                    gateName = g.optString("gateName", ""),
+                                                    status = g.optString("status", "✔ Activated")
+                                                ))
+                                            }
+                                        }
+
+                                        if (lid.isNotBlank() || lcode.isNotBlank() || name.isNotBlank()) {
+                                            val p = HostelGatePass(
+                                                universityTitle = "Lovely Professional University",
+                                                passSubtitle = "Hostel Leave Gate Pass",
+                                                leaveType = "Day Leave(Extended Leave Timing)",
+                                                leaveId = lid,
+                                                leaveCode = if (lcode.isNotBlank() && lcode != "6000") lcode else lid,
+                                                regNo = regNo,
+                                                name = name,
+                                                dateOfApply = obj.optString("dateOfApply", "").trim(),
+                                                dateOfLeaving = obj.optString("dateOfLeaving", "").trim(),
+                                                dateOfReturn = obj.optString("dateOfReturn", "").trim(),
+                                                checkOutTime = obj.optString("checkOutTime", "").trim(),
+                                                checkInTime = obj.optString("checkInTime", "").trim(),
+                                                contactNo = obj.optString("contactNo", "").trim(),
+                                                hostel = obj.optString("hostel", "").trim(),
+                                                roomNo = obj.optString("roomNo", "").trim(),
+                                                gates = gatesList,
+                                                note = "Note : Do not look back after checkout; please proceed forward only.",
+                                                hasActivePass = true,
+                                                photoUrl = photoUrl
+                                            )
+                                            coroutineScope.launch(Dispatchers.Main) {
+                                                gatePass = p
+                                                LeaveStorage.saveGatePass(ctx, p)
+                                                isFetchingSlip = false
+                                                if (p.name.isNotBlank()) {
+                                                    val prof = LeaveStorage.loadProfile(ctx).copy(
+                                                        name = p.name,
+                                                        uid = p.regNo,
+                                                        registeredMobile = p.contactNo,
+                                                        hostel = p.hostel,
+                                                        roomNo = p.roomNo
+                                                    )
+                                                    LeaveStorage.saveProfile(ctx, prof)
+                                                }
+                                            }
+                                            if (photoUrl.isNotBlank()) {
+                                                val cookies = cm.getCookie("https://ums.lpu.in") ?: ""
+                                                LeaveSubmitEngine.downloadPhoto(ctx, photoUrl, cookies)
+                                            }
+                                        }
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                            addJavascriptInterface(HeadlessBridge(), "PortalBridge")
+
+                            webViewClient = object : WebViewClient() {
+                                override fun onPageFinished(v: WebView?, u: String?) {
+                                    if (u != null && u.contains("frmHostelLeaveSlipTest.aspx", ignoreCase = true)) {
+                                        v?.evaluateJavascript(INJECT_EXTRACTION_SCRIPT, null)
+                                    }
+                                }
+                            }
+                            loadUrl(UMS_LEAVE_SLIP_URL)
+                        }
+                    },
+                    modifier = Modifier.size(1.dp)
                 )
             }
         }
@@ -918,16 +1106,14 @@ private fun DigitalPassView(
         return
     }
 
-    // Student profile photo (cached from UMS or fallback to bundled default asset)
-    val studentBitmap = remember(gatePass.regNo) {
+    // Student profile photo (cached from UMS or fallback to avatar)
+    val studentBitmap = remember(gatePass.photoUrl, gatePass.regNo, gatePass.leaveCode, gatePass.name) {
         try {
             val photoFile = File(context.filesDir, "student_photo.jpg")
             if (photoFile.exists() && photoFile.length() > 200) {
                 BitmapFactory.decodeFile(photoFile.absolutePath)
             } else {
-                context.assets.open("default_student_photo.jpg").use {
-                    BitmapFactory.decodeStream(it)
-                }
+                null
             }
         } catch (_: Exception) {
             null
@@ -1483,6 +1669,70 @@ private fun UmsPortalWebView(
 
                         class PortalSlipBridge {
                             @JavascriptInterface
+                            fun onSlipJson(jsonStr: String) {
+                                if (jsonStr.isBlank()) return
+                                try {
+                                    val obj = JSONObject(jsonStr)
+                                    val lid = obj.optString("leaveId", "").trim()
+                                    val lcode = obj.optString("leaveCode", "").trim()
+                                    val name = obj.optString("name", "").trim()
+                                    val regNo = obj.optString("regNo", "").trim()
+                                    val photoUrl = obj.optString("photoUrl", "").trim()
+
+                                    val gatesList = mutableListOf<GateActivation>()
+                                    val gArr = obj.optJSONArray("gates")
+                                    if (gArr != null) {
+                                        for (i in 0 until gArr.length()) {
+                                            val g = gArr.getJSONObject(i)
+                                            gatesList.add(GateActivation(
+                                                gateName = g.optString("gateName", ""),
+                                                status = g.optString("status", "✔ Activated")
+                                            ))
+                                        }
+                                    }
+
+                                    if (lid.isNotBlank() || lcode.isNotBlank() || name.isNotBlank()) {
+                                        val p = HostelGatePass(
+                                            universityTitle = "Lovely Professional University",
+                                            passSubtitle = "Hostel Leave Gate Pass",
+                                            leaveType = "Day Leave(Extended Leave Timing)",
+                                            leaveId = lid,
+                                            leaveCode = if (lcode.isNotBlank() && lcode != "6000") lcode else lid,
+                                            regNo = regNo,
+                                            name = name,
+                                            dateOfApply = obj.optString("dateOfApply", "").trim(),
+                                            dateOfLeaving = obj.optString("dateOfLeaving", "").trim(),
+                                            dateOfReturn = obj.optString("dateOfReturn", "").trim(),
+                                            checkOutTime = obj.optString("checkOutTime", "").trim(),
+                                            checkInTime = obj.optString("checkInTime", "").trim(),
+                                            contactNo = obj.optString("contactNo", "").trim(),
+                                            hostel = obj.optString("hostel", "").trim(),
+                                            roomNo = obj.optString("roomNo", "").trim(),
+                                            gates = gatesList,
+                                            note = "Note : Do not look back after checkout; please proceed forward only.",
+                                            hasActivePass = true,
+                                            photoUrl = photoUrl
+                                        )
+
+                                        val cm = CookieManager.getInstance()
+                                        val freshCookies = cm.getCookie("https://ums.lpu.in") ?: ""
+                                        if (freshCookies.isNotBlank()) {
+                                            val pPrefs = ctx.getSharedPreferences(com.sked.sked_app.widget.PREFS_NAME, Context.MODE_PRIVATE)
+                                            pPrefs.edit().putString(AutoSyncManager.KEY_UMS_COOKIES, freshCookies).apply()
+                                        }
+
+                                        if (photoUrl.isNotBlank()) {
+                                            LeaveSubmitEngine.downloadPhoto(ctx, photoUrl, freshCookies)
+                                        }
+
+                                        coroutineScope.launch(Dispatchers.Main) {
+                                            onPassExtracted?.invoke(p)
+                                        }
+                                    }
+                                } catch (_: Exception) {}
+                            }
+
+                            @JavascriptInterface
                             fun onSlipHtml(html: String) {
                                 if (html.isBlank()) return
                                 val p = LeaveParser.parseGatePass(html)
@@ -1524,15 +1774,7 @@ private fun UmsPortalWebView(
                                 }
 
                                 if (url != null && url.contains("frmHostelLeaveSlipTest.aspx", ignoreCase = true)) {
-                                    view?.evaluateJavascript("""
-                                        (function() {
-                                            try {
-                                                if (window.PortalBridge) {
-                                                    window.PortalBridge.onSlipHtml(document.documentElement.outerHTML);
-                                                }
-                                            } catch(e) {}
-                                        })();
-                                    """.trimIndent(), null)
+                                    view?.evaluateJavascript(INJECT_EXTRACTION_SCRIPT, null)
                                 }
 
                                 // Injected script to ensure mobile readability & ensure barcode rendering

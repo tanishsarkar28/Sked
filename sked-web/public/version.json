@@ -1,8 +1,8 @@
 {
-  "versionCode": 16,
-  "versionName": "1.4.5",
+  "versionCode": 17,
+  "versionName": "1.4.6",
   "minSupportedVersion": 1,
-  "releaseNotes": "\u2022 Fixed Leave Slip active pass detection with resilient HTML and input tag matching\n\u2022 Added automatic synthesis from approved leave records when slip page is pending\n\u2022 Kept gate pass and barcode scannable even if scheduled return time has passed until gate check-in",
+  "releaseNotes": "\u2022 Fixed Digital Gate Pass live sync with direct DOM JSON extraction\n\u2022 Added background headless sync to automatically load live pass data and student photo\n\u2022 Resolved session cookie precedence ensuring fresh CookieManager session takes priority\n\u2022 Eliminated blank profile fallbacks and synced live photo from UMS",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
