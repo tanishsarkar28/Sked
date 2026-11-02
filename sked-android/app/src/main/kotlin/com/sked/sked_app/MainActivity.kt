@@ -2630,7 +2630,7 @@ fun UmsAuthBridgeDialog(
                                                                 if (cleanSlipHtml.isNotBlank()) {
                                                                     try {
                                                                         val parsedPass = com.sked.sked_app.leave.LeaveParser.parseGatePass(cleanSlipHtml)
-                                                                        if (parsedPass != null) {
+                                                                        if (parsedPass != null && parsedPass.hasActivePass) {
                                                                             com.sked.sked_app.leave.LeaveStorage.saveGatePass(context, parsedPass)
                                                                             android.util.Log.i("SkedSync", "Saved live gate pass: hasActive=${parsedPass.hasActivePass}, code=${parsedPass.leaveCode}")
                                                                             if (parsedPass.hasActivePass) {

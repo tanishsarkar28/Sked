@@ -65,7 +65,10 @@ object LeaveSubmitEngine {
         }
         // Baseline: saved cookies
         parseCookies(savedCookies)
-        // Fresh live cookies from CookieManager overwrite baseline
+        // Flush and read fresh live cookies from CookieManager
+        try {
+            cm.flush()
+        } catch (_: Exception) {}
         for (u in cookieUrls) {
             val c = cm.getCookie(u) ?: ""
             parseCookies(c)
@@ -201,10 +204,16 @@ object LeaveSubmitEngine {
                 if (html.isNotBlank()) {
                     val pass = LeaveParser.parseGatePass(html)
                     if (pass != null) {
-                        LeaveStorage.saveGatePass(context, pass)
                         if (pass.hasActivePass) {
+                            LeaveStorage.saveGatePass(context, pass)
                             val targetPhotoUrl = if (pass.photoUrl.isNotBlank()) pass.photoUrl else STUDENT_PHOTO_URL
                             downloadPhoto(context, targetPhotoUrl, cookies)
+                        } else if (pass.checkInTime.isNotBlank()) {
+                            val existing = LeaveStorage.loadGatePass(context)
+                            if (existing.hasActivePass) {
+                                val updated = existing.copy(checkInTime = pass.checkInTime)
+                                LeaveStorage.saveGatePass(context, updated)
+                            }
                         }
                         return@withContext Result.success(pass)
                     }

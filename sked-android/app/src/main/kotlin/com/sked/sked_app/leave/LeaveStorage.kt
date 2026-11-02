@@ -216,6 +216,7 @@ object LeaveStorage {
     }
 
     fun saveGatePass(context: Context, pass: HostelGatePass) {
+        if (!pass.hasActivePass && pass.leaveId.isBlank() && pass.leaveCode.isBlank()) return
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val obj = JSONObject().apply {
             put("universityTitle", pass.universityTitle)

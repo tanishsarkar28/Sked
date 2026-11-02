@@ -322,8 +322,17 @@ fun LeaveSlipScreen(
 
                 if (passRes.isSuccess) {
                     val pass = passRes.getOrThrow()
-                    gatePass = pass
                     isFetchingSlip = false
+
+                    if (pass.hasActivePass) {
+                        gatePass = pass
+                        LeaveStorage.saveGatePass(context, pass)
+                    } else if (pass.checkInTime.isNotBlank() && gatePass.hasActivePass) {
+                        gatePass = gatePass.copy(checkInTime = pass.checkInTime)
+                        LeaveStorage.saveGatePass(context, gatePass)
+                    } else if (!gatePass.hasActivePass) {
+                        gatePass = pass
+                    }
 
                     val activeRec = records.firstOrNull { r ->
                         r.status.contains("Approved", ignoreCase = true) && r.checkIn.isBlank()
@@ -333,17 +342,18 @@ fun LeaveSlipScreen(
                         Toast.makeText(context, "Active leave slip #${pass.leaveId} fetched", Toast.LENGTH_SHORT).show()
                     } else if (activeRec != null) {
                         Toast.makeText(context, "Active approved leave #${activeRec.leaveId} loaded", Toast.LENGTH_SHORT).show()
-                    } else if (!pass.hasActivePass) {
+                    } else if (pass.checkInTime.isNotBlank() || gatePass.checkInTime.isNotBlank()) {
+                        Toast.makeText(context, "Leave slip fetched (Checked in / completed)", Toast.LENGTH_SHORT).show()
+                    } else if (!pass.hasActivePass && !gatePass.hasActivePass) {
                         Toast.makeText(context, "UMS reports: No active leave slip", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(context, "Leave slip fetched (Checked in / completed)", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Gate pass up to date", Toast.LENGTH_SHORT).show()
                     }
                 } else {
+                    isFetchingSlip = false
                     val err = passRes.exceptionOrNull()?.message ?: ""
-                    val isSessionExpired = err.contains("session", ignoreCase = true) ||
-                            err.contains("login", ignoreCase = true) ||
-                            err.contains("re-auth", ignoreCase = true) ||
-                            err.contains("expired", ignoreCase = true)
+                    val isSessionExpired = (recRes is LeaveSyncResult.SessionExpired) ||
+                            ((err.contains("session", ignoreCase = true) || err.contains("login", ignoreCase = true)) && recRes !is LeaveSyncResult.Success)
 
                     if (!isRetry && isSessionExpired && onRefreshSession != null) {
                         Toast.makeText(context, "UMS session expired. Refreshing session...", Toast.LENGTH_SHORT).show()
@@ -352,29 +362,25 @@ fun LeaveSlipScreen(
                                 val syncedPass = LeaveStorage.loadGatePass(context)
                                 if (syncedPass.hasActivePass) {
                                     gatePass = syncedPass
-                                    isFetchingSlip = false
                                     Toast.makeText(context, "Leave slip fetched from UMS", Toast.LENGTH_SHORT).show()
                                 } else {
                                     doFetch(isRetry = true)
                                 }
-                            } else {
-                                isFetchingSlip = false
-                                showSlipBridge = true
                             }
                         }
                     } else if (!isRetry && isSessionExpired && onReSync != null) {
-                        isFetchingSlip = false
                         Toast.makeText(context, "UMS session expired. Refreshing session...", Toast.LENGTH_SHORT).show()
                         onReSync.invoke()
                     } else {
-                        isFetchingSlip = false
                         val activeRec = records.firstOrNull { r ->
                             r.status.contains("Approved", ignoreCase = true) && r.checkIn.isBlank()
                         }
                         if (activeRec != null) {
                             Toast.makeText(context, "Active approved leave #${activeRec.leaveId} loaded", Toast.LENGTH_SHORT).show()
+                        } else if (gatePass.hasActivePass) {
+                            Toast.makeText(context, "Using cached gate pass #${gatePass.leaveId}", Toast.LENGTH_SHORT).show()
                         } else {
-                            showSlipBridge = true
+                            Toast.makeText(context, "UMS reports: No active leave slip", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
@@ -391,14 +397,20 @@ fun LeaveSlipScreen(
             // First fetch latest gate pass from frmHostelLeaveSlipTest.aspx
             val passRes = LeaveSubmitEngine.fetchGatePass(context)
             if (passRes.isSuccess) {
-                gatePass = passRes.getOrThrow()
+                val newPass = passRes.getOrThrow()
+                if (newPass.hasActivePass) {
+                    gatePass = newPass
+                    LeaveStorage.saveGatePass(context, newPass)
+                } else if (newPass.checkInTime.isNotBlank() && gatePass.hasActivePass) {
+                    gatePass = gatePass.copy(checkInTime = newPass.checkInTime)
+                    LeaveStorage.saveGatePass(context, gatePass)
+                }
             }
 
             // Also fetch history & balance from frmStudentHostelLeaveApplicationTermWise.aspx
             when (val res = LeaveSubmitEngine.fetchLatestData(context)) {
                 is LeaveSyncResult.Success -> {
                     records = res.data.records
-                    Toast.makeText(context, "Gate pass updated", Toast.LENGTH_SHORT).show()
                 }
                 is LeaveSyncResult.SessionExpired -> {
                     if (allowSessionRefresh && onRefreshSession != null) {
@@ -406,7 +418,9 @@ fun LeaveSlipScreen(
                             if (success) {
                                 coroutineScope.launch {
                                     val retryPass = LeaveSubmitEngine.fetchGatePass(context)
-                                    if (retryPass.isSuccess) gatePass = retryPass.getOrThrow()
+                                    if (retryPass.isSuccess && retryPass.getOrThrow().hasActivePass) {
+                                        gatePass = retryPass.getOrThrow()
+                                    }
                                     val retryData = LeaveSubmitEngine.fetchLatestData(context)
                                     if (retryData is LeaveSyncResult.Success) {
                                         records = retryData.data.records
@@ -416,11 +430,7 @@ fun LeaveSlipScreen(
                         }
                     }
                 }
-                is LeaveSyncResult.Error -> {
-                    if (passRes.isSuccess) {
-                        Toast.makeText(context, "Gate pass refreshed", Toast.LENGTH_SHORT).show()
-                    }
-                }
+                is LeaveSyncResult.Error -> {}
             }
             isSyncing = false
         }
@@ -500,8 +510,13 @@ fun LeaveSlipScreen(
     val isCheckInDone = effectiveGatePass.checkInTime.isNotBlank()
     val isCheckedOut = effectiveGatePass.checkOutTime.isNotBlank() && !isCheckInDone
     val isCompleted = isCheckInDone
-    // Disappear leave slip 10 minutes after scheduled return time or when check-in is complete
-    val shouldDisplaySlip = effectiveGatePass.hasActivePass && !isCheckInDone && !isExpired
+    // Display leave slip whenever a valid leave pass exists (approved, checked-out, or completed)
+    val hasValidSlip = effectiveGatePass.hasActivePass &&
+            (effectiveGatePass.leaveId.isNotBlank() || effectiveGatePass.leaveCode.isNotBlank()) &&
+            effectiveGatePass.leaveId != "0" &&
+            effectiveGatePass.leaveId != "6000" &&
+            effectiveGatePass.leaveCode != "6000"
+    val shouldDisplaySlip = hasValidSlip
 
     if (showSlipBridge) {
         LeaveSlipFetchBridgeDialog(
@@ -542,28 +557,33 @@ fun LeaveSlipScreen(
                     fun onPassHtml(html: String) {
                         if (html.isBlank()) return
                         val p = LeaveParser.parseGatePass(html)
-                        if (p != null && p.hasActivePass) {
+                        if (p != null) {
                             coroutineScope.launch(Dispatchers.Main) {
-                                gatePass = p
-                                LeaveStorage.saveGatePass(context, p)
-                                if (p.photoUrl.isNotBlank()) {
-                                    coroutineScope.launch(Dispatchers.IO) {
-                                        try {
-                                            val client = OkHttpClient()
-                                            val cookies = LeaveSubmitEngine.getBestUmsCookies(context)
-                                            val req = Request.Builder()
-                                                .url(p.photoUrl)
-                                                .header("Cookie", cookies)
-                                                .header("User-Agent", LeaveSubmitEngine.getDefaultUserAgent(context))
-                                                .build()
-                                            client.newCall(req).execute().use { resp ->
-                                                val b = resp.body?.bytes()
-                                                if (b != null && b.size > 200) {
-                                                    File(context.filesDir, "student_photo.jpg").writeBytes(b)
+                                if (p.hasActivePass) {
+                                    gatePass = p
+                                    LeaveStorage.saveGatePass(context, p)
+                                    if (p.photoUrl.isNotBlank()) {
+                                        coroutineScope.launch(Dispatchers.IO) {
+                                            try {
+                                                val client = OkHttpClient()
+                                                val cookies = LeaveSubmitEngine.getBestUmsCookies(context)
+                                                val req = Request.Builder()
+                                                    .url(p.photoUrl)
+                                                    .header("Cookie", cookies)
+                                                    .header("User-Agent", LeaveSubmitEngine.getDefaultUserAgent(context))
+                                                    .build()
+                                                client.newCall(req).execute().use { resp ->
+                                                    val b = resp.body?.bytes()
+                                                    if (b != null && b.size > 200) {
+                                                        File(context.filesDir, "student_photo.jpg").writeBytes(b)
+                                                    }
                                                 }
-                                            }
-                                        } catch (_: Exception) {}
+                                            } catch (_: Exception) {}
+                                        }
                                     }
+                                } else if (p.checkInTime.isNotBlank() && gatePass.hasActivePass) {
+                                    gatePass = gatePass.copy(checkInTime = p.checkInTime)
+                                    LeaveStorage.saveGatePass(context, gatePass)
                                 }
                             }
                         }
@@ -782,119 +802,23 @@ fun LeaveSlipScreen(
                         onReSync = onReSync,
                         onRefreshSession = onRefreshSession,
                         onPassExtracted = { extracted ->
-                            gatePass = extracted
-                            LeaveStorage.saveGatePass(context, extracted)
-                            if (extracted.name.isNotBlank()) {
-                                val p = LeaveStorage.loadProfile(context).copy(
-                                    name = extracted.name,
-                                    uid = extracted.regNo,
-                                    registeredMobile = extracted.contactNo,
-                                    hostel = extracted.hostel,
-                                    roomNo = extracted.roomNo
-                                )
-                                LeaveStorage.saveProfile(context, p)
+                            if (extracted.hasActivePass) {
+                                gatePass = extracted
+                                LeaveStorage.saveGatePass(context, extracted)
+                                if (extracted.name.isNotBlank()) {
+                                    val p = LeaveStorage.loadProfile(context).copy(
+                                        name = extracted.name,
+                                        uid = extracted.regNo,
+                                        registeredMobile = extracted.contactNo,
+                                        hostel = extracted.hostel,
+                                        roomNo = extracted.roomNo
+                                    )
+                                    LeaveStorage.saveProfile(context, p)
+                                }
                             }
                         }
                     )
                 }
-            }
-
-            // Headless background sync WebView when on Digital Pass
-            if (selectedMode == LeaveSlipMode.DIGITAL_PASS && (!effectiveGatePass.hasActivePass || effectiveGatePass.name.isBlank() || isFetchingSlip)) {
-                AndroidView(
-                    factory = { ctx ->
-                        WebView(ctx).apply {
-                            layoutParams = ViewGroup.LayoutParams(1, 1)
-                            visibility = View.INVISIBLE
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            val cm = CookieManager.getInstance()
-                            cm.setAcceptCookie(true)
-                            cm.setAcceptThirdPartyCookies(this, true)
-
-                            class HeadlessBridge {
-                                @JavascriptInterface
-                                fun onSlipJson(jsonStr: String) {
-                                    if (jsonStr.isBlank()) return
-                                    try {
-                                        val obj = JSONObject(jsonStr)
-                                        val lid = obj.optString("leaveId", "").trim()
-                                        val lcode = obj.optString("leaveCode", "").trim()
-                                        val name = obj.optString("name", "").trim()
-                                        val regNo = obj.optString("regNo", "").trim()
-                                        val photoUrl = obj.optString("photoUrl", "").trim()
-
-                                        val gatesList = mutableListOf<GateActivation>()
-                                        val gArr = obj.optJSONArray("gates")
-                                        if (gArr != null) {
-                                            for (i in 0 until gArr.length()) {
-                                                val g = gArr.getJSONObject(i)
-                                                gatesList.add(GateActivation(
-                                                    gateName = g.optString("gateName", ""),
-                                                    status = g.optString("status", "✔ Activated")
-                                                ))
-                                            }
-                                        }
-
-                                        if (lid.isNotBlank() || lcode.isNotBlank() || name.isNotBlank()) {
-                                            val p = HostelGatePass(
-                                                universityTitle = "Lovely Professional University",
-                                                passSubtitle = "Hostel Leave Gate Pass",
-                                                leaveType = "Day Leave(Extended Leave Timing)",
-                                                leaveId = lid,
-                                                leaveCode = if (lcode.isNotBlank() && lcode != "6000") lcode else lid,
-                                                regNo = regNo,
-                                                name = name,
-                                                dateOfApply = obj.optString("dateOfApply", "").trim(),
-                                                dateOfLeaving = obj.optString("dateOfLeaving", "").trim(),
-                                                dateOfReturn = obj.optString("dateOfReturn", "").trim(),
-                                                checkOutTime = obj.optString("checkOutTime", "").trim(),
-                                                checkInTime = obj.optString("checkInTime", "").trim(),
-                                                contactNo = obj.optString("contactNo", "").trim(),
-                                                hostel = obj.optString("hostel", "").trim(),
-                                                roomNo = obj.optString("roomNo", "").trim(),
-                                                gates = gatesList,
-                                                note = "Note : Do not look back after checkout; please proceed forward only.",
-                                                hasActivePass = true,
-                                                photoUrl = photoUrl
-                                            )
-                                            coroutineScope.launch(Dispatchers.Main) {
-                                                gatePass = p
-                                                LeaveStorage.saveGatePass(ctx, p)
-                                                isFetchingSlip = false
-                                                if (p.name.isNotBlank()) {
-                                                    val prof = LeaveStorage.loadProfile(ctx).copy(
-                                                        name = p.name,
-                                                        uid = p.regNo,
-                                                        registeredMobile = p.contactNo,
-                                                        hostel = p.hostel,
-                                                        roomNo = p.roomNo
-                                                    )
-                                                    LeaveStorage.saveProfile(ctx, prof)
-                                                }
-                                            }
-                                            if (photoUrl.isNotBlank()) {
-                                                val cookies = cm.getCookie("https://ums.lpu.in") ?: ""
-                                                LeaveSubmitEngine.downloadPhoto(ctx, photoUrl, cookies)
-                                            }
-                                        }
-                                    } catch (_: Exception) {}
-                                }
-                            }
-                            addJavascriptInterface(HeadlessBridge(), "PortalBridge")
-
-                            webViewClient = object : WebViewClient() {
-                                override fun onPageFinished(v: WebView?, u: String?) {
-                                    if (u != null && u.contains("frmHostelLeaveSlipTest.aspx", ignoreCase = true)) {
-                                        v?.evaluateJavascript(INJECT_EXTRACTION_SCRIPT, null)
-                                    }
-                                }
-                            }
-                            loadUrl(UMS_LEAVE_SLIP_URL)
-                        }
-                    },
-                    modifier = Modifier.size(1.dp)
-                )
             }
         }
     }
@@ -2152,7 +2076,9 @@ fun LeaveSlipFetchBridgeDialog(
                                         passSubtitle = "Hostel Leave Gate Pass",
                                         hasActivePass = false
                                     )
-                                    LeaveStorage.saveGatePass(context, finalPass)
+                                    if (finalPass.hasActivePass) {
+                                        LeaveStorage.saveGatePass(context, finalPass)
+                                    }
                                     if (finalPass.hasActivePass) {
                                         coroutineScope.launch(Dispatchers.IO) {
                                             try {
