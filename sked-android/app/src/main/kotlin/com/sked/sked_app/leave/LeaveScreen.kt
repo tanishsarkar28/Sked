@@ -1144,7 +1144,8 @@ fun LeaveScreen(
                                                 endCal = Calendar.getInstance().apply {
                                                     timeInMillis = newCal.timeInMillis
                                                     if (selectedType == LeaveTypeOption.DAY_EXTENDED) {
-                                                        set(Calendar.HOUR_OF_DAY, 22)
+                                                        val maxH = if (isWinterCurfew()) 21 else 22
+                                                        set(Calendar.HOUR_OF_DAY, maxH)
                                                         set(Calendar.MINUTE, 45)
                                                     } else if (selectedType == LeaveTypeOption.DAY_STANDARD) {
                                                         set(Calendar.HOUR_OF_DAY, 20)

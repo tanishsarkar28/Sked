@@ -494,11 +494,15 @@ object LeaveSubmitEngine {
                                 // 1. Destination Dropdown (ddlVisitDay)
                                 var vp = document.getElementById('ctl00_cphHeading_ddlVisitDay');
                                 if (vp) {
+                                    // Neutralize onchange so selecting visit place does not fire premature postback
+                                    vp.onchange = null;
+                                    vp.removeAttribute('onchange');
                                     var target = $safeVisitPlace;
                                     var found = false;
                                     for (var i = 0; i < vp.options.length; i++) {
                                         if (vp.options[i].value === target || vp.options[i].text.trim() === target) {
                                             vp.selectedIndex = i;
+                                            vp.value = vp.options[i].value;
                                             found = true;
                                             break;
                                         }
@@ -510,6 +514,7 @@ object LeaveSubmitEngine {
                                             var v = vp.options[j].value.toLowerCase();
                                             if (t.indexOf(lower) !== -1 || v.indexOf(lower) !== -1) {
                                                 vp.selectedIndex = j;
+                                                vp.value = vp.options[j].value;
                                                 found = true;
                                                 break;
                                             }
@@ -519,12 +524,12 @@ object LeaveSubmitEngine {
                                         for (var k = 0; k < vp.options.length; k++) {
                                             if (vp.options[k].value.toLowerCase() === 'other' || vp.options[k].text.toLowerCase() === 'other') {
                                                 vp.selectedIndex = k;
+                                                vp.value = vp.options[k].value;
                                                 found = true;
                                                 break;
                                             }
                                         }
                                     }
-                                    vp.dispatchEvent(new Event('change', { bubbles: true }));
                                 }
 
                                 // 2. Leave Term Check
@@ -610,16 +615,21 @@ object LeaveSubmitEngine {
                                 function setRadPicker(baseId, y, m, d, h, min, textVal, isoVal) {
                                     try {
                                         var p = (typeof ${'$'}find === 'function') ? ${'$'}find(baseId) : null;
-                                        if (p && typeof p.set_selectedDate === 'function') {
-                                            p.set_selectedDate(new Date(y, m, d, h, min, 0));
+                                        if (p) {
+                                            p._autoPostBack = false;
+                                            var pDi = (typeof p.get_dateInput === 'function') ? p.get_dateInput() : null;
+                                            if (pDi) pDi._autoPostBack = false;
+                                            if (typeof p.set_selectedDate === 'function') {
+                                                p.set_selectedDate(new Date(y, m, d, h, min, 0));
+                                            }
                                         }
                                     } catch(e) {}
 
                                     var di = document.getElementById(baseId + '_dateInput');
                                     if (di) {
+                                        di.onchange = null;
+                                        di.removeAttribute('onchange');
                                         di.value = textVal;
-                                        di.dispatchEvent(new Event('input', { bubbles: true }));
-                                        di.dispatchEvent(new Event('change', { bubbles: true }));
                                     }
 
                                     var hid = document.getElementById(baseId);
@@ -646,20 +656,23 @@ object LeaveSubmitEngine {
 
                                 var ddlBhReason = document.getElementById('ctl00_cphHeading_ddlBhReason');
                                 if (ddlBhReason && ddlBhReason.options && ddlBhReason.options.length > 1) {
+                                    ddlBhReason.onchange = null;
+                                    ddlBhReason.removeAttribute('onchange');
                                     var matchedBh = false;
                                     var rLower = $safeReason.toLowerCase();
                                     for (var b = 0; b < ddlBhReason.options.length; b++) {
                                         if (ddlBhReason.options[b].text.toLowerCase().indexOf(rLower) !== -1 ||
                                             ddlBhReason.options[b].value.toLowerCase().indexOf(rLower) !== -1) {
                                             ddlBhReason.selectedIndex = b;
+                                            ddlBhReason.value = ddlBhReason.options[b].value;
                                             matchedBh = true;
                                             break;
                                         }
                                     }
                                     if (!matchedBh && ddlBhReason.selectedIndex <= 0) {
                                         ddlBhReason.selectedIndex = 1;
+                                        ddlBhReason.value = ddlBhReason.options[1].value;
                                     }
-                                    ddlBhReason.dispatchEvent(new Event('change', { bubbles: true }));
                                 }
 
                                 // 7. Declaration Checkbox
@@ -701,10 +714,24 @@ object LeaveSubmitEngine {
                                     }
                                 }
 
-                                // 9. Click Submit Button
+                                // 9. Click Submit Button (ensure __EVENTTARGET is clean so btnSubmit is processed by UMS)
                                 var btn = document.getElementById('ctl00_cphHeading_btnSubmit');
                                 if (btn) {
-                                    setTimeout(function() { btn.click(); }, 350);
+                                    setTimeout(function() {
+                                        try {
+                                            var et = document.getElementById('__EVENTTARGET');
+                                            if (et) et.value = '';
+                                            var ea = document.getElementById('__EVENTARGUMENT');
+                                            if (ea) ea.value = '';
+
+                                            installHook('alert');
+                                            installHook('radalert');
+
+                                            btn.click();
+                                        } catch(e) {
+                                            window.SkedLeaveBridge.onError('Error clicking submit: ' + e.toString());
+                                        }
+                                    }, 200);
                                 } else {
                                     window.SkedLeaveBridge.onError('Submit button not found');
                                 }
@@ -1240,10 +1267,29 @@ object LeaveSubmitEngine {
                                                                 applyDateRaw.contains(dfMdy.format(todayDate)) ||
                                                                 applyDateRaw.contains(dfDmy.format(todayDate))
 
+                                                        val isWinter = isWinterCurfew()
+                                                        val endH = endCal.get(java.util.Calendar.HOUR_OF_DAY)
+                                                        val endM = endCal.get(java.util.Calendar.MINUTE)
+                                                        val isDayLeave = leaveTypeCode == "6" || leaveTypeCode == "3"
+                                                        val exceedsCurfew = if (isDayLeave) {
+                                                            if (leaveTypeCode == "6") { // Extended
+                                                                if (isWinter) (endH > 21 || (endH == 21 && endM > 45)) else (endH > 22 || (endH == 22 && endM > 45))
+                                                            } else { // Standard
+                                                                (endH > 20 || (endH == 20 && endM > 0))
+                                                            }
+                                                        } else false
+
                                                         val detailedReason = when {
                                                             isPastDeparture -> {
                                                                 val timeStr = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(startCal.time)
                                                                 "Departure time ($timeStr) is in the past. UMS rules require departure time to be later than current time."
+                                                            }
+                                                            exceedsCurfew -> {
+                                                                val timeStr = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(endCal.time)
+                                                                val curfewLimit = if (leaveTypeCode == "6") {
+                                                                    if (isWinter) "09:45 PM (Winter timing)" else "10:45 PM"
+                                                                } else "08:00 PM"
+                                                                "End Time Should Not Greater than $curfewLimit. Your selected return time was $timeStr."
                                                             }
                                                             hasExistingLeaveToday && leaveId.isNotBlank() -> {
                                                                 "A leave application (#$leaveId) already exists for today with status '$leaveStatus'. UMS does not allow multiple leave applications on the same date."
