@@ -1,13 +1,13 @@
 {
-  "versionCode": 17,
-  "versionName": "1.4.6",
+  "versionCode": 18,
+  "versionName": "1.4.7",
   "minSupportedVersion": 1,
-  "releaseNotes": "\u2022 Fixed Digital Gate Pass live sync with direct DOM JSON extraction\n\u2022 Added background headless sync to automatically load live pass data and student photo\n\u2022 Resolved session cookie precedence ensuring fresh CookieManager session takes priority\n\u2022 Eliminated blank profile fallbacks and synced live photo from UMS",
+  "releaseNotes": "• Fixed Day Leave and Night Leave balance parsing from live UMS portal\n• Prevented DOM search bleed between Day and Night balance tables\n• Updated live hostel leave quota tracking with accurate availed & balance counts",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
   "directIpaDownloadUrl": "/downloads/sked-ios.ipa",
-  "fileSize": "12.8 MB",
+  "fileSize": "14.3 MB",
   "ipaFileSize": "7.6 MB",
-  "updatedAt": "2026-11-01"
+  "updatedAt": "2026-11-02"
 }

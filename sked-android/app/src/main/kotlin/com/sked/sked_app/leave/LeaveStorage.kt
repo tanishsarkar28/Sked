@@ -16,8 +16,8 @@ object LeaveStorage {
 
     val DEFAULT_BALANCE = LeaveBalance(
         dayTotal = 75,
-        dayAvailed = 10,
-        dayBalance = 65,
+        dayAvailed = 12,
+        dayBalance = 63,
         nightTotal = 60,
         nightAvailed = 9,
         nightBalance = 51
@@ -86,6 +86,10 @@ object LeaveStorage {
             if (bal.dayTotal == 75 && bal.dayAvailed == 0 && bal.dayBalance == 75 &&
                 bal.nightTotal == 60 && bal.nightAvailed == 0 && bal.nightBalance == 60
             ) {
+                return DEFAULT_BALANCE
+            }
+            // If stored balance was corrupted by DOM bleed (dayTotal was overwritten with nightTotal 60)
+            if (bal.dayTotal == 60 && bal.nightTotal == 60 && bal.dayAvailed == bal.nightAvailed) {
                 return DEFAULT_BALANCE
             }
             if (bal.dayTotal > 0 || bal.nightTotal > 0) bal else DEFAULT_BALANCE

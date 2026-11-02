@@ -33,24 +33,16 @@ object LeaveParser {
         var nightAvailed = 0
         var nightBalance = 0
 
-        fun parseGrid(gridId: String): Triple<Int, Int, Int>? {
-            val idx = html.indexOf(gridId)
-            val searchArea = if (idx != -1) {
-                html.substring(idx, (idx + 6000).coerceAtMost(html.length))
-            } else {
-                val gridPattern = Pattern.compile("$gridId.*?<tbody>(.*?)</tbody>", Pattern.DOTALL)
-                val m = gridPattern.matcher(html)
-                if (m.find()) m.group(1) ?: return null else return null
-            }
-
+        fun extractCounts(snippet: String): Triple<Int, Int, Int>? {
+            if (snippet.isBlank()) return null
             var tot = -1
             var av = -1
             var bal = -1
+            var foundAny = false
 
             // 1. Match ASP.NET RadGrid TypeLabel and CountLabel spans
-            val rowPattern = Pattern.compile("TypeLabel[^>]*>\\s*([^<]+)\\s*</span>.*?CountLabel[^>]*>\\s*(\\d+)\\s*</span>", Pattern.DOTALL)
-            val rm = rowPattern.matcher(searchArea)
-            var foundAny = false
+            val rowPattern = Pattern.compile("TypeLabel[^>]*>\\s*([^<]+)\\s*</span>.*?CountLabel[^>]*>\\s*(\\d+)\\s*</span>", Pattern.DOTALL or Pattern.CASE_INSENSITIVE)
+            val rm = rowPattern.matcher(snippet)
             while (rm.find()) {
                 foundAny = true
                 val type = rm.group(1)?.trim()?.lowercase() ?: ""
@@ -62,10 +54,10 @@ object LeaveParser {
                 }
             }
 
-            // 2. Match table cell pairs (e.g. <td>Total</td><td>75</td>)
+            // 2. Match table cell pairs (e.g. <td>Total</td><td>75</td> or <td>1</td><td>Total</td><td>75</td>)
             if (!foundAny || tot < 0) {
                 val tdPattern = Pattern.compile("<td[^>]*>\\s*(Total|Availed|Balance)\\s*</td>\\s*<td[^>]*>\\s*(\\d+)\\s*</td>", Pattern.CASE_INSENSITIVE or Pattern.DOTALL)
-                val tm = tdPattern.matcher(searchArea)
+                val tm = tdPattern.matcher(snippet)
                 while (tm.find()) {
                     foundAny = true
                     val type = tm.group(1)?.trim()?.lowercase() ?: ""
@@ -81,7 +73,7 @@ object LeaveParser {
             // 3. Fallback pattern if span or td structure differs
             if (!foundAny || tot < 0) {
                 val fallback = Pattern.compile("(Total|Availed|Balance)[^\\d<]{1,150}(\\d+)", Pattern.DOTALL or Pattern.CASE_INSENSITIVE)
-                val fm = fallback.matcher(searchArea)
+                val fm = fallback.matcher(snippet)
                 while (fm.find()) {
                     foundAny = true
                     val type = fm.group(1)?.trim()?.lowercase() ?: ""
@@ -104,12 +96,65 @@ object LeaveParser {
         }
 
         try {
-            parseGrid("ctl00_cphHeading_RadGrid1")?.let { (tot, av, bal) ->
+            val dayMatcher = Pattern.compile("Day\\s+Leave\\s+Details", Pattern.CASE_INSENSITIVE).matcher(html)
+            val dayHeaderIdx = if (dayMatcher.find()) dayMatcher.start() else -1
+
+            val nightMatcher = Pattern.compile("Night\\s+Leave\\s+Details", Pattern.CASE_INSENSITIVE).matcher(html)
+            val nightHeaderIdx = if (nightMatcher.find()) nightMatcher.start() else -1
+
+            var daySnippet = ""
+            var nightSnippet = ""
+
+            if (dayHeaderIdx != -1 && nightHeaderIdx != -1 && dayHeaderIdx < nightHeaderIdx) {
+                // Day Leave comes first, strictly bound before Night Leave starts
+                daySnippet = html.substring(dayHeaderIdx, nightHeaderIdx)
+                val afterNight = html.substring(nightHeaderIdx, (nightHeaderIdx + 3000).coerceAtMost(html.length))
+                val endTable = afterNight.indexOf("</table>", ignoreCase = true)
+                nightSnippet = if (endTable != -1) afterNight.substring(0, endTable + 8) else afterNight
+            } else if (dayHeaderIdx != -1 && nightHeaderIdx != -1 && nightHeaderIdx < dayHeaderIdx) {
+                // Night Leave comes first, strictly bound before Day Leave starts
+                nightSnippet = html.substring(nightHeaderIdx, dayHeaderIdx)
+                val afterDay = html.substring(dayHeaderIdx, (dayHeaderIdx + 3000).coerceAtMost(html.length))
+                val endTable = afterDay.indexOf("</table>", ignoreCase = true)
+                daySnippet = if (endTable != -1) afterDay.substring(0, endTable + 8) else afterDay
+            } else {
+                if (dayHeaderIdx != -1) {
+                    val sub = html.substring(dayHeaderIdx, (dayHeaderIdx + 3000).coerceAtMost(html.length))
+                    val endTable = sub.indexOf("</table>", ignoreCase = true)
+                    daySnippet = if (endTable != -1) sub.substring(0, endTable + 8) else sub
+                }
+                if (nightHeaderIdx != -1) {
+                    val sub = html.substring(nightHeaderIdx, (nightHeaderIdx + 3000).coerceAtMost(html.length))
+                    val endTable = sub.indexOf("</table>", ignoreCase = true)
+                    nightSnippet = if (endTable != -1) sub.substring(0, endTable + 8) else sub
+                }
+            }
+
+            // RadGrid ID fallbacks (strictly bounded by </table> to prevent cross-table bleed)
+            if (daySnippet.isBlank()) {
+                val g1 = html.indexOf("ctl00_cphHeading_RadGrid1", ignoreCase = true)
+                if (g1 != -1) {
+                    val sub = html.substring(g1, (g1 + 3000).coerceAtMost(html.length))
+                    val endTable = sub.indexOf("</table>", ignoreCase = true)
+                    daySnippet = if (endTable != -1) sub.substring(0, endTable + 8) else sub
+                }
+            }
+            if (nightSnippet.isBlank()) {
+                val g2 = html.indexOf("ctl00_cphHeading_RadGrid2", ignoreCase = true)
+                if (g2 != -1) {
+                    val sub = html.substring(g2, (g2 + 3000).coerceAtMost(html.length))
+                    val endTable = sub.indexOf("</table>", ignoreCase = true)
+                    nightSnippet = if (endTable != -1) sub.substring(0, endTable + 8) else sub
+                }
+            }
+
+            extractCounts(daySnippet)?.let { (tot, av, bal) ->
                 dayTotal = tot
                 dayAvailed = av
                 dayBalance = bal
             }
-            parseGrid("ctl00_cphHeading_RadGrid2")?.let { (tot, av, bal) ->
+
+            extractCounts(nightSnippet)?.let { (tot, av, bal) ->
                 nightTotal = tot
                 nightAvailed = av
                 nightBalance = bal
