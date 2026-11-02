@@ -364,13 +364,19 @@ object LeaveSubmitEngine {
 
                 @JavascriptInterface
                 fun onAlert(msg: String) {
-                    android.util.Log.i("SkedLeave", "Intercepted UMS Alert via bridge: $msg")
-                    capturedAlert = msg
+                    val clean = msg.trim()
+                    val lower = clean.lowercase()
+                    if (lower == "hello" || lower == "error" || lower.contains("concept note") || lower.contains("idea hub")) {
+                        android.util.Log.w("SkedLeave", "Ignoring dummy/header alert in onAlert: $msg")
+                        return
+                    }
+                    android.util.Log.i("SkedLeave", "Intercepted UMS Alert via bridge: $clean")
+                    capturedAlert = clean
                     if (stage >= 1) {
-                        if (isSuccessMessage(msg)) {
-                            finishWith(Result.success(msg))
+                        if (isSuccessMessage(clean)) {
+                            finishWith(Result.success(clean))
                         } else {
-                            finishWith(Result.failure(Exception(msg)))
+                            finishWith(Result.failure(Exception(clean)))
                         }
                     }
                 }
@@ -398,10 +404,15 @@ object LeaveSubmitEngine {
                     message: String?,
                     result: android.webkit.JsResult?
                 ): Boolean {
-                    val msg = message ?: "Unknown alert"
+                    val msg = message?.trim() ?: "Unknown alert"
+                    val lower = msg.lowercase()
+                    result?.confirm()
+                    if (lower == "hello" || lower == "error" || lower.contains("concept note") || lower.contains("idea hub")) {
+                        android.util.Log.w("SkedLeave", "Ignoring dummy/header alert in onJsAlert: $msg")
+                        return true
+                    }
                     android.util.Log.i("SkedLeave", "WebChromeClient intercepted alert: $msg")
                     capturedAlert = msg
-                    result?.confirm()
                     if (stage >= 1) {
                         if (isSuccessMessage(msg)) {
                             finishWith(Result.success(msg))
@@ -711,12 +722,17 @@ object LeaveSubmitEngine {
                     // Check if an alert was captured on submission
                     if (capturedAlert != null) {
                         val alertMsg = capturedAlert ?: ""
-                        if (isSuccessMessage(alertMsg)) {
-                            finishWith(Result.success(alertMsg))
-                            return
+                        val lower = alertMsg.trim().lowercase()
+                        if (lower == "hello" || lower == "error" || lower.contains("concept note") || lower.contains("idea hub")) {
+                            capturedAlert = null
                         } else {
-                            finishWith(Result.failure(Exception(alertMsg)))
-                            return
+                            if (isSuccessMessage(alertMsg)) {
+                                finishWith(Result.success(alertMsg))
+                                return
+                            } else {
+                                finishWith(Result.failure(Exception(alertMsg)))
+                                return
+                            }
                         }
                     }
 
@@ -840,34 +856,6 @@ object LeaveSubmitEngine {
                                                 } catch(e) {}
                                             }
 
-                                            // 4b. Extract verbatim alert messages from server-injected <script> tags
-                                            var allScripts = document.querySelectorAll('script');
-                                            for (var sci = 0; sci < allScripts.length; sci++) {
-                                                var scTxt = allScripts[sci].textContent || allScripts[sci].innerText || '';
-                                                if (scTxt.indexOf('alert(') !== -1 || scTxt.indexOf('radalert(') !== -1) {
-                                                    var alertMatches = scTxt.match(/(?:rad)?alert\s*\(\s*(['"])((?:(?!\1)[^\\]|\\.)*)\1\s*\)/ig);
-                                                    if (alertMatches) {
-                                                        for (var ami = 0; ami < alertMatches.length; ami++) {
-                                                            var singleM = alertMatches[ami].match(/(?:rad)?alert\s*\(\s*(['"])((?:(?!\1)[^\\]|\\.)*)\1\s*\)/i);
-                                                            if (singleM && singleM[2]) {
-                                                                var alertContent = singleM[2].replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\n/g, '\n').trim();
-                                                                var alLower = alertContent.toLowerCase();
-                                                                if (alLower.indexOf('concept note') === -1 &&
-                                                                    alLower.indexOf('idea hub') === -1 &&
-                                                                    alLower.indexOf('window.skedleavebridge') === -1 &&
-                                                                    alertContent.length > 3) {
-                                                                    if (alLower.indexOf('success') !== -1 || (alLower.indexOf('applied') !== -1 && alLower.indexOf('leave id') !== -1)) {
-                                                                        return JSON.stringify({ status: 'success', message: alertContent });
-                                                                    } else {
-                                                                        return JSON.stringify({ status: 'error', message: alertContent });
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-
                                             // Helper to ignore global UMS header/Idea Hub elements
                                             function isIgnoredHeaderEl(el) {
                                                 if (!el) return false;
@@ -875,6 +863,41 @@ object LeaveSubmitEngine {
                                                     return true;
                                                 }
                                                 return false;
+                                            }
+
+                                            // 4b. Extract verbatim alert messages from server-injected <script> tags
+                                            var allScripts = document.querySelectorAll('script');
+                                            for (var sci = allScripts.length - 1; sci >= 0; sci--) {
+                                                var sc = allScripts[sci];
+                                                if (isIgnoredHeaderEl(sc)) continue;
+                                                var scRaw = sc.textContent || sc.innerText || '';
+                                                if (scRaw.indexOf('alert(') === -1 && scRaw.indexOf('radalert(') === -1) continue;
+                                                // Strip single-line and multi-line comments to avoid commented-out dummy code like //alert("Hello")
+                                                var scTxt = scRaw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^\:])\/\/.*$/gm, '$1');
+                                                if (scTxt.indexOf('alert(') === -1 && scTxt.indexOf('radalert(') === -1) continue;
+
+                                                var alertMatches = scTxt.match(/(?:window\.)?(?:rad)?alert\s*\(\s*(['"])((?:(?!\1)[\s\S]|\\.)*?)\1\s*\)/gi);
+                                                if (alertMatches) {
+                                                    for (var ami = 0; ami < alertMatches.length; ami++) {
+                                                        var singleM = alertMatches[ami].match(/(?:window\.)?(?:rad)?alert\s*\(\s*(['"])((?:(?!\1)[\s\S]|\\.)*?)\1/i);
+                                                        if (singleM && singleM[2]) {
+                                                            var alertContent = singleM[2].replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\n/g, '\n').trim();
+                                                            var alLower = alertContent.toLowerCase();
+                                                            if (alLower.indexOf('concept note') === -1 &&
+                                                                alLower.indexOf('idea hub') === -1 &&
+                                                                alLower.indexOf('window.skedleavebridge') === -1 &&
+                                                                alLower !== 'hello' &&
+                                                                alLower !== 'error' &&
+                                                                alertContent.length > 5) {
+                                                                if (alLower.indexOf('success') !== -1 || (alLower.indexOf('applied') !== -1 && alLower.indexOf('leave id') !== -1)) {
+                                                                    return JSON.stringify({ status: 'success', message: alertContent });
+                                                                } else {
+                                                                    return JSON.stringify({ status: 'error', message: alertContent });
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
 
                                             // 5. Check for standard ASP.NET server error spans and labels (scoped outside header)

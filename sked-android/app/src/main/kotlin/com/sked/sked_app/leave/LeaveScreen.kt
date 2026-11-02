@@ -173,7 +173,8 @@ fun LeaveScreen(
 
     var endCal by remember {
         mutableStateOf((startCal.clone() as Calendar).apply {
-            set(Calendar.HOUR_OF_DAY, 22)
+            val maxHour = if (isWinterCurfew()) 21 else 22
+            set(Calendar.HOUR_OF_DAY, maxHour)
             set(Calendar.MINUTE, 45)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
@@ -191,9 +192,10 @@ fun LeaveScreen(
         }
 
         val c = (startCal.clone() as Calendar)
+        val maxHour = if (isWinterCurfew()) 21 else 22
         when (selectedType) {
             LeaveTypeOption.DAY_EXTENDED -> {
-                c.set(Calendar.HOUR_OF_DAY, 22)
+                c.set(Calendar.HOUR_OF_DAY, maxHour)
                 c.set(Calendar.MINUTE, 45)
                 c.set(Calendar.SECOND, 0)
                 endCal = c
@@ -213,7 +215,7 @@ fun LeaveScreen(
             }
             LeaveTypeOption.NIGHT_EXTENDED -> {
                 c.add(Calendar.DAY_OF_YEAR, 1)
-                c.set(Calendar.HOUR_OF_DAY, 22)
+                c.set(Calendar.HOUR_OF_DAY, maxHour)
                 c.set(Calendar.MINUTE, 45)
                 c.set(Calendar.SECOND, 0)
                 endCal = c

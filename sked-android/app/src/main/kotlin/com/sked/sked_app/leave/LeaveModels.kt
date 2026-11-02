@@ -59,42 +59,58 @@ data class HostelGatePass(
     val photoUrl: String = ""
 )
 
+fun isWinterCurfew(cal: java.util.Calendar = java.util.Calendar.getInstance()): Boolean {
+    val month = cal.get(java.util.Calendar.MONTH) // 0-based: 0 = Jan, 10 = Nov, 11 = Dec
+    return month == java.util.Calendar.NOVEMBER ||
+           month == java.util.Calendar.DECEMBER ||
+           month == java.util.Calendar.JANUARY ||
+           month == java.util.Calendar.FEBRUARY ||
+           month == java.util.Calendar.MARCH
+}
+
 enum class LeaveTypeOption(
     val code: String,
     val rawValue: String,
     val displayName: String,
-    val curfewNotice: String
+    private val defaultCurfewNotice: String
 ) {
     DAY_EXTENDED(
         code = "6",
         rawValue = "Day Leave(Extended Leave Timing)",
         displayName = "Day Leave (Extended)",
-        curfewNotice = "Return by 10:45 PM today"
+        defaultCurfewNotice = "Return by 10:45 PM today"
     ),
     DAY_STANDARD(
         code = "3",
         rawValue = "Day Leave",
         displayName = "Day Leave (Standard)",
-        curfewNotice = "Return by 8:00 PM today"
+        defaultCurfewNotice = "Return by 8:00 PM today"
     ),
     NIGHT_STANDARD(
         code = "1",
         rawValue = "Night Leave",
         displayName = "Night Leave",
-        curfewNotice = "Overnight stay • Return by 8:00 PM"
+        defaultCurfewNotice = "Overnight stay • Return by 8:00 PM"
     ),
     NIGHT_EXTENDED(
         code = "7",
         rawValue = "Night Leave(Extended Leave Timing)",
         displayName = "Night Leave (Extended)",
-        curfewNotice = "Overnight stay • Return by 10:45 PM"
+        defaultCurfewNotice = "Overnight stay • Return by 10:45 PM"
     ),
     VACATION(
         code = "10",
         rawValue = "Vacation Leave",
         displayName = "Vacation Leave",
-        curfewNotice = "Approved university vacation period"
-    )
+        defaultCurfewNotice = "Approved university vacation period"
+    );
+
+    val curfewNotice: String
+        get() = when (this) {
+            DAY_EXTENDED -> if (isWinterCurfew()) "Return by 9:45 PM today (Winter timing)" else defaultCurfewNotice
+            NIGHT_EXTENDED -> if (isWinterCurfew()) "Overnight stay • Return by 9:45 PM (Winter timing)" else defaultCurfewNotice
+            else -> defaultCurfewNotice
+        }
 }
 
 data class VisitPlaceOption(
