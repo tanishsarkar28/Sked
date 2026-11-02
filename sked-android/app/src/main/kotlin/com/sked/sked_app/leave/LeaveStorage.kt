@@ -183,9 +183,7 @@ object LeaveStorage {
                 registeredMobile = obj.optString("registeredMobile", ""),
                 homeAddress = obj.optString("homeAddress", "")
             )
-            if (prof.name.equals("Tanish Sarkar", ignoreCase = true) || prof.uid == "12407229") {
-                DEFAULT_PROFILE
-            } else if (prof.uid.isNotBlank() || prof.name.isNotBlank()) {
+            if (prof.uid.isNotBlank() || prof.name.isNotBlank()) {
                 prof
             } else {
                 DEFAULT_PROFILE
@@ -294,10 +292,10 @@ object LeaveStorage {
                 hasActivePass = obj.optBoolean("hasActivePass", false),
                 photoUrl = obj.optString("photoUrl", "")
             )
-            if (pass.name.isBlank() || pass.name.equals("Tanish Sarkar", ignoreCase = true)) {
-                DEFAULT_GATE_PASS
-            } else {
+            if (pass.hasActivePass || pass.leaveId.isNotBlank() || pass.name.isNotBlank()) {
                 pass
+            } else {
+                DEFAULT_GATE_PASS
             }
         } catch (_: Exception) {
             DEFAULT_GATE_PASS

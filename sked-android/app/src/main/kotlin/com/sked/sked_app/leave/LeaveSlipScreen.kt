@@ -547,12 +547,82 @@ fun LeaveSlipScreen(
         factory = { ctx ->
             WebView(ctx).apply {
                 layoutParams = ViewGroup.LayoutParams(1, 1)
-                visibility = View.GONE
+                visibility = View.INVISIBLE
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 settings.userAgentString = LeaveSubmitEngine.getDefaultUserAgent(ctx)
 
                 class HiddenBridge {
+                    @JavascriptInterface
+                    fun onSlipJson(jsonStr: String) {
+                        if (jsonStr.isBlank()) return
+                        try {
+                            val obj = JSONObject(jsonStr)
+                            val lid = obj.optString("leaveId", "").trim()
+                            val lcode = obj.optString("leaveCode", "").trim()
+                            val name = obj.optString("name", "").trim()
+                            val regNo = obj.optString("regNo", "").trim()
+                            val photoUrl = obj.optString("photoUrl", "").trim()
+
+                            val gatesList = mutableListOf<GateActivation>()
+                            val gArr = obj.optJSONArray("gates")
+                            if (gArr != null) {
+                                for (i in 0 until gArr.length()) {
+                                    val g = gArr.getJSONObject(i)
+                                    gatesList.add(
+                                        GateActivation(
+                                            gateName = g.optString("gateName", ""),
+                                            status = g.optString("status", "✔ Activated")
+                                        )
+                                    )
+                                }
+                            }
+
+                            if (lid.isNotBlank() || lcode.isNotBlank() || name.isNotBlank()) {
+                                val p = HostelGatePass(
+                                    universityTitle = "Lovely Professional University",
+                                    passSubtitle = "Hostel Leave Gate Pass",
+                                    leaveType = "Day Leave(Extended Leave Timing)",
+                                    leaveId = lid,
+                                    leaveCode = if (lcode.isNotBlank() && lcode != "6000") lcode else lid,
+                                    regNo = regNo,
+                                    name = name,
+                                    dateOfApply = obj.optString("dateOfApply", "").trim(),
+                                    dateOfLeaving = obj.optString("dateOfLeaving", "").trim(),
+                                    dateOfReturn = obj.optString("dateOfReturn", "").trim(),
+                                    checkOutTime = obj.optString("checkOutTime", "").trim(),
+                                    checkInTime = obj.optString("checkInTime", "").trim(),
+                                    contactNo = obj.optString("contactNo", "").trim(),
+                                    hostel = obj.optString("hostel", "").trim(),
+                                    roomNo = obj.optString("roomNo", "").trim(),
+                                    gates = gatesList,
+                                    note = "Note : Do not look back after checkout; please proceed forward only.",
+                                    hasActivePass = true,
+                                    photoUrl = photoUrl
+                                )
+                                coroutineScope.launch(Dispatchers.Main) {
+                                    gatePass = p
+                                    LeaveStorage.saveGatePass(context, p)
+                                    if (p.name.isNotBlank()) {
+                                        val prof = LeaveStorage.loadProfile(context).copy(
+                                            name = p.name,
+                                            uid = p.regNo,
+                                            registeredMobile = p.contactNo,
+                                            hostel = p.hostel,
+                                            roomNo = p.roomNo
+                                        )
+                                        LeaveStorage.saveProfile(context, prof)
+                                    }
+                                }
+                                if (photoUrl.isNotBlank()) {
+                                    val cm = CookieManager.getInstance()
+                                    val cookies = cm.getCookie("https://ums.lpu.in") ?: ""
+                                    LeaveSubmitEngine.downloadPhoto(context, photoUrl, cookies)
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+
                     @JavascriptInterface
                     fun onPassHtml(html: String) {
                         if (html.isBlank()) return
@@ -589,19 +659,12 @@ fun LeaveSlipScreen(
                         }
                     }
                 }
+                addJavascriptInterface(HiddenBridge(), "PortalBridge")
                 addJavascriptInterface(HiddenBridge(), "HiddenBridge")
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) {
                         if (url != null && url.contains("frmHostelLeaveSlipTest.aspx", ignoreCase = true)) {
-                            view?.evaluateJavascript("""
-                                (function() {
-                                    try {
-                                        if (window.HiddenBridge) {
-                                            window.HiddenBridge.onPassHtml(document.documentElement.outerHTML);
-                                        }
-                                    } catch(e) {}
-                                })();
-                            """.trimIndent(), null)
+                            view?.evaluateJavascript(INJECT_EXTRACTION_SCRIPT, null)
                         }
                     }
                 }
