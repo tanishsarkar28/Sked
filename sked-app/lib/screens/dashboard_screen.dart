@@ -16,7 +16,6 @@ import '../services/update_service.dart';
 import '../services/widget_service.dart';
 import '../services/sync_service.dart';
 import 'exam_screen.dart';
-import 'gpa_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String userId;
@@ -832,7 +831,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 const Divider(color: SkedColors.rule, height: 1),
                 const SizedBox(height: 8),
 
-                // ── Mode Switcher: CLASSES vs EXAMS vs GPA ──────────────────
+                // ── Mode Switcher: CLASSES vs EXAMS ─────────────────────────
                 Row(
                   children: [
                     Expanded(
@@ -843,22 +842,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                         onTap: () => setState(() => _activeTab = 'CLASSES'),
                       ),
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: _modeButton(
                         label: 'EXAMS (${_exams.length})',
                         icon: Icons.school_outlined,
                         isActive: _activeTab == 'EXAMS',
                         onTap: () => setState(() => _activeTab = 'EXAMS'),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: _modeButton(
-                        label: 'GPA',
-                        icon: Icons.calculate_outlined,
-                        isActive: _activeTab == 'GPA',
-                        onTap: () => setState(() => _activeTab = 'GPA'),
                       ),
                     ),
                   ],
@@ -871,14 +861,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           Expanded(
             child: _activeTab == 'EXAMS'
                 ? ExamScreen(exams: _exams, onRefresh: _showFullReAuthDialog)
-                : _activeTab == 'GPA'
-                    ? GpaScreen(
-                        timetable: _todayClasses.isNotEmpty
-                            ? _todayClasses
-                            : _weekClasses.values.expand((e) => e).toList(),
-                        onSyncUms: _showFullReAuthDialog,
-                      )
-                    : _buildClassesTab(isSunday),
+                : _buildClassesTab(isSunday),
           ),
         ],
       ),

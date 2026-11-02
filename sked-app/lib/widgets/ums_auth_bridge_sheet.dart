@@ -8,8 +8,6 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../models/exam_item.dart';
 import '../services/timetable_parser.dart';
 import '../services/exam_parser.dart';
-import '../services/result_parser.dart';
-import '../models/gpa_models.dart';
 import '../services/sync_service.dart';
 import '../theme/app_theme.dart';
 

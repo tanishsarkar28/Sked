@@ -79,7 +79,6 @@ import com.sked.sked_app.widget.TimetableRefreshWorker
 import com.sked.sked_app.widget.TimetableRefreshWorker.Companion.KEY_USER_ID
 import com.sked.sked_app.widget.TimetableWidgetReceiver
 import com.sked.sked_app.update.*
-import com.sked.sked_app.gpa.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
