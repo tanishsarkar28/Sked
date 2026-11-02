@@ -211,23 +211,48 @@ fun parseUmsReturnDate(returnDateStr: String): Date? {
         .trim()
 
     val patterns = listOf(
+        // Indian/Standard English month names (e.g. "30 Oct 2026 10:45PM")
         "dd MMM yyyy hh:mma",
         "dd MMM yyyy h:mma",
         "dd MMM yyyy hh:mm a",
         "dd MMM yyyy h:mm a",
         "dd MMM yyyy HH:mm",
+        "dd-MMM-yyyy hh:mma",
+        "dd-MMM-yyyy h:mma",
+        "dd-MMM-yyyy hh:mm a",
+        "dd-MMM-yyyy h:mm a",
+        "dd-MMM-yyyy HH:mm",
+
+        // Indian day-first numeric formats (dd/MM/yyyy and dd-MM-yyyy)
+        "dd/MM/yyyy hh:mm:ss a",
+        "dd/MM/yyyy h:mm:ss a",
+        "dd/MM/yyyy hh:mm a",
+        "dd/MM/yyyy h:mm a",
+        "dd/MM/yyyy HH:mm:ss",
+        "dd/MM/yyyy HH:mm",
+        "dd-MM-yyyy hh:mm:ss a",
+        "dd-MM-yyyy h:mm:ss a",
+        "dd-MM-yyyy hh:mm a",
+        "dd-MM-yyyy h:mm a",
+        "dd-MM-yyyy HH:mm:ss",
+        "dd-MM-yyyy HH:mm",
+
+        // ISO formats
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd HH:mm",
+        "yyyy-MM-dd hh:mm a",
+
+        // US month-first fallback
         "MM/dd/yyyy hh:mm:ss a",
         "MM/dd/yyyy h:mm:ss a",
         "MM/dd/yyyy hh:mm a",
-        "MM/dd/yyyy h:mm a",
-        "yyyy-MM-dd HH:mm:ss",
-        "yyyy-MM-dd HH:mm"
+        "MM/dd/yyyy h:mm a"
     )
 
     for (pattern in patterns) {
         try {
             val sdf = SimpleDateFormat(pattern, Locale.ENGLISH)
-            sdf.isLenient = true
+            sdf.isLenient = false
             val d = sdf.parse(clean)
             if (d != null) return d
         } catch (_: Exception) {}
