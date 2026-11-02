@@ -6,7 +6,7 @@ import {
   GraduationCap, 
   Coffee, 
   ShieldCheck, 
-  Zap, 
+  QrCode, 
   WifiOff 
 } from 'lucide-react';
 
@@ -25,22 +25,22 @@ export const FeatureShowcase: React.FC = () => {
       desc: "Pure Web UMS timetable scraping with zero mobile webservice calls. Keeps your official LPU Touch mobile app permanently logged in without single-device session invalidations.",
     },
     {
-      icon: Coffee,
-      title: "SUNDAY BITMOJI CHILL MODE",
-      tag: "ZERO STRESS",
-      desc: "Sundays are meant for relaxing. The widget automatically strips all academic stress and displays a centered chilling Bitmoji mascot with 'Enjoy your Sunday.'",
-    },
-    {
       icon: GraduationCap,
       title: "EXAM DATESHEET & SEATING",
       tag: "LIVE COUNTDOWN",
       desc: "Complete MTE, ETE, and Practical examination timetable with live countdown radars, session reporting hours, and room seating allocations cached 100% offline.",
     },
     {
-      icon: Zap,
-      title: "BACKGROUND AUTO SYNC",
-      tag: "GLANCE WIDGET",
-      desc: "Android WorkManager background updates run periodically to guarantee your home screen widget stays up to date with your class schedule without opening the app.",
+      icon: QrCode,
+      title: "HOSTEL LEAVE & GATE PASS",
+      tag: "ANDROID NATIVE",
+      desc: "Apply for Day, Night, and Medical hostel leaves in seconds. Generates an instant digital gate pass with turnstile barcode, live pass validity, and Parent OTP flow.",
+    },
+    {
+      icon: Coffee,
+      title: "SUNDAY BITMOJI CHILL MODE",
+      tag: "ZERO STRESS",
+      desc: "Sundays are meant for relaxing. The widget automatically strips all academic stress and displays a centered chilling Bitmoji mascot with 'Enjoy your Sunday.'",
     },
     {
       icon: WifiOff,

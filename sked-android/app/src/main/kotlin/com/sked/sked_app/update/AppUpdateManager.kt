@@ -119,11 +119,10 @@ object AppUpdateManager {
         } catch (_: Exception) {}
     }
 
-    // Candidate version endpoints (checks primary then fallbacks)
+    // Candidate version endpoints (checks primary production URL then GitHub raw fallback)
     private val VERSION_URLS = listOf(
         "https://sked-gold.vercel.app/version.json",
-        "https://raw.githubusercontent.com/tanishsarkar28/Sked/main/sked-web/public/version.json",
-        "http://10.0.2.2:5173/version.json"
+        "https://raw.githubusercontent.com/tanishsarkar28/Sked/main/sked-web/public/version.json"
     )
 
     fun getCurrentVersionInfo(context: Context): Pair<Int, String> {

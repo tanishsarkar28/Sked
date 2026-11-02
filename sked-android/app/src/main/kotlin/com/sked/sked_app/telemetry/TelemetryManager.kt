@@ -69,19 +69,37 @@ object TelemetryManager {
     private const val BASE_URL = "https://abacus.jasoncameron.dev"
     private const val NAMESPACE = "sked_official_app"
 
+    private val keyPattern = Regex("^[a-zA-Z0-9_]{3,40}$")
+    private val recentPings = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
     private fun getTodayDateString(): String {
         return SimpleDateFormat("yyyy_MM_dd", Locale.US).format(Date())
     }
 
     private fun pingCounter(key: String) {
+        if (!keyPattern.matches(key)) {
+            Log.w(TAG, "Rejected invalid telemetry key: $key")
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        val lastPing = recentPings[key] ?: 0L
+        // Enforce client-side rate limit (minimum 60s between duplicate pings per session)
+        if (now - lastPing < 60_000L) {
+            Log.d(TAG, "Throttled telemetry ping for key: $key")
+            return
+        }
+        recentPings[key] = now
+
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val url = URL("$BASE_URL/hit/$NAMESPACE/$key")
                 val conn = (url.openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 6000
-                    readTimeout = 6000
+                    connectTimeout = 5000
+                    readTimeout = 5000
                     requestMethod = "GET"
-                    setRequestProperty("User-Agent", "Sked-Telemetry")
+                    setRequestProperty("User-Agent", "Sked-App-Android")
+                    setRequestProperty("X-App-Id", "com.sked.sked_app")
                 }
                 conn.responseCode
                 conn.disconnect()
@@ -92,13 +110,15 @@ object TelemetryManager {
     }
 
     private suspend fun fetchCounter(key: String): Int = withContext(Dispatchers.IO) {
+        if (!keyPattern.matches(key)) return@withContext 0
         try {
             val url = URL("$BASE_URL/get/$NAMESPACE/$key")
             val conn = (url.openConnection() as HttpURLConnection).apply {
-                connectTimeout = 6000
-                readTimeout = 6000
+                connectTimeout = 5000
+                readTimeout = 5000
                 requestMethod = "GET"
-                setRequestProperty("User-Agent", "Sked-Telemetry")
+                setRequestProperty("User-Agent", "Sked-App-Android")
+                setRequestProperty("X-App-Id", "com.sked.sked_app")
             }
             if (conn.responseCode in 200..299) {
                 val body = conn.inputStream.bufferedReader().use { it.readText() }
