@@ -553,11 +553,11 @@ object LeaveSubmitEngine {
                                     }
                                 }
 
-                                // Re-run validation on validators to clear client errors
+                                // Re-run validation only on leave form validators (group '123') to clear client errors
                                 if (typeof Page_Validators !== 'undefined') {
                                     for (var vi = 0; vi < Page_Validators.length; vi++) {
                                         var valItem = Page_Validators[vi];
-                                        if (valItem && typeof ValidatorValidate === 'function') {
+                                        if (valItem && (!valItem.validationGroup || valItem.validationGroup === '123') && typeof ValidatorValidate === 'function') {
                                             ValidatorValidate(valItem);
                                         }
                                     }
@@ -639,7 +639,7 @@ object LeaveSubmitEngine {
                                     }
                                 }
 
-                                // 8. Client-side validation check
+                                // 8. Client-side validation check (only for hostel leave group '123')
                                 if (typeof Page_ClientValidate === 'function') {
                                     var valid = Page_ClientValidate('123');
                                     if (!valid) {
@@ -647,7 +647,7 @@ object LeaveSubmitEngine {
                                         if (typeof Page_Validators !== 'undefined') {
                                             for (var vi = 0; vi < Page_Validators.length; vi++) {
                                                 var vItem = Page_Validators[vi];
-                                                if (vItem && !vItem.isvalid && vItem.errormessage) {
+                                                if (vItem && (!vItem.validationGroup || vItem.validationGroup === '123') && !vItem.isvalid && vItem.errormessage) {
                                                     valMsgs.push(vItem.errormessage);
                                                 }
                                             }
@@ -840,7 +840,16 @@ object LeaveSubmitEngine {
                                                 } catch(e) {}
                                             }
 
-                                            // 5. Check for standard ASP.NET server error spans and labels
+                                            // Helper to ignore global UMS header/Idea Hub elements
+                                            function isIgnoredHeaderEl(el) {
+                                                if (!el) return false;
+                                                if (el.closest && el.closest('#ctl00_WcHeaderforStudent1, [id*="WcHeader" i], [id*="WUCStudentIdea" i], .feedback_heading, #nav, #header, header')) {
+                                                    return true;
+                                                }
+                                                return false;
+                                            }
+
+                                            // 5. Check for standard ASP.NET server error spans and labels (scoped outside header)
                                             var errSelectors = [
                                                 '[id*="lblerror" i]',
                                                 '[id*="lbl_error" i]',
@@ -860,13 +869,13 @@ object LeaveSubmitEngine {
                                                 var matchingEls = document.querySelectorAll(errSelectors[si]);
                                                 for (var mi = 0; mi < matchingEls.length; mi++) {
                                                     var el = matchingEls[mi];
-                                                    if (el.tagName === 'A' || el.closest('a')) continue;
+                                                    if (el.tagName === 'A' || el.closest('a') || isIgnoredHeaderEl(el)) continue;
                                                     var t = (el.textContent || el.innerText || '').trim();
                                                     var tLower = t.toLowerCase();
-                                                    if (tLower.indexOf('concept note') !== -1 || tLower.indexOf('disciplinary') !== -1 ||
-                                                        tLower.indexOf('misconduct') !== -1 || tLower.indexOf('rules and regulations') !== -1 ||
-                                                        tLower.indexOf('acknowledge') !== -1 || tLower.indexOf('select term') !== -1 ||
-                                                        tLower.indexOf('vid') !== -1 || t === '*') {
+                                                    if (tLower.indexOf('concept note') !== -1 || tLower.indexOf('idea hub') !== -1 ||
+                                                        tLower.indexOf('disciplinary') !== -1 || tLower.indexOf('misconduct') !== -1 ||
+                                                        tLower.indexOf('rules and regulations') !== -1 || tLower.indexOf('acknowledge') !== -1 ||
+                                                        tLower.indexOf('select term') !== -1 || tLower.indexOf('vid') !== -1 || t === '*') {
                                                         continue;
                                                     }
                                                     if (t.length > 3) {
@@ -875,10 +884,11 @@ object LeaveSubmitEngine {
                                                 }
                                             }
 
-                                            // 6. Check for ASP.NET validation summaries
+                                            // 6. Check for ASP.NET validation summaries (scoped outside header)
                                             var valSummaries = document.querySelectorAll('[id*="ValidationSummary"]');
                                             for (var vs = 0; vs < valSummaries.length; vs++) {
                                                 var vSumEl = valSummaries[vs];
+                                                if (isIgnoredHeaderEl(vSumEl)) continue;
                                                 var items = vSumEl.querySelectorAll('li');
                                                 var msgs = [];
                                                 for (var it = 0; it < items.length; it++) {
@@ -894,12 +904,12 @@ object LeaveSubmitEngine {
                                                 }
                                             }
 
-                                            // 7. Check for any failed ASP.NET validators
+                                            // 7. Check for any failed ASP.NET validators (scoped to leave form group '123')
                                             if (typeof Page_Validators !== 'undefined') {
                                                 var failedVals = [];
                                                 for (var pv = 0; pv < Page_Validators.length; pv++) {
                                                     var valObj = Page_Validators[pv];
-                                                    if (valObj && valObj.isvalid === false && valObj.errormessage) {
+                                                    if (valObj && (!valObj.validationGroup || valObj.validationGroup === '123') && valObj.isvalid === false && valObj.errormessage) {
                                                         failedVals.push(valObj.errormessage);
                                                     }
                                                 }
@@ -908,21 +918,34 @@ object LeaveSubmitEngine {
                                                 }
                                             }
 
-                                            // 8. Check for any red text spans or fonts using computed style (ignoring links and headers)
+                                            // 8. Check for any true red text spans or fonts using computed style
+                                            function isRealRed(cStr, fCol) {
+                                                if (fCol && fCol.toLowerCase() === 'red') return true;
+                                                if (!cStr) return false;
+                                                if (cStr === 'red') return true;
+                                                var m = cStr.match(/rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+                                                if (m) {
+                                                    var r = parseInt(m[1], 10);
+                                                    var g = parseInt(m[2], 10);
+                                                    var b = parseInt(m[3], 10);
+                                                    // White is rgb(255, 255, 255). True red must have low green and blue channels!
+                                                    return (r >= 160 && g < 100 && b < 100);
+                                                }
+                                                return false;
+                                            }
+
                                             var allRedEls = document.querySelectorAll('span, div, p, font, td, label');
                                             for (var r = 0; r < allRedEls.length; r++) {
                                                 var redEl = allRedEls[r];
-                                                if (redEl.tagName === 'A' || redEl.closest('a')) continue;
+                                                if (redEl.tagName === 'A' || redEl.closest('a') || isIgnoredHeaderEl(redEl)) continue;
                                                 if (redEl.children.length > 0) continue;
                                                 var cStyle = window.getComputedStyle(redEl).color || '';
                                                 var fCol = redEl.getAttribute('color') || '';
-                                                var isRedColor = cStyle.indexOf('rgb(255,') !== -1 || cStyle.indexOf('rgb(239,') !== -1 ||
-                                                                 cStyle.indexOf('rgb(220,') !== -1 || cStyle.indexOf('red') !== -1 ||
-                                                                 fCol.toLowerCase() === 'red';
-                                                if (isRedColor) {
+                                                if (isRealRed(cStyle, fCol)) {
                                                     var redTxt = (redEl.textContent || redEl.innerText || '').trim();
                                                     var rLower = redTxt.toLowerCase();
                                                     if (rLower.indexOf('concept note') !== -1 ||
+                                                        rLower.indexOf('idea hub') !== -1 ||
                                                         rLower.indexOf('disciplinary') !== -1 ||
                                                         rLower.indexOf('misconduct') !== -1 ||
                                                         rLower.indexOf('hostel leave application') !== -1 ||
