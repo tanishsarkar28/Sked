@@ -290,6 +290,7 @@ fun LeaveSlipScreen(
     var isSyncing by remember { mutableStateOf(false) }
     var isFetchingSlip by remember { mutableStateOf(false) }
     var showSlipBridge by remember { mutableStateOf(false) }
+    var backgroundWebViewRef by remember { mutableStateOf<WebView?>(null) }
 
     // Live clock for authentic warden verification (seconds tick live)
     var liveTimeText by remember { mutableStateOf("") }
@@ -310,84 +311,62 @@ fun LeaveSlipScreen(
         if (isFetchingSlip) return
         isFetchingSlip = true
 
-        fun doFetch(isRetry: Boolean = false) {
-            coroutineScope.launch {
-                // 1. Fetch gate pass directly from frmHostelLeaveSlipTest.aspx
-                val passRes = LeaveSubmitEngine.fetchGatePass(context)
-                // 2. Concurrently sync leave records from frmStudentHostelLeaveApplicationTermWise.aspx
-                val recRes = LeaveSubmitEngine.fetchLatestData(context)
-                if (recRes is LeaveSyncResult.Success) {
-                    records = recRes.data.records
+        try {
+            backgroundWebViewRef?.loadUrl(UMS_LEAVE_SLIP_URL)
+        } catch (_: Exception) {}
+
+        coroutineScope.launch {
+            // 1. Fetch gate pass directly from frmHostelLeaveSlipTest.aspx
+            val passRes = LeaveSubmitEngine.fetchGatePass(context)
+            // 2. Concurrently sync leave records from frmStudentHostelLeaveApplicationTermWise.aspx
+            val recRes = LeaveSubmitEngine.fetchLatestData(context)
+            if (recRes is LeaveSyncResult.Success) {
+                records = recRes.data.records
+            }
+
+            isFetchingSlip = false
+
+            if (passRes.isSuccess) {
+                val pass = passRes.getOrThrow()
+                if (pass.hasActivePass) {
+                    gatePass = pass
+                    LeaveStorage.saveGatePass(context, pass)
+                } else if (pass.checkInTime.isNotBlank() && gatePass.hasActivePass) {
+                    gatePass = gatePass.copy(checkInTime = pass.checkInTime)
+                    LeaveStorage.saveGatePass(context, gatePass)
+                } else if (!gatePass.hasActivePass) {
+                    gatePass = pass
                 }
 
-                if (passRes.isSuccess) {
-                    val pass = passRes.getOrThrow()
-                    isFetchingSlip = false
+                val activeRec = records.firstOrNull { r ->
+                    r.status.contains("Approved", ignoreCase = true) && r.checkIn.isBlank()
+                }
 
-                    if (pass.hasActivePass) {
-                        gatePass = pass
-                        LeaveStorage.saveGatePass(context, pass)
-                    } else if (pass.checkInTime.isNotBlank() && gatePass.hasActivePass) {
-                        gatePass = gatePass.copy(checkInTime = pass.checkInTime)
-                        LeaveStorage.saveGatePass(context, gatePass)
-                    } else if (!gatePass.hasActivePass) {
-                        gatePass = pass
-                    }
-
-                    val activeRec = records.firstOrNull { r ->
-                        r.status.contains("Approved", ignoreCase = true) && r.checkIn.isBlank()
-                    }
-
-                    if (pass.hasActivePass && pass.checkInTime.isBlank()) {
-                        Toast.makeText(context, "Active leave slip #${pass.leaveId} fetched", Toast.LENGTH_SHORT).show()
-                    } else if (activeRec != null) {
-                        Toast.makeText(context, "Active approved leave #${activeRec.leaveId} loaded", Toast.LENGTH_SHORT).show()
-                    } else if (pass.checkInTime.isNotBlank() || gatePass.checkInTime.isNotBlank()) {
-                        Toast.makeText(context, "Leave slip fetched (Checked in / completed)", Toast.LENGTH_SHORT).show()
-                    } else if (!pass.hasActivePass && !gatePass.hasActivePass) {
-                        Toast.makeText(context, "UMS reports: No active leave slip", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "Gate pass up to date", Toast.LENGTH_SHORT).show()
-                    }
+                if (pass.hasActivePass && pass.checkInTime.isBlank()) {
+                    Toast.makeText(context, "Active leave slip #${pass.leaveId} fetched", Toast.LENGTH_SHORT).show()
+                } else if (activeRec != null) {
+                    Toast.makeText(context, "Active approved leave #${activeRec.leaveId} loaded", Toast.LENGTH_SHORT).show()
+                } else if (pass.checkInTime.isNotBlank() || gatePass.checkInTime.isNotBlank()) {
+                    Toast.makeText(context, "Leave slip fetched (Checked in / completed)", Toast.LENGTH_SHORT).show()
+                } else if (!pass.hasActivePass && !gatePass.hasActivePass) {
+                    Toast.makeText(context, "UMS reports: No active leave slip", Toast.LENGTH_SHORT).show()
                 } else {
-                    isFetchingSlip = false
-                    val err = passRes.exceptionOrNull()?.message ?: ""
-                    val isSessionExpired = (recRes is LeaveSyncResult.SessionExpired) ||
-                            ((err.contains("session", ignoreCase = true) || err.contains("login", ignoreCase = true)) && recRes !is LeaveSyncResult.Success)
-
-                    if (!isRetry && isSessionExpired && onRefreshSession != null) {
-                        Toast.makeText(context, "UMS session expired. Refreshing session...", Toast.LENGTH_SHORT).show()
-                        onRefreshSession.invoke { success ->
-                            if (success) {
-                                val syncedPass = LeaveStorage.loadGatePass(context)
-                                if (syncedPass.hasActivePass) {
-                                    gatePass = syncedPass
-                                    Toast.makeText(context, "Leave slip fetched from UMS", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    doFetch(isRetry = true)
-                                }
-                            }
-                        }
-                    } else if (!isRetry && isSessionExpired && onReSync != null) {
-                        Toast.makeText(context, "UMS session expired. Refreshing session...", Toast.LENGTH_SHORT).show()
-                        onReSync.invoke()
-                    } else {
-                        val activeRec = records.firstOrNull { r ->
-                            r.status.contains("Approved", ignoreCase = true) && r.checkIn.isBlank()
-                        }
-                        if (activeRec != null) {
-                            Toast.makeText(context, "Active approved leave #${activeRec.leaveId} loaded", Toast.LENGTH_SHORT).show()
-                        } else if (gatePass.hasActivePass) {
-                            Toast.makeText(context, "Using cached gate pass #${gatePass.leaveId}", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "UMS reports: No active leave slip", Toast.LENGTH_SHORT).show()
-                        }
-                    }
+                    Toast.makeText(context, "Gate pass up to date", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                // Background OkHttp failed or redirected; rely on background WebView extraction and cached records
+                val activeRec = records.firstOrNull { r ->
+                    r.status.contains("Approved", ignoreCase = true) && r.checkIn.isBlank()
+                }
+                if (activeRec != null) {
+                    Toast.makeText(context, "Active approved leave #${activeRec.leaveId} loaded", Toast.LENGTH_SHORT).show()
+                } else if (gatePass.hasActivePass) {
+                    Toast.makeText(context, "Using cached gate pass #${gatePass.leaveId}", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "UMS reports: No active leave slip", Toast.LENGTH_SHORT).show()
                 }
             }
         }
-
-        doFetch(isRetry = false)
     }
 
     fun refreshData(allowSessionRefresh: Boolean = false) {
@@ -546,6 +525,7 @@ fun LeaveSlipScreen(
     AndroidView(
         factory = { ctx ->
             WebView(ctx).apply {
+                backgroundWebViewRef = this
                 layoutParams = ViewGroup.LayoutParams(1, 1)
                 visibility = View.INVISIBLE
                 settings.javaScriptEnabled = true
