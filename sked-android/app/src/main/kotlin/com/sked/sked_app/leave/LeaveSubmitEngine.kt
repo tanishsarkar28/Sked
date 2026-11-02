@@ -851,6 +851,15 @@ object LeaveSubmitEngine {
                         2 -> {
                             // Step 3: After submit postback, wait for DOM and alert events to settle, then verify table
                             onStatus("Verifying leave submission...")
+                            webView.evaluateJavascript("document.documentElement.outerHTML") { rawHtml ->
+                                try {
+                                    val unquoted = if (rawHtml.startsWith("\"") && rawHtml.endsWith("\"")) {
+                                        org.json.JSONObject("{\"v\":$rawHtml}").getString("v")
+                                    } else rawHtml
+                                    val file = context.getExternalFilesDir(null)?.resolve("ums_postback_dump.html")
+                                    file?.writeText(unquoted)
+                                } catch (_: Exception) {}
+                            }
                             mainHandler.postDelayed({
                                 val safeInitialId = org.json.JSONObject.quote(initialTopLeaveId ?: "")
                                 val jsCheckResult = """
@@ -966,12 +975,20 @@ object LeaveSubmitEngine {
 
                                             // 4c. Check for explicit leave timing / curfew error anywhere in body or scripts
                                             var fullPageText = (document.body ? (document.body.innerText || document.body.textContent || '') : '');
-                                            var lrMatch = fullPageText.match(/(?:day|night)?\s*leave[^\.\<\>\n\r]{0,40}(?:end time should not greater than|cannot be greater than|timing|curfew)[^\.\<\>\n\r]{0,40}/i) ||
-                                                          fullPageText.match(/[^\.\<\>\n\r]{0,40}(?:end time should not greater than|should not greater than 09:45)[^\.\<\>\n\r]{0,40}/i);
+                                            var lrMatch = fullPageText.match(/[^\.\<\>\n\r]{0,60}(?:end time should not greater than|cannot be greater than|should not greater than 09:45|should not greater than 9:45|end time cannot be greater)[^\.\<\>\n\r]{0,60}/i);
                                             if (lrMatch && lrMatch[0]) {
                                                 var cleanLr = lrMatch[0].trim();
-                                                if (cleanLr.length > 10) {
+                                                if (cleanLr.length > 5) {
                                                     return JSON.stringify({ status: 'error', message: cleanLr });
+                                                }
+                                            }
+
+                                            // 4d. Explicitly check UMS main error label
+                                            var mainLblErr = document.getElementById('ctl00_cphHeading_lblerror');
+                                            if (mainLblErr) {
+                                                var mlt = (mainLblErr.textContent || mainLblErr.innerText || '').trim();
+                                                if (mlt.length > 3 && mlt !== '*' && mlt.toLowerCase().indexOf('concept note') === -1) {
+                                                    return JSON.stringify({ status: 'error', message: mlt });
                                                 }
                                             }
 
