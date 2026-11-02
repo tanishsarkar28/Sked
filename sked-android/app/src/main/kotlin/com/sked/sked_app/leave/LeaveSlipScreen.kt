@@ -328,7 +328,14 @@ fun LeaveSlipScreen(
 
             if (passRes.isSuccess) {
                 val pass = passRes.getOrThrow()
-                if (pass.hasActivePass) {
+                val hasArrivedInside = pass.checkInTime.isNotBlank() || gatePass.checkInTime.isNotBlank()
+                val umsHasNoSlip = !pass.hasActivePass || pass.leaveCode == "6000" || pass.leaveId == "0"
+
+                if (hasArrivedInside && umsHasNoSlip) {
+                    // Condition 1: Student arrived inside uni AND slip is no longer on UMS
+                    LeaveStorage.clearGatePass(context)
+                    gatePass = HostelGatePass()
+                } else if (pass.hasActivePass) {
                     gatePass = pass
                     LeaveStorage.saveGatePass(context, pass)
                 } else if (pass.checkInTime.isNotBlank() && gatePass.hasActivePass) {
@@ -342,7 +349,9 @@ fun LeaveSlipScreen(
                     r.status.contains("Approved", ignoreCase = true) && r.checkIn.isBlank()
                 }
 
-                if (pass.hasActivePass && pass.checkInTime.isBlank()) {
+                if (hasArrivedInside && umsHasNoSlip) {
+                    Toast.makeText(context, "Leave completed: Arrived inside campus", Toast.LENGTH_SHORT).show()
+                } else if (pass.hasActivePass && pass.checkInTime.isBlank()) {
                     Toast.makeText(context, "Active leave slip #${pass.leaveId} fetched", Toast.LENGTH_SHORT).show()
                 } else if (activeRec != null) {
                     Toast.makeText(context, "Active approved leave #${activeRec.leaveId} loaded", Toast.LENGTH_SHORT).show()
@@ -377,7 +386,14 @@ fun LeaveSlipScreen(
             val passRes = LeaveSubmitEngine.fetchGatePass(context)
             if (passRes.isSuccess) {
                 val newPass = passRes.getOrThrow()
-                if (newPass.hasActivePass) {
+                val hasArrivedInside = newPass.checkInTime.isNotBlank() || gatePass.checkInTime.isNotBlank()
+                val umsHasNoSlip = !newPass.hasActivePass || newPass.leaveCode == "6000" || newPass.leaveId == "0"
+
+                if (hasArrivedInside && umsHasNoSlip) {
+                    // Condition 1: Student arrived inside uni AND slip is no longer on UMS
+                    LeaveStorage.clearGatePass(context)
+                    gatePass = HostelGatePass()
+                } else if (newPass.hasActivePass) {
                     gatePass = newPass
                     LeaveStorage.saveGatePass(context, newPass)
                 } else if (newPass.checkInTime.isNotBlank() && gatePass.hasActivePass) {
@@ -440,10 +456,36 @@ fun LeaveSlipScreen(
 
     // Effective gate pass: use parsed pass if active; otherwise synthesize from approved leave record
     val effectiveGatePass = remember(gatePass, approvedRecord, profile) {
-        val isComplete = gatePass.hasActivePass && gatePass.leaveId.isNotBlank() && gatePass.name.isNotBlank()
-        if (isComplete) {
+        val isPassActive = gatePass.hasActivePass && gatePass.leaveId.isNotBlank()
+        val isPassStaleOrDone = gatePass.checkInTime.isNotBlank() || (gatePass.dateOfReturn.isNotBlank() && isLeaveExpired(gatePass.dateOfReturn, bufferMinutes = 30))
+        val hasNewApprovedLeave = approvedRecord != null && (
+            isPassStaleOrDone || !isPassActive || (approvedRecord.leaveId.toLongOrNull() ?: 0L) > (gatePass.leaveId.toLongOrNull() ?: 0L)
+        )
+
+        if (hasNewApprovedLeave) {
+            HostelGatePass(
+                universityTitle = "Lovely Professional University",
+                passSubtitle = "Hostel Leave Gate Pass",
+                leaveType = approvedRecord.leaveType.ifBlank { "Hostel Leave" },
+                leaveId = approvedRecord.leaveId,
+                leaveCode = if (gatePass.leaveCode.isNotBlank() && gatePass.leaveCode != "6000" && gatePass.leaveId == approvedRecord.leaveId) gatePass.leaveCode else approvedRecord.leaveId,
+                regNo = profile.uid.ifBlank { gatePass.regNo },
+                name = profile.name.ifBlank { gatePass.name },
+                dateOfApply = approvedRecord.applyDate.ifBlank { gatePass.dateOfApply },
+                dateOfLeaving = approvedRecord.leaveDate.ifBlank { gatePass.dateOfLeaving },
+                dateOfReturn = approvedRecord.returnDate.ifBlank { gatePass.dateOfReturn },
+                checkOutTime = approvedRecord.checkOut.ifBlank { gatePass.checkOutTime },
+                checkInTime = approvedRecord.checkIn,
+                contactNo = profile.registeredMobile.ifBlank { gatePass.contactNo },
+                hostel = profile.hostel.ifBlank { gatePass.hostel },
+                roomNo = profile.roomNo.ifBlank { gatePass.roomNo },
+                gates = gatePass.gates,
+                note = "Note : Do not look back after checkout; please proceed forward only.",
+                hasActivePass = true
+            )
+        } else if (isPassActive && gatePass.name.isNotBlank()) {
             gatePass
-        } else if (gatePass.hasActivePass && gatePass.leaveId.isNotBlank() && profile.name.isNotBlank()) {
+        } else if (isPassActive && profile.name.isNotBlank()) {
             gatePass.copy(
                 regNo = gatePass.regNo.ifBlank { profile.uid },
                 name = gatePass.name.ifBlank { profile.name },
@@ -479,7 +521,7 @@ fun LeaveSlipScreen(
 
     // Keep cached gate pass in sync only if it contains verified student identity
     LaunchedEffect(effectiveGatePass) {
-        if (effectiveGatePass.hasActivePass && effectiveGatePass.name.isNotBlank() && !gatePass.hasActivePass) {
+        if (effectiveGatePass.hasActivePass && effectiveGatePass.name.isNotBlank() && (!gatePass.hasActivePass || effectiveGatePass.leaveId != gatePass.leaveId)) {
             gatePass = effectiveGatePass
             LeaveStorage.saveGatePass(context, effectiveGatePass)
         }
@@ -501,17 +543,25 @@ fun LeaveSlipScreen(
         LeaveSlipFetchBridgeDialog(
             onDismiss = { showSlipBridge = false },
             onSuccess = { fetchedPass ->
-                gatePass = fetchedPass
                 showSlipBridge = false
-                val expired = isLeaveExpired(fetchedPass.dateOfReturn, 10)
-                if (fetchedPass.hasActivePass && !expired && fetchedPass.checkInTime.isBlank() && fetchedPass.leaveCode != "6000") {
-                    Toast.makeText(context, "Leave slip fetched from UMS", Toast.LENGTH_SHORT).show()
-                } else if (!fetchedPass.hasActivePass || fetchedPass.leaveCode == "6000") {
-                    Toast.makeText(context, "UMS reports: No active leave slip", Toast.LENGTH_SHORT).show()
-                } else if (expired) {
-                    Toast.makeText(context, "Leave slip fetched (Expired 10m post-return)", Toast.LENGTH_SHORT).show()
+                val hasArrivedInside = fetchedPass.checkInTime.isNotBlank() || gatePass.checkInTime.isNotBlank()
+                val umsHasNoSlip = !fetchedPass.hasActivePass || fetchedPass.leaveCode == "6000" || fetchedPass.leaveId == "0"
+                if (hasArrivedInside && umsHasNoSlip) {
+                    LeaveStorage.clearGatePass(context)
+                    gatePass = HostelGatePass()
+                    Toast.makeText(context, "Leave completed: Arrived inside campus", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(context, "Leave slip fetched (Checked in / completed)", Toast.LENGTH_SHORT).show()
+                    gatePass = fetchedPass
+                    val expired = isLeaveExpired(fetchedPass.dateOfReturn, 30)
+                    if (fetchedPass.hasActivePass && !expired && fetchedPass.checkInTime.isBlank() && fetchedPass.leaveCode != "6000") {
+                        Toast.makeText(context, "Leave slip fetched from UMS", Toast.LENGTH_SHORT).show()
+                    } else if (!fetchedPass.hasActivePass || fetchedPass.leaveCode == "6000") {
+                        Toast.makeText(context, "UMS reports: No active leave slip", Toast.LENGTH_SHORT).show()
+                    } else if (expired) {
+                        Toast.makeText(context, "Leave slip fetched (Return time passed)", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Leave slip fetched (Checked in / completed)", Toast.LENGTH_SHORT).show()
+                    }
                 }
             },
             onError = { err ->
@@ -543,6 +593,18 @@ fun LeaveSlipScreen(
                             val name = obj.optString("name", "").trim()
                             val regNo = obj.optString("regNo", "").trim()
                             val photoUrl = obj.optString("photoUrl", "").trim()
+                            val cin = obj.optString("checkInTime", "").trim()
+
+                            val hasArrivedInside = cin.isNotBlank() || gatePass.checkInTime.isNotBlank()
+                            val umsHasNoSlip = (lid.isBlank() || lid == "0") && (lcode.isBlank() || lcode == "6000")
+
+                            if (hasArrivedInside && umsHasNoSlip) {
+                                coroutineScope.launch(Dispatchers.Main) {
+                                    LeaveStorage.clearGatePass(context)
+                                    gatePass = HostelGatePass()
+                                }
+                                return
+                            }
 
                             val gatesList = mutableListOf<GateActivation>()
                             val gArr = obj.optJSONArray("gates")
@@ -571,7 +633,7 @@ fun LeaveSlipScreen(
                                     dateOfLeaving = obj.optString("dateOfLeaving", "").trim(),
                                     dateOfReturn = obj.optString("dateOfReturn", "").trim(),
                                     checkOutTime = obj.optString("checkOutTime", "").trim(),
-                                    checkInTime = obj.optString("checkInTime", "").trim(),
+                                    checkInTime = cin,
                                     contactNo = obj.optString("contactNo", "").trim(),
                                     hostel = obj.optString("hostel", "").trim(),
                                     roomNo = obj.optString("roomNo", "").trim(),
@@ -609,7 +671,12 @@ fun LeaveSlipScreen(
                         val p = LeaveParser.parseGatePass(html)
                         if (p != null) {
                             coroutineScope.launch(Dispatchers.Main) {
-                                if (p.hasActivePass) {
+                                val hasArrivedInside = p.checkInTime.isNotBlank() || gatePass.checkInTime.isNotBlank()
+                                val umsHasNoSlip = !p.hasActivePass || p.leaveCode == "6000" || p.leaveId == "0"
+                                if (hasArrivedInside && umsHasNoSlip) {
+                                    LeaveStorage.clearGatePass(context)
+                                    gatePass = HostelGatePass()
+                                } else if (p.hasActivePass) {
                                     gatePass = p
                                     LeaveStorage.saveGatePass(context, p)
                                     if (p.photoUrl.isNotBlank()) {

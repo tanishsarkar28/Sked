@@ -249,6 +249,11 @@ object LeaveStorage {
         prefs.edit().putString(KEY_GATE_PASS_JSON, obj.toString()).apply()
     }
 
+    fun clearGatePass(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().remove(KEY_GATE_PASS_JSON).apply()
+    }
+
     fun loadGatePass(context: Context): HostelGatePass {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val raw = prefs.getString(KEY_GATE_PASS_JSON, null)
@@ -293,7 +298,13 @@ object LeaveStorage {
                 photoUrl = obj.optString("photoUrl", "")
             )
             if (pass.hasActivePass || pass.leaveId.isNotBlank() || pass.name.isNotBlank()) {
-                pass
+                // Remove pass from storage once the last leave time on entry (dateOfReturn) has completely passed
+                if (pass.dateOfReturn.isNotBlank() && isLeaveExpired(pass.dateOfReturn, bufferMinutes = 30)) {
+                    clearGatePass(context)
+                    DEFAULT_GATE_PASS
+                } else {
+                    pass
+                }
             } else {
                 DEFAULT_GATE_PASS
             }

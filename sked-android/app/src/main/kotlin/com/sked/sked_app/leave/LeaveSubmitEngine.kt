@@ -204,12 +204,18 @@ object LeaveSubmitEngine {
                 if (html.isNotBlank()) {
                     val pass = LeaveParser.parseGatePass(html)
                     if (pass != null) {
-                        if (pass.hasActivePass) {
+                        val existing = LeaveStorage.loadGatePass(context)
+                        val hasArrivedInside = pass.checkInTime.isNotBlank() || existing.checkInTime.isNotBlank()
+                        val umsHasNoSlip = !pass.hasActivePass || pass.leaveCode == "6000" || pass.leaveId == "0"
+
+                        if (hasArrivedInside && umsHasNoSlip) {
+                            // Condition 1: Student has arrived inside the uni AND slip is not showing on UMS
+                            LeaveStorage.clearGatePass(context)
+                        } else if (pass.hasActivePass) {
                             LeaveStorage.saveGatePass(context, pass)
                             val targetPhotoUrl = if (pass.photoUrl.isNotBlank()) pass.photoUrl else STUDENT_PHOTO_URL
                             downloadPhoto(context, targetPhotoUrl, cookies)
                         } else if (pass.checkInTime.isNotBlank()) {
-                            val existing = LeaveStorage.loadGatePass(context)
                             if (existing.hasActivePass) {
                                 val updated = existing.copy(checkInTime = pass.checkInTime)
                                 LeaveStorage.saveGatePass(context, updated)
