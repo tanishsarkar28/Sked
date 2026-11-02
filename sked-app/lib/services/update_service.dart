@@ -25,8 +25,8 @@ class AppUpdateInfo {
 }
 
 class UpdateService {
-  static const int currentVersionCode = 18;
-  static const String currentVersionName = '1.4.7';
+  static const int currentVersionCode = 19;
+  static const String currentVersionName = '1.4.8';
   static const String keyLastNotifiedUpdate = 'last_notified_update_code';
 
   static Future<bool> shouldNotifyUpdate(int remoteCode) async {

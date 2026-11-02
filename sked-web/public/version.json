@@ -1,8 +1,8 @@
 {
-  "versionCode": 18,
-  "versionName": "1.4.7",
+  "versionCode": 19,
+  "versionName": "1.4.8",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Fixed Day Leave and Night Leave balance parsing from live UMS portal\n• Prevented DOM search bleed between Day and Night balance tables\n• Updated live hostel leave quota tracking with accurate availed & balance counts",
+  "releaseNotes": "• Streamlined Hostel Leave screen to focus on live balance and application form\n• Fixed live Day and Night leave balance parsing from UMS portal",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",

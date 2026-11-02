@@ -405,7 +405,7 @@ fun LeaveScreen(
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // ── 1. Header & Live Balance Summary Cards ────────────────────────
@@ -1058,55 +1058,6 @@ fun LeaveScreen(
                             )
                         }
                     }
-                }
-            }
-
-            // ── 3. Recent Applications List ────────────────────────────────
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "RECENT LEAVE APPLICATIONS",
-                        fontFamily = BarlowCondensed,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = Slate,
-                        letterSpacing = 0.8.sp
-                    )
-                    Text(
-                        text = "${records.size} RECORDS",
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = Slate
-                    )
-                }
-            }
-
-            if (records.isEmpty()) {
-                item {
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = Slab,
-                        border = BorderStroke(1.dp, Rule),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                    ) {
-                        Box(modifier = Modifier.padding(24.dp), contentAlignment = Alignment.Center) {
-                            Text("No recent leave applications found.", color = Slate, fontSize = 13.sp)
-                        }
-                    }
-                }
-            } else {
-                items(
-                    items = records,
-                    key = { it.leaveId },
-                    contentType = { "leave_record" }
-                ) { rec ->
-                    LeaveRecordItemCard(record = rec)
                 }
             }
         }
