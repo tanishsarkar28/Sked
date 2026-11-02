@@ -66,24 +66,31 @@ class ClassEntry {
     };
   }
 
-  int get startMinutes {
-    final parts = start.split(':');
+  static int parseMinutes(String timeStr) {
+    final clean = timeStr.trim().toUpperCase();
+    final isPm = clean.contains('PM') || clean.contains('P.M.');
+    final isAm = clean.contains('AM') || clean.contains('A.M.');
+    final timeOnly = clean.replaceAll(RegExp(r'[^0-9:]'), '');
+    final parts = timeOnly.split(':');
     if (parts.length >= 2) {
-      final h = int.tryParse(parts[0].trim()) ?? 0;
-      final m = int.tryParse(parts[1].trim()) ?? 0;
+      var h = int.tryParse(parts[0].trim()) ?? 0;
+      final mStr = parts[1].trim();
+      final m = int.tryParse(mStr.length >= 2 ? mStr.substring(0, 2) : mStr) ?? 0;
+      if (isPm && h < 12) {
+        h += 12;
+      } else if (isAm && h == 12) {
+        h = 0;
+      }
       return h * 60 + m;
     }
     return 0;
   }
 
+  int get startMinutes => parseMinutes(start);
+
   int get endMinutes {
-    final parts = end.split(':');
-    if (parts.length >= 2) {
-      final h = int.tryParse(parts[0].trim()) ?? 0;
-      final m = int.tryParse(parts[1].trim()) ?? 0;
-      final val = h * 60 + m;
-      if (val > 0) return val;
-    }
+    final val = parseMinutes(end);
+    if (val > 0) return val;
     final s = startMinutes;
     return s > 0 ? s + 50 : 0;
   }

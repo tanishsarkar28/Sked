@@ -79,11 +79,19 @@ object TimetableParser {
     }
 
     fun parseTimeInMinutes(timeStr: String): Int {
-        val clean = timeStr.trim()
-        val parts = clean.split(":")
+        val clean = timeStr.trim().uppercase()
+        val isPm = clean.contains("PM") || clean.contains("P.M.")
+        val isAm = clean.contains("AM") || clean.contains("A.M.")
+        val timeOnly = clean.replace("[^0-9:]".toRegex(), "")
+        val parts = timeOnly.split(":")
         if (parts.size >= 2) {
-            val h = parts[0].trim().toIntOrNull() ?: 0
+            var h = parts[0].trim().toIntOrNull() ?: 0
             val m = parts[1].trim().take(2).toIntOrNull() ?: 0
+            if (isPm && h < 12) {
+                h += 12
+            } else if (isAm && h == 12) {
+                h = 0
+            }
             return h * 60 + m
         }
         return 0

@@ -193,10 +193,10 @@ object AutoSyncManager {
                 )
             }
 
-            // Sync latest cookies from WebView CookieManager if available
+            // Sync latest cookies from WebView CookieManager across both root & /lpuums/ paths
             var cookies = prefs.getString(KEY_UMS_COOKIES, "") ?: ""
             try {
-                val cmCookies = CookieManager.getInstance().getCookie("https://ums.lpu.in") ?: ""
+                val cmCookies = com.sked.sked_app.leave.LeaveSubmitEngine.getBestUmsCookies(context)
                 if (cmCookies.isNotBlank()) {
                     cookies = cmCookies
                     saveCookies(context, cmCookies)
@@ -393,8 +393,11 @@ object AutoSyncManager {
                     }
                 }
 
-                // Detect cancellations
+                // Detect cancellations & prune from notified history so rescheduled classes can notify again
                 val cancelledKeys = oldActiveKeys - currentActiveKeys
+                if (cancelledKeys.isNotEmpty()) {
+                    notifiedKeys.removeAll(cancelledKeys)
+                }
                 val cancelledDescriptions = mutableListOf<String>()
                 for (ck in cancelledKeys) {
                     val parts = ck.split("_")

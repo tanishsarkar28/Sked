@@ -52,11 +52,38 @@ class TimetableWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val rawJson = prefs.getString(KEY_TODAY, null)
         val userId = prefs.getString(TimetableRefreshWorker.KEY_USER_ID, null)
-        val entries = parseEntries(context, rawJson)
 
         val isSunday = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY
+
+        // Dynamically compute today's classes from all entries to prevent stale midnight cache
+        val allEntries = com.sked.sked_app.TimetableParser.loadFromPrefs(context)
+        val currentDay = com.sked.sked_app.TimetableParser.todayName()
+        val todayItems = if (allEntries.isNotEmpty()) {
+            com.sked.sked_app.TimetableParser.filterByDay(allEntries, currentDay)
+        } else emptyList()
+
+        val entries = if (allEntries.isNotEmpty()) {
+            // Keep KEY_TODAY updated in case other components read it
+            val todayJson = com.sked.sked_app.TimetableParser.entriesToJsonArray(todayItems)
+            prefs.edit().putString(KEY_TODAY, todayJson.toString()).apply()
+
+            todayItems.map { item ->
+                ClassData(
+                    courseCode = item.courseCode,
+                    start      = item.start,
+                    end        = item.end,
+                    room       = item.room,
+                    type       = item.type,
+                    timeRange  = item.timeRange,
+                    teacher    = item.teacher,
+                    section    = item.section
+                )
+            }
+        } else {
+            val rawJson = prefs.getString(KEY_TODAY, null)
+            parseEntries(context, rawJson)
+        }
 
         val exams = try {
             ExamParser.loadExamsFromPrefs(context)
@@ -67,7 +94,6 @@ class TimetableWidget : GlanceAppWidget() {
         val tomorrowExam = exams.firstOrNull { it.getStatus() == ExamStatus.TOMORROW }
 
         val mondayEntries = if (isSunday) {
-            val allEntries = com.sked.sked_app.TimetableParser.loadFromPrefs(context)
             val monList = com.sked.sked_app.TimetableParser.filterByDay(allEntries, "Monday")
             monList.map { item ->
                 ClassData(
@@ -977,14 +1003,9 @@ class TimetableWidget : GlanceAppWidget() {
     )
 
     private fun parseMinutes(timeStr: String): Int {
-        val clean = timeStr.trim()
-        val parts = clean.split(":")
-        if (parts.size >= 2) {
-            val h = parts[0].toIntOrNull() ?: return -1
-            val m = parts[1].take(2).toIntOrNull() ?: return -1
-            return h * 60 + m
-        }
-        return -1
+        if (timeStr.isBlank()) return -1
+        val mins = com.sked.sked_app.TimetableParser.parseTimeInMinutes(timeStr)
+        return if (mins > 0 || timeStr.contains("00:00") || timeStr.contains("12:00 AM", ignoreCase = true)) mins else -1
     }
 
     private fun parseEntries(context: Context, raw: String?): List<ClassData> {

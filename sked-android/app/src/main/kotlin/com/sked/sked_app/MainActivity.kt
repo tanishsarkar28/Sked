@@ -3383,14 +3383,7 @@ fun UmsAuthBridgeDialog(
 // ── Helper Time Functions ───────────────────────────────────────────────────
 
 private fun parseTimeInMinutes(timeStr: String): Int {
-    val clean = timeStr.trim()
-    val parts = clean.split(":")
-    if (parts.size >= 2) {
-        val h = parts[0].trim().toIntOrNull() ?: 0
-        val m = parts[1].trim().take(2).toIntOrNull() ?: 0
-        return h * 60 + m
-    }
-    return 0
+    return com.sked.sked_app.TimetableParser.parseTimeInMinutes(timeStr)
 }
 
 // ── Celebration — "All done." ─────────────────────────────────────────────────

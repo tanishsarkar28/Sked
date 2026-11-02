@@ -267,6 +267,9 @@ class SyncService {
 
       // Detect cancellations: Makeup classes previously active that disappeared from timetable
       final cancelledKeys = oldActiveKeys.difference(currentActiveKeys);
+      if (cancelledKeys.isNotEmpty) {
+        notifiedKeys.removeAll(cancelledKeys);
+      }
       final cancelledDescriptions = <String>[];
       for (final ck in cancelledKeys) {
         final parts = ck.split('_');
