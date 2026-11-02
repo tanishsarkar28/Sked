@@ -454,8 +454,40 @@ object LeaveSubmitEngine {
                     val jsFillAndSubmit = """
                         (function() {
                             try {
-                                window.alert = function(msg) { window.SkedLeaveBridge.onAlert(msg); };
-                                window.radalert = function(msg) { window.SkedLeaveBridge.onAlert(msg); };
+                                function installHook(name) {
+                                    try {
+                                        var _orig = window[name];
+                                        Object.defineProperty(window, name, {
+                                            get: function() {
+                                                return function() {
+                                                    var m = arguments.length > 0 ? String(arguments[0] || '') : '';
+                                                    try {
+                                                        if (window.SkedLeaveBridge && window.SkedLeaveBridge.onAlert) {
+                                                            window.SkedLeaveBridge.onAlert(m);
+                                                        }
+                                                    } catch(e) {}
+                                                    if (typeof _orig === 'function') {
+                                                        try { _orig.apply(window, arguments); } catch(e) {}
+                                                    }
+                                                };
+                                            },
+                                            set: function(fn) { _orig = fn; },
+                                            configurable: true,
+                                            enumerable: true
+                                        });
+                                    } catch(e) {
+                                        window[name] = function() {
+                                            var m = arguments.length > 0 ? String(arguments[0] || '') : '';
+                                            try {
+                                                if (window.SkedLeaveBridge && window.SkedLeaveBridge.onAlert) {
+                                                    window.SkedLeaveBridge.onAlert(m);
+                                                }
+                                            } catch(e) {}
+                                        };
+                                    }
+                                }
+                                installHook('alert');
+                                installHook('radalert');
                                 window.confirm = function() { return true; };
                                 window.radconfirm = function() { return true; };
 
@@ -688,14 +720,46 @@ object LeaveSubmitEngine {
                 val hookJs = """
                     (function() {
                         try {
-                            window.alert = function(msg) { window.SkedLeaveBridge.onAlert(msg); };
-                            window.radalert = function(msg) { window.SkedLeaveBridge.onAlert(msg); };
+                            function installHook(name) {
+                                try {
+                                    var _orig = window[name];
+                                    Object.defineProperty(window, name, {
+                                        get: function() {
+                                            return function() {
+                                                var m = arguments.length > 0 ? String(arguments[0] || '') : '';
+                                                try {
+                                                    if (window.SkedLeaveBridge && window.SkedLeaveBridge.onAlert) {
+                                                        window.SkedLeaveBridge.onAlert(m);
+                                                    }
+                                                } catch(e) {}
+                                                if (typeof _orig === 'function') {
+                                                    try { _orig.apply(window, arguments); } catch(e) {}
+                                                }
+                                            };
+                                        },
+                                        set: function(fn) { _orig = fn; },
+                                        configurable: true,
+                                        enumerable: true
+                                    });
+                                } catch(e) {
+                                    window[name] = function() {
+                                        var m = arguments.length > 0 ? String(arguments[0] || '') : '';
+                                        try {
+                                            if (window.SkedLeaveBridge && window.SkedLeaveBridge.onAlert) {
+                                                window.SkedLeaveBridge.onAlert(m);
+                                            }
+                                        } catch(e) {}
+                                    };
+                                }
+                            }
+                            installHook('alert');
+                            installHook('radalert');
                             window.confirm = function() { return true; };
                             window.radconfirm = function() { return true; };
                             if (typeof Sys !== 'undefined' && Sys.Application) {
                                 Sys.Application.add_load(function() {
-                                    window.alert = function(msg) { window.SkedLeaveBridge.onAlert(msg); };
-                                    window.radalert = function(msg) { window.SkedLeaveBridge.onAlert(msg); };
+                                    installHook('alert');
+                                    installHook('radalert');
                                 });
                             }
                         } catch(e) {}
@@ -834,10 +898,10 @@ object LeaveSubmitEngine {
                                             }
 
                                             // 3. Check for Telerik RadAlert or dialog content
-                                            var radAlert = document.querySelector('.rwDialogText, .rwDialogMessage, .rwWindowContent, .rwDialogPopup, [id*="RadAlert" i], [id*="radalert" i]');
+                                            var radAlert = document.querySelector('.rwDialogText, .rwDialogMessage, .rwContent, .rwWindowContent, .rwDialogPopup, [id*="RadAlert" i], [id*="radalert" i], [id*="RadWindow" i], .RadWindow');
                                             if (radAlert) {
                                                 var rt = (radAlert.textContent || radAlert.innerText || '').trim();
-                                                if (rt.length > 0 && rt.toLowerCase().indexOf('confirm') === -1) {
+                                                if (rt.length > 3 && rt.toLowerCase().indexOf('confirm') === -1) {
                                                     return JSON.stringify({ status: 'error', message: rt });
                                                 }
                                             }
@@ -871,32 +935,43 @@ object LeaveSubmitEngine {
                                                 var sc = allScripts[sci];
                                                 if (isIgnoredHeaderEl(sc)) continue;
                                                 var scRaw = sc.textContent || sc.innerText || '';
-                                                if (scRaw.indexOf('alert(') === -1 && scRaw.indexOf('radalert(') === -1) continue;
-                                                // Strip single-line and multi-line comments to avoid commented-out dummy code like //alert("Hello")
-                                                var scTxt = scRaw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^\:])\/\/.*$/gm, '$1');
-                                                if (scTxt.indexOf('alert(') === -1 && scTxt.indexOf('radalert(') === -1) continue;
+                                                if (!/alert\s*\(/i.test(scRaw)) continue;
 
-                                                var alertMatches = scTxt.match(/(?:window\.)?(?:rad)?alert\s*\(\s*(['"])((?:(?!\1)[\s\S]|\\.)*?)\1\s*\)/gi);
-                                                if (alertMatches) {
-                                                    for (var ami = 0; ami < alertMatches.length; ami++) {
-                                                        var singleM = alertMatches[ami].match(/(?:window\.)?(?:rad)?alert\s*\(\s*(['"])((?:(?!\1)[\s\S]|\\.)*?)\1/i);
-                                                        if (singleM && singleM[2]) {
-                                                            var alertContent = singleM[2].replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\n/g, '\n').trim();
-                                                            var alLower = alertContent.toLowerCase();
-                                                            if (alLower.indexOf('concept note') === -1 &&
-                                                                alLower.indexOf('idea hub') === -1 &&
-                                                                alLower.indexOf('window.skedleavebridge') === -1 &&
-                                                                alLower !== 'hello' &&
-                                                                alLower !== 'error' &&
-                                                                alertContent.length > 5) {
-                                                                if (alLower.indexOf('success') !== -1 || (alLower.indexOf('applied') !== -1 && alLower.indexOf('leave id') !== -1)) {
-                                                                    return JSON.stringify({ status: 'success', message: alertContent });
-                                                                } else {
-                                                                    return JSON.stringify({ status: 'error', message: alertContent });
-                                                                }
+                                                // Strip single-line and multi-line comments
+                                                var scTxt = scRaw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^\:])\/\/.*$/gm, '$1');
+                                                if (!/alert\s*\(/i.test(scTxt)) continue;
+
+                                                // Match any alert(...) or radalert(...) with any number of parameters
+                                                var alertRegex = /(?:window\.)?(?:rad)?alert\s*\(\s*(['"])((?:(?!\1)[\s\S]|\\.)*?)\1/gi;
+                                                var m;
+                                                while ((m = alertRegex.exec(scTxt)) !== null) {
+                                                    if (m[2]) {
+                                                        var alertContent = m[2].replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\n/g, '\n').trim();
+                                                        var alLower = alertContent.toLowerCase();
+                                                        if (alLower.indexOf('concept note') === -1 &&
+                                                            alLower.indexOf('idea hub') === -1 &&
+                                                            alLower.indexOf('window.skedleavebridge') === -1 &&
+                                                            alLower !== 'hello' &&
+                                                            alLower !== 'error' &&
+                                                            alertContent.length > 5) {
+                                                            if (alLower.indexOf('success') !== -1 || (alLower.indexOf('applied') !== -1 && alLower.indexOf('leave id') !== -1)) {
+                                                                return JSON.stringify({ status: 'success', message: alertContent });
+                                                            } else {
+                                                                return JSON.stringify({ status: 'error', message: alertContent });
                                                             }
                                                         }
                                                     }
+                                                }
+                                            }
+
+                                            // 4c. Check for explicit leave timing / curfew error anywhere in body or scripts
+                                            var fullPageText = (document.body ? (document.body.innerText || document.body.textContent || '') : '');
+                                            var lrMatch = fullPageText.match(/(?:day|night)?\s*leave[^\.\<\>\n\r]{0,40}(?:end time should not greater than|cannot be greater than|timing|curfew)[^\.\<\>\n\r]{0,40}/i) ||
+                                                          fullPageText.match(/[^\.\<\>\n\r]{0,40}(?:end time should not greater than|should not greater than 09:45)[^\.\<\>\n\r]{0,40}/i);
+                                            if (lrMatch && lrMatch[0]) {
+                                                var cleanLr = lrMatch[0].trim();
+                                                if (cleanLr.length > 10) {
+                                                    return JSON.stringify({ status: 'error', message: cleanLr });
                                                 }
                                             }
 
