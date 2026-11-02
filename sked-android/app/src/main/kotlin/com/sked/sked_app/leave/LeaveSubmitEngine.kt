@@ -840,6 +840,34 @@ object LeaveSubmitEngine {
                                                 } catch(e) {}
                                             }
 
+                                            // 4b. Extract verbatim alert messages from server-injected <script> tags
+                                            var allScripts = document.querySelectorAll('script');
+                                            for (var sci = 0; sci < allScripts.length; sci++) {
+                                                var scTxt = allScripts[sci].textContent || allScripts[sci].innerText || '';
+                                                if (scTxt.indexOf('alert(') !== -1 || scTxt.indexOf('radalert(') !== -1) {
+                                                    var alertMatches = scTxt.match(/(?:rad)?alert\s*\(\s*(['"])((?:(?!\1)[^\\]|\\.)*)\1\s*\)/ig);
+                                                    if (alertMatches) {
+                                                        for (var ami = 0; ami < alertMatches.length; ami++) {
+                                                            var singleM = alertMatches[ami].match(/(?:rad)?alert\s*\(\s*(['"])((?:(?!\1)[^\\]|\\.)*)\1\s*\)/i);
+                                                            if (singleM && singleM[2]) {
+                                                                var alertContent = singleM[2].replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\n/g, '\n').trim();
+                                                                var alLower = alertContent.toLowerCase();
+                                                                if (alLower.indexOf('concept note') === -1 &&
+                                                                    alLower.indexOf('idea hub') === -1 &&
+                                                                    alLower.indexOf('window.skedleavebridge') === -1 &&
+                                                                    alertContent.length > 3) {
+                                                                    if (alLower.indexOf('success') !== -1 || (alLower.indexOf('applied') !== -1 && alLower.indexOf('leave id') !== -1)) {
+                                                                        return JSON.stringify({ status: 'success', message: alertContent });
+                                                                    } else {
+                                                                        return JSON.stringify({ status: 'error', message: alertContent });
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+
                                             // Helper to ignore global UMS header/Idea Hub elements
                                             function isIgnoredHeaderEl(el) {
                                                 if (!el) return false;
@@ -993,6 +1021,10 @@ object LeaveSubmitEngine {
                                         val status = obj.optString("status")
 
                                         when (status) {
+                                            "success" -> {
+                                                val msg = obj.optString("message", "Leave Applied Successfully")
+                                                finishWith(Result.success(msg))
+                                            }
                                             "error" -> {
                                                 val msg = obj.optString("message", "Submission rejected by UMS")
                                                 finishWith(Result.failure(Exception(msg)))
