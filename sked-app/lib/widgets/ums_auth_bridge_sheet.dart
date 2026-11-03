@@ -347,15 +347,29 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
             }
         }
 
+        var hasToken = !!(cf && cf.value && cf.value.length > 20);
+        var tsIframe = document.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]');
+        var needsInteraction = false;
+        if (!hasToken && !window._skedIsSyncing && !window._skedTimetableResult && !window._skedAuthFailed) {
+            if (!window._skedLoginLoadTime) window._skedLoginLoadTime = Date.now();
+            var waitDuration = Date.now() - window._skedLoginLoadTime;
+            if (tsIframe || waitDuration > 2200) {
+                needsInteraction = true;
+            }
+        }
+
         var st = 'Waiting for Turnstile verification...';
-        if (cf && cf.value && cf.value.length > 20) st = 'Turnstile verified! Submitting...';
+        if (needsInteraction) st = '👉 Tap "Verify you are human" below';
+        if (hasToken) st = 'Turnstile verified! Submitting...';
 
         return JSON.stringify({
             status: window._skedError || st,
             error: window._skedError || '',
             syncing: !!window._skedIsSyncing,
             authFailed: !!window._skedAuthFailed,
-            hasResult: !!window._skedTimetableResult
+            hasResult: !!window._skedTimetableResult,
+            needsInteraction: needsInteraction,
+            hasToken: hasToken
         });
     } catch(e) {
         return JSON.stringify({ error: e.toString() });
@@ -382,12 +396,21 @@ class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
       final syncing = stateObj['syncing'] == true;
       final authFailed = stateObj['authFailed'] == true;
       final hasRes = stateObj['hasResult'] == true;
+      final needsInteraction = stateObj['needsInteraction'] == true;
+      final hasToken = stateObj['hasToken'] == true;
 
       if (mounted) {
         setState(() {
           if (st.isNotEmpty) _statusText = st;
           if (err.isNotEmpty) _statusText = err;
           _isSyncing = syncing;
+
+          // Smart auto-reveal & auto-hide
+          if (hasToken || syncing || hasRes) {
+            if (_showRawWebView) _showRawWebView = false;
+          } else if (needsInteraction && !authFailed && !_isDone) {
+            if (!_showRawWebView) _showRawWebView = true;
+          }
         });
       }
 

@@ -1,7 +1,7 @@
 name: sked_app
 description: LPU Timetable home-screen widget app
 publish_to: 'none'
-version: 1.5.2+23
+version: 1.5.3+24
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

@@ -1,8 +1,8 @@
 {
-  "versionCode": 23,
-  "versionName": "1.5.2",
+  "versionCode": 24,
+  "versionName": "1.5.3",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Fixed Parent phone display to accurately target #ctl00_cphHeading_lblOtpMobile\n• Seamless OTP re-entry and retry on incorrect attempt\n• Resend OTP option positioned to the left of Validate & Apply\n• Refined ASP.NET postback execution for single-click leave submission",
+  "releaseNotes": "• Smart Just-In-Time Turnstile verification: automatically reveals portal when human verification is required, and seamlessly auto-hides upon completion\n• Clear guidance header during Cloudflare verification\n• Instant auto-submission on Turnstile success",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",

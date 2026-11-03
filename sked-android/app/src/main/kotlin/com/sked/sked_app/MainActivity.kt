@@ -2516,8 +2516,20 @@ fun UmsAuthBridgeDialog(
                                         }
                                     }
 
+                                    var hasToken = !!(cf && cf.value && cf.value.length > 20);
+                                    var tsIframe = document.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]');
+                                    var needsInteraction = false;
+                                    if (!hasToken && !window._skedIsSyncing && !window._skedTimetableResult && !window._skedAuthFailed) {
+                                        if (!window._skedLoginLoadTime) window._skedLoginLoadTime = Date.now();
+                                        var waitDuration = Date.now() - window._skedLoginLoadTime;
+                                        if (tsIframe || waitDuration > 2200) {
+                                            needsInteraction = true;
+                                        }
+                                    }
+
                                     var st = 'Waiting for Turnstile verification...';
-                                    if (cf && cf.value && cf.value.length > 20) st = 'Turnstile verified! Submitting...';
+                                    if (needsInteraction) st = '👉 Tap "Verify you are human" below';
+                                    if (hasToken) st = 'Turnstile verified! Submitting...';
 
                                     if (window._skedTimetableResult && !window._skedTtTime) {
                                         window._skedTtTime = Date.now();
@@ -2530,7 +2542,9 @@ fun UmsAuthBridgeDialog(
                                         error: window._skedError || '',
                                         syncing: !!window._skedIsSyncing,
                                         authFailed: !!window._skedAuthFailed,
-                                        hasResult: !!window._skedTimetableResult && allFinished
+                                        hasResult: !!window._skedTimetableResult && allFinished,
+                                        needsInteraction: needsInteraction,
+                                        hasToken: hasToken
                                     });
                                 } catch(e) {
                                     return JSON.stringify({ error: e.toString() });
@@ -2550,10 +2564,19 @@ fun UmsAuthBridgeDialog(
                                     val syncing = stateObj.optBoolean("syncing")
                                     val authFailed = stateObj.optBoolean("authFailed")
                                     val hasRes = stateObj.optBoolean("hasResult")
+                                    val needsInteraction = stateObj.optBoolean("needsInteraction", false)
+                                    val hasToken = stateObj.optBoolean("hasToken", false)
 
                                     if (st.isNotBlank()) statusText = st
                                     isSyncing = syncing
                                     if (err.isNotBlank()) statusText = err
+
+                                    // Smart auto-reveal & auto-hide
+                                    if (hasToken || syncing || hasRes) {
+                                        if (showRawWebView) showRawWebView = false
+                                    } else if (needsInteraction && !authFailed && !isDone) {
+                                        if (!showRawWebView) showRawWebView = true
+                                    }
 
                                     if (authFailed) {
                                         val errText = err.ifBlank { "Invalid Registration No or Password." }
@@ -2989,7 +3012,10 @@ fun UmsAuthBridgeDialog(
                             Text(
                                 text = statusText,
                                 fontSize = 12.sp,
-                                color = if (statusText.contains("Invalid", true) || statusText.contains("Error", true)) DangerRed else Slate,
+                                fontWeight = if (statusText.contains("Tap", true)) FontWeight.Bold else FontWeight.Normal,
+                                color = if (statusText.contains("Invalid", true) || statusText.contains("Error", true)) DangerRed
+                                        else if (statusText.contains("Tap", true)) Blaze
+                                        else Slate,
                                 maxLines = 1
                             )
                         }
