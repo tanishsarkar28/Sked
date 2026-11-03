@@ -985,7 +985,10 @@ object LeaveSubmitEngine {
                                                         var val = (inputs[bi].value || inputs[bi].textContent || '').trim().toLowerCase();
                                                         if (val.indexOf('resend') !== -1) return true;
                                                     }
-                                                    return !!(document.getElementById('ctl00_cphHeading_btnResendOTP') || document.querySelector('[id*="Resend" i]'));
+                                                    return !!(document.getElementById('ctl00_cphHeading_btnResendOTP') || 
+                                                              document.getElementById('ctl00_cphHeading_btnResend') ||
+                                                              document.querySelector('[id*="btnResend" i]') ||
+                                                              document.querySelector('[id*="resend" i]'));
                                                 })();
 
                                                 var otpError = '';
@@ -1257,6 +1260,8 @@ object LeaveSubmitEngine {
                                                 }
                                                 val phoneToReport = if (savedMaskedPhone.isNotBlank()) savedMaskedPhone else maskedPhone
 
+                                                stage = 3 // Stage 3: Waiting for user OTP entry
+
                                                 if (otpError.isNotBlank()) {
                                                     onOtpError?.invoke(otpError, canResend)
                                                 }
@@ -1270,8 +1275,9 @@ object LeaveSubmitEngine {
                                                     mainHandler.postDelayed(timeoutRunnable!!, 180000)
 
                                                     val submitOtpFn: (String) -> Unit = { enteredOtp ->
+                                                        stage = 4 // Stage 4: Submitting OTP postback
                                                         onStatus("Validating OTP with UMS...")
-                                                        val safeOtp = org.json.JSONObject.quote(enteredOtp.trim())
+                                                        val safeOtp = org.json.JSONObject.quote(enteredOtp.trim().take(4))
                                                         val jsSubmitOtp = """
                                                             (function() {
                                                                 try {
@@ -1282,38 +1288,53 @@ object LeaveSubmitEngine {
                                                                         txt.dispatchEvent(new Event('input', { bubbles: true }));
                                                                         txt.dispatchEvent(new Event('change', { bubbles: true }));
                                                                     }
-                                                                    var btn = (function() {
-                                                                        var inputs = document.querySelectorAll('input[type="submit"], input[type="button"], button');
-                                                                        for (var bi = 0; bi < inputs.length; bi++) {
-                                                                            var val = (inputs[bi].value || inputs[bi].textContent || '').trim().toLowerCase();
-                                                                            if (val === 'validate otp' || val === 'validate') return inputs[bi];
+
+                                                                    var theForm = document.forms['aspnetForm'] || document.querySelector('form');
+                                                                    if (theForm) {
+                                                                        if (typeof Page_BlockSubmit !== 'undefined') Page_BlockSubmit = false;
+                                                                        if (typeof Page_ValidationActive !== 'undefined') Page_ValidationActive = false;
+
+                                                                        var ex = document.getElementById('__sked_btnValidate');
+                                                                        if (!ex) {
+                                                                            var h = document.createElement('input');
+                                                                            h.type = 'hidden';
+                                                                            h.id = '__sked_btnValidate';
+                                                                            h.name = 'ctl00${'$'}cphHeading${'$'}btnValidate';
+                                                                            h.value = 'Validate OTP';
+                                                                            theForm.appendChild(h);
                                                                         }
-                                                                        return document.getElementById('ctl00_cphHeading_btnSubmitOTP') ||
-                                                                               document.getElementById('ctl00_cphHeading_btnValidate') ||
-                                                                               document.getElementById('ctl00_cphHeading_btnOTPValidate') ||
-                                                                               document.querySelector('[id*="btnOTP" i]') ||
-                                                                               document.querySelector('[id*="btnValidate" i]');
-                                                                    })();
-                                                                    if (btn) {
-                                                                        setTimeout(function() { btn.click(); }, 250);
-                                                                    } else {
-                                                                        var f = document.querySelector('form');
-                                                                        if (f) f.submit();
+
+                                                                        if (theForm.__EVENTTARGET) {
+                                                                            theForm.__EVENTTARGET.value = 'ctl00${'$'}cphHeading${'$'}btnValidate';
+                                                                        }
+                                                                        if (theForm.__EVENTARGUMENT) {
+                                                                            theForm.__EVENTARGUMENT.value = '';
+                                                                        }
+
+                                                                        var btn = document.getElementById('ctl00_cphHeading_btnValidate');
+                                                                        if (btn) {
+                                                                            try { btn.click(); } catch(e) {}
+                                                                        }
+                                                                        theForm.submit();
+                                                                        return 'submitted';
                                                                     }
+                                                                    return 'no_form';
                                                                 } catch(e) {
-                                                                    window.SkedLeaveBridge.onError('Error submitting OTP: ' + e.toString());
+                                                                    return 'error: ' + e.toString();
                                                                 }
                                                             })();
                                                         """.trimIndent()
-                                                        webView.evaluateJavascript(jsSubmitOtp, null)
+                                                        webView.evaluateJavascript(jsSubmitOtp) { subRes ->
+                                                            android.util.Log.i("SkedLeave", "Submit OTP result: $subRes")
+                                                        }
 
                                                         var otpPollCount = 0
                                                         val pollOtpRunnable = object : Runnable {
                                                             override fun run() {
-                                                                if (isResumed) return
+                                                                if (isResumed || stage != 4) return
                                                                 otpPollCount++
                                                                 webView.evaluateJavascript(jsCheckResult) { checkRes ->
-                                                                    if (isResumed) return@evaluateJavascript
+                                                                    if (isResumed || stage != 4) return@evaluateJavascript
                                                                     try {
                                                                         val cJson = if (checkRes.startsWith("\"") && checkRes.endsWith("\"")) {
                                                                             org.json.JSONObject("{\"v\":$checkRes}").getString("v")
@@ -1331,17 +1352,17 @@ object LeaveSubmitEngine {
                                                                             }
                                                                         } else if (curStatus == "otp_required") {
                                                                             val err = cObj.optString("otpError")
-                                                                            val resendAvail = cObj.optBoolean("canResend", true)
-                                                                            if (err.isNotBlank()) {
-                                                                                onOtpError?.invoke(err, resendAvail)
-                                                                                return@evaluateJavascript
-                                                                            } else if (otpPollCount >= 4) {
-                                                                                onOtpError?.invoke("Incorrect OTP. Please enter valid OTP or tap Resend OTP.", resendAvail)
+                                                                            val resendAvail = cObj.optBoolean("canResend", false)
+                                                                            if (err.isNotBlank() || resendAvail) {
+                                                                                stage = 3
+                                                                                val finalErr = if (err.isNotBlank()) err else "Incorrect OTP. Please enter valid OTP or tap Resend OTP."
+                                                                                onOtpError?.invoke(finalErr, resendAvail)
                                                                                 return@evaluateJavascript
                                                                             }
                                                                         } else if (curStatus == "error") {
                                                                             val errMsg = cObj.optString("message")
                                                                             if (isOtpError(errMsg)) {
+                                                                                stage = 3
                                                                                 onOtpError?.invoke(errMsg, true)
                                                                                 return@evaluateJavascript
                                                                             } else {
@@ -1350,36 +1371,61 @@ object LeaveSubmitEngine {
                                                                             }
                                                                         }
                                                                     } catch (_: Exception) {}
-                                                                    if (!isResumed && otpPollCount < 10) {
+                                                                    if (!isResumed && stage == 4 && otpPollCount < 15) {
                                                                         mainHandler.postDelayed(this, 1500)
                                                                     }
                                                                 }
                                                             }
                                                         }
-                                                        mainHandler.postDelayed(pollOtpRunnable, 1500)
+                                                        mainHandler.postDelayed(pollOtpRunnable, 2000)
                                                     }
 
                                                     val resendOtpFn: () -> Unit = {
+                                                        stage = 5 // Stage 5: Resending OTP
                                                         onStatus("Requesting new OTP from UMS...")
                                                         val jsResend = """
                                                             (function() {
                                                                 try {
-                                                                    var inputs = document.querySelectorAll('input[type="submit"], input[type="button"], button, a');
-                                                                    for (var bi = 0; bi < inputs.length; bi++) {
-                                                                        var val = (inputs[bi].value || inputs[bi].textContent || '').trim().toLowerCase();
-                                                                        if (val.indexOf('resend') !== -1) {
-                                                                            inputs[bi].click();
-                                                                            return 'clicked';
+                                                                    var theForm = document.forms['aspnetForm'] || document.querySelector('form');
+                                                                    if (typeof Page_BlockSubmit !== 'undefined') Page_BlockSubmit = false;
+                                                                    if (typeof Page_ValidationActive !== 'undefined') Page_ValidationActive = false;
+
+                                                                    var resendEl = (function() {
+                                                                        var inputs = document.querySelectorAll('input[type="submit"], input[type="button"], button, a');
+                                                                        for (var bi = 0; bi < inputs.length; bi++) {
+                                                                            var val = (inputs[bi].value || inputs[bi].textContent || '').trim().toLowerCase();
+                                                                            if (val.indexOf('resend') !== -1) return inputs[bi];
                                                                         }
+                                                                        return document.getElementById('ctl00_cphHeading_btnResendOTP') ||
+                                                                               document.getElementById('ctl00_cphHeading_btnResend') ||
+                                                                               document.querySelector('[id*="btnResend" i]') ||
+                                                                               document.querySelector('[id*="resend" i]');
+                                                                    })();
+
+                                                                    if (resendEl) {
+                                                                        var targetName = resendEl.name || resendEl.id || 'ctl00${'$'}cphHeading${'$'}btnResendOTP';
+                                                                        if (theForm) {
+                                                                            var ex = document.getElementById('__sked_btnResend');
+                                                                            if (!ex) {
+                                                                                var h = document.createElement('input');
+                                                                                h.type = 'hidden';
+                                                                                h.id = '__sked_btnResend';
+                                                                                h.name = targetName;
+                                                                                h.value = resendEl.value || 'Resend OTP';
+                                                                                theForm.appendChild(h);
+                                                                            }
+                                                                            if (theForm.__EVENTTARGET) {
+                                                                                theForm.__EVENTTARGET.value = targetName;
+                                                                            }
+                                                                            if (theForm.__EVENTARGUMENT) {
+                                                                                theForm.__EVENTARGUMENT.value = '';
+                                                                            }
+                                                                        }
+                                                                        try { resendEl.click(); } catch(e) {}
+                                                                        if (theForm) theForm.submit();
+                                                                        return 'resend_submitted';
                                                                     }
-                                                                    var btn = document.getElementById('ctl00_cphHeading_btnResendOTP') ||
-                                                                              document.querySelector('[id*="btnResend" i]') ||
-                                                                              document.querySelector('[id*="resend" i]');
-                                                                    if (btn) {
-                                                                        btn.click();
-                                                                        return 'clicked';
-                                                                    }
-                                                                    return 'not_found';
+                                                                    return 'resend_btn_not_found';
                                                                 } catch(e) {
                                                                     return 'error: ' + e.toString();
                                                                 }
@@ -1387,11 +1433,35 @@ object LeaveSubmitEngine {
                                                         """.trimIndent()
                                                         webView.evaluateJavascript(jsResend) { r ->
                                                             android.util.Log.i("SkedLeave", "Resend OTP executed: $r")
-                                                            mainHandler.postDelayed({
-                                                                onOtpResent?.invoke()
-                                                                onStatus("Parent verification OTP required...")
-                                                            }, 1000)
                                                         }
+
+                                                        var resendPollCount = 0
+                                                        val pollResendRunnable = object : Runnable {
+                                                            override fun run() {
+                                                                if (isResumed || stage != 5) return
+                                                                resendPollCount++
+                                                                webView.evaluateJavascript(jsCheckResult) { checkRes ->
+                                                                    if (isResumed || stage != 5) return@evaluateJavascript
+                                                                    try {
+                                                                        val cJson = if (checkRes.startsWith("\"") && checkRes.endsWith("\"")) {
+                                                                            org.json.JSONObject("{\"v\":$checkRes}").getString("v")
+                                                                        } else checkRes
+                                                                        val cObj = org.json.JSONObject(cJson)
+                                                                        val curStatus = cObj.optString("status")
+                                                                        if (curStatus == "otp_required") {
+                                                                            stage = 3
+                                                                            onOtpResent?.invoke()
+                                                                            onStatus("Parent verification OTP required...")
+                                                                            return@evaluateJavascript
+                                                                        }
+                                                                    } catch (_: Exception) {}
+                                                                    if (!isResumed && stage == 5 && resendPollCount < 10) {
+                                                                        mainHandler.postDelayed(this, 1500)
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        mainHandler.postDelayed(pollResendRunnable, 2000)
                                                     }
 
                                                     onOtpRequired.invoke(
@@ -1499,6 +1569,10 @@ object LeaveSubmitEngine {
                                     }
                                 }
                             }, 600)
+                        }
+
+                        3, 4, 5 -> {
+                            // OTP interaction in progress; verification handled by pollOtpRunnable / pollResendRunnable
                         }
                     }
                 }

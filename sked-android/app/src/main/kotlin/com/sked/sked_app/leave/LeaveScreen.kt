@@ -122,6 +122,7 @@ fun LeaveScreen(
     var parentOtpInfoMessage by remember { mutableStateOf<String?>(null) }
     var isSubmittingParentOtp by remember { mutableStateOf(false) }
     var isResendingOtp by remember { mutableStateOf(false) }
+    var canResendOtp by remember { mutableStateOf(false) }
     var parentOtpSubmitAction by remember { mutableStateOf<((String) -> Unit)?>(null) }
     var parentOtpResendAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var parentOtpCancelAction by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -325,6 +326,7 @@ fun LeaveScreen(
                         isSubmitting = false
                         isSubmittingParentOtp = false
                         isResendingOtp = false
+                        canResendOtp = false
                         parentOtpPhoneTarget = maskedPhone
                         parentOtpCode = ""
                         parentOtpErrorMessage = null
@@ -334,12 +336,14 @@ fun LeaveScreen(
                         parentOtpCancelAction = onCancel
                         showParentOtpDialog = true
                     },
-                    onOtpError = { errorMsg, _ ->
+                    onOtpError = { errorMsg, canResend ->
                         isSubmittingParentOtp = false
                         parentOtpErrorMessage = errorMsg
+                        canResendOtp = canResend
                     },
                     onOtpResent = {
                         isResendingOtp = false
+                        canResendOtp = false
                         parentOtpInfoMessage = "New OTP sent to parent's registered mobile."
                         parentOtpErrorMessage = null
                         parentOtpCode = ""
@@ -1466,12 +1470,12 @@ fun LeaveScreen(
                     OutlinedTextField(
                         value = parentOtpCode,
                         onValueChange = {
-                            parentOtpCode = it.filter { ch -> ch.isLetterOrDigit() }.take(10)
+                            parentOtpCode = it.filter { ch -> ch.isLetterOrDigit() }.take(4)
                             parentOtpErrorMessage = null
                             parentOtpInfoMessage = null
                         },
                         label = { Text("Enter OTP", color = Slate, fontSize = 12.sp) },
-                        placeholder = { Text("Please enter OTP", color = Slate.copy(alpha = 0.5f), fontSize = 13.sp) },
+                        placeholder = { Text("4-character code", color = Slate.copy(alpha = 0.5f), fontSize = 13.sp) },
                         singleLine = true,
                         textStyle = androidx.compose.ui.text.TextStyle(
                             fontFamily = FontFamily.Monospace,
@@ -1537,7 +1541,7 @@ fun LeaveScreen(
                         Text("CANCEL", color = Slate, fontWeight = FontWeight.Medium)
                     }
 
-                    if (parentOtpResendAction != null) {
+                    if (canResendOtp && parentOtpResendAction != null) {
                         Spacer(modifier = Modifier.width(4.dp))
                         TextButton(
                             onClick = {

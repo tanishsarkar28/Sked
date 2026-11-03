@@ -1,8 +1,8 @@
 {
-  "versionCode": 21,
-  "versionName": "1.5.0",
+  "versionCode": 22,
+  "versionName": "1.5.1",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Accurate parent mobile extraction from UMS OTP verification\n• Retain verification dialog on invalid OTP with Resend OTP action",
+  "releaseNotes": "• Fixed Parent OTP form submission postback & ASP.NET validation flags\n• Dynamic Resend OTP button when rendered by UMS after retry\n• Strict 4-character alphanumeric uppercase Parent OTP constraints",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
