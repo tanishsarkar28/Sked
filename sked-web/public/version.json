@@ -1,8 +1,8 @@
 {
-  "versionCode": 22,
-  "versionName": "1.5.1",
+  "versionCode": 23,
+  "versionName": "1.5.2",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Fixed Parent OTP form submission postback & ASP.NET validation flags\n• Dynamic Resend OTP button when rendered by UMS after retry\n• Strict 4-character alphanumeric uppercase Parent OTP constraints",
+  "releaseNotes": "• Fixed Parent phone display to accurately target #ctl00_cphHeading_lblOtpMobile\n• Seamless OTP re-entry and retry on incorrect attempt\n• Resend OTP option positioned to the left of Validate & Apply\n• Refined ASP.NET postback execution for single-click leave submission",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",

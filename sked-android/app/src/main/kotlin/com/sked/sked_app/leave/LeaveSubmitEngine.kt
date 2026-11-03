@@ -446,6 +446,7 @@ object LeaveSubmitEngine {
                         if (isSuccessMessage(msg)) {
                             finishWith(Result.success(msg))
                         } else if (isOtpError(msg)) {
+                            stage = 3
                             onOtpError?.invoke(msg, true)
                         } else {
                             finishWith(Result.failure(Exception(msg)))
@@ -961,22 +962,24 @@ object LeaveSubmitEngine {
                                                 isOtpVisible = true;
                                             }
                                             if (isOtpVisible) {
-                                                var searchScope = otpTip ? (otpTip.innerText || otpTip.textContent || '') : bodyText;
-                                                var maskedMatch = searchScope.match(/([xX\*]{3,}\d{2,6})/);
-                                                if (!maskedMatch) {
-                                                    maskedMatch = bodyText.match(/([xX\*]{3,}\d{2,6})/);
-                                                }
-                                                var phonePrefixMatch = searchScope.match(/(?:mobile(?:\s*number)?|registered\s*mobile(?:\s*number)?)\s*[:\-]?\s*([xX\*\d]{8,15})/i) ||
-                                                                       bodyText.match(/(?:mobile(?:\s*number)?|registered\s*mobile(?:\s*number)?)\s*[:\-]?\s*([xX\*\d]{8,15})/i);
-
+                                                var lblOtpMobile = document.getElementById('ctl00_cphHeading_lblOtpMobile');
                                                 var maskedPhone = '';
-                                                if (maskedMatch && maskedMatch[1]) {
-                                                    maskedPhone = maskedMatch[1].trim();
-                                                } else if (phonePrefixMatch && phonePrefixMatch[1]) {
-                                                    var candidate = phonePrefixMatch[1].trim();
-                                                    if (/[xX\*]/.test(candidate)) {
-                                                        maskedPhone = candidate;
+                                                if (lblOtpMobile) {
+                                                    var lmt = (lblOtpMobile.innerText || lblOtpMobile.textContent || '').trim();
+                                                    if (lmt && lmt.length >= 6) {
+                                                        maskedPhone = lmt;
                                                     }
+                                                }
+                                                if (!maskedPhone) {
+                                                    var searchScope = otpTip ? (otpTip.innerText || otpTip.textContent || '') : '';
+                                                    var maskedMatch = searchScope.match(/([xX\*]{3,}\d{2,6})/);
+                                                    if (maskedMatch && maskedMatch[1]) {
+                                                        maskedPhone = maskedMatch[1].trim();
+                                                    }
+                                                }
+                                                // Never accept purely numeric student registration IDs (must contain x or *)
+                                                if (maskedPhone && !/[xX\*]/.test(maskedPhone) && maskedPhone.length < 10) {
+                                                    maskedPhone = '';
                                                 }
 
                                                 var canResend = (function() {
@@ -1277,7 +1280,7 @@ object LeaveSubmitEngine {
                                                     val submitOtpFn: (String) -> Unit = { enteredOtp ->
                                                         stage = 4 // Stage 4: Submitting OTP postback
                                                         onStatus("Validating OTP with UMS...")
-                                                        val safeOtp = org.json.JSONObject.quote(enteredOtp.trim().take(4))
+                                                        val safeOtp = org.json.JSONObject.quote(enteredOtp.trim().take(4).uppercase())
                                                         val jsSubmitOtp = """
                                                             (function() {
                                                                 try {
@@ -1289,31 +1292,24 @@ object LeaveSubmitEngine {
                                                                         txt.dispatchEvent(new Event('change', { bubbles: true }));
                                                                     }
 
+                                                                    if (typeof Page_BlockSubmit !== 'undefined') Page_BlockSubmit = false;
+                                                                    if (typeof Page_ValidationActive !== 'undefined') Page_ValidationActive = false;
+
+                                                                    var btn = document.getElementById('ctl00_cphHeading_btnValidate');
+                                                                    if (btn) {
+                                                                        btn.click();
+                                                                        return 'btnValidate_clicked';
+                                                                    }
+
+                                                                    if (typeof WebForm_DoPostBackWithOptions !== 'undefined') {
+                                                                        WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions("ctl00${'$'}cphHeading${'$'}btnValidate", "", true, "otp", "", false, false));
+                                                                        return 'webform_postback';
+                                                                    }
+
                                                                     var theForm = document.forms['aspnetForm'] || document.querySelector('form');
                                                                     if (theForm) {
-                                                                        if (typeof Page_BlockSubmit !== 'undefined') Page_BlockSubmit = false;
-                                                                        if (typeof Page_ValidationActive !== 'undefined') Page_ValidationActive = false;
-
-                                                                        var ex = document.getElementById('__sked_btnValidate');
-                                                                        if (!ex) {
-                                                                            var h = document.createElement('input');
-                                                                            h.type = 'hidden';
-                                                                            h.id = '__sked_btnValidate';
-                                                                            h.name = 'ctl00${'$'}cphHeading${'$'}btnValidate';
-                                                                            h.value = 'Validate OTP';
-                                                                            theForm.appendChild(h);
-                                                                        }
-
                                                                         if (theForm.__EVENTTARGET) {
                                                                             theForm.__EVENTTARGET.value = 'ctl00${'$'}cphHeading${'$'}btnValidate';
-                                                                        }
-                                                                        if (theForm.__EVENTARGUMENT) {
-                                                                            theForm.__EVENTARGUMENT.value = '';
-                                                                        }
-
-                                                                        var btn = document.getElementById('ctl00_cphHeading_btnValidate');
-                                                                        if (btn) {
-                                                                            try { btn.click(); } catch(e) {}
                                                                         }
                                                                         theForm.submit();
                                                                         return 'submitted';
@@ -1421,8 +1417,12 @@ object LeaveSubmitEngine {
                                                                                 theForm.__EVENTARGUMENT.value = '';
                                                                             }
                                                                         }
-                                                                        try { resendEl.click(); } catch(e) {}
-                                                                        if (theForm) theForm.submit();
+                                                                        try { 
+                                                                            resendEl.click(); 
+                                                                            return 'resend_clicked';
+                                                                        } catch(e) {
+                                                                            if (theForm) { theForm.submit(); return 'resend_form_submit'; }
+                                                                        }
                                                                         return 'resend_submitted';
                                                                     }
                                                                     return 'resend_btn_not_found';

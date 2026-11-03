@@ -1470,12 +1470,12 @@ fun LeaveScreen(
                     OutlinedTextField(
                         value = parentOtpCode,
                         onValueChange = {
-                            parentOtpCode = it.filter { ch -> ch.isLetterOrDigit() }.take(4)
+                            parentOtpCode = it.filter { ch -> ch.isLetterOrDigit() }.take(4).uppercase()
                             parentOtpErrorMessage = null
                             parentOtpInfoMessage = null
                         },
-                        label = { Text("Enter OTP", color = Slate, fontSize = 12.sp) },
-                        placeholder = { Text("4-character code", color = Slate.copy(alpha = 0.5f), fontSize = 13.sp) },
+                        label = { Text("OTP Code", color = Slate, fontSize = 12.sp) },
+                        placeholder = { Text("4-character alphanumeric OTP", color = Slate.copy(alpha = 0.5f), fontSize = 12.sp) },
                         singleLine = true,
                         textStyle = androidx.compose.ui.text.TextStyle(
                             fontFamily = FontFamily.Monospace,
@@ -1512,7 +1512,7 @@ fun LeaveScreen(
                             parentOtpSubmitAction?.invoke(parentOtpCode)
                         }
                     },
-                    enabled = parentOtpCode.isNotBlank() && !isSubmittingParentOtp && !isResendingOtp,
+                    enabled = parentOtpCode.length >= 4 && !isSubmittingParentOtp && !isResendingOtp,
                     colors = ButtonDefaults.buttonColors(containerColor = Blaze),
                     shape = RoundedCornerShape(4.dp)
                 ) {
@@ -1531,18 +1531,7 @@ fun LeaveScreen(
             },
             dismissButton = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(
-                        onClick = {
-                            showParentOtpDialog = false
-                            parentOtpCancelAction?.invoke()
-                        },
-                        enabled = !isSubmittingParentOtp && !isResendingOtp
-                    ) {
-                        Text("CANCEL", color = Slate, fontWeight = FontWeight.Medium)
-                    }
-
                     if (canResendOtp && parentOtpResendAction != null) {
-                        Spacer(modifier = Modifier.width(4.dp))
                         TextButton(
                             onClick = {
                                 isResendingOtp = true
@@ -1562,6 +1551,17 @@ fun LeaveScreen(
                             }
                             Text("RESEND OTP", color = Blaze, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+
+                    TextButton(
+                        onClick = {
+                            showParentOtpDialog = false
+                            parentOtpCancelAction?.invoke()
+                        },
+                        enabled = !isSubmittingParentOtp && !isResendingOtp
+                    ) {
+                        Text("CANCEL", color = Slate, fontWeight = FontWeight.Medium)
                     }
                 }
             },
