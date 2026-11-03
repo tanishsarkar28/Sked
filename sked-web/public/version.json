@@ -1,8 +1,8 @@
 {
-  "versionCode": 20,
-  "versionName": "1.4.9",
+  "versionCode": 21,
+  "versionName": "1.5.0",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Added alphanumeric keyboard and input support for Parent Verification OTP in Hostel Leave",
+  "releaseNotes": "• Accurate parent mobile extraction from UMS OTP verification\n• Retain verification dialog on invalid OTP with Resend OTP action",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",

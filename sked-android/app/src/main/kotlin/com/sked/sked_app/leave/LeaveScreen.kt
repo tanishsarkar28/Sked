@@ -118,7 +118,12 @@ fun LeaveScreen(
     var showParentOtpDialog by remember { mutableStateOf(false) }
     var parentOtpPhoneTarget by remember { mutableStateOf("") }
     var parentOtpCode by remember { mutableStateOf("") }
+    var parentOtpErrorMessage by remember { mutableStateOf<String?>(null) }
+    var parentOtpInfoMessage by remember { mutableStateOf<String?>(null) }
+    var isSubmittingParentOtp by remember { mutableStateOf(false) }
+    var isResendingOtp by remember { mutableStateOf(false) }
     var parentOtpSubmitAction by remember { mutableStateOf<((String) -> Unit)?>(null) }
+    var parentOtpResendAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var parentOtpCancelAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     // Dialog state for 15-minute time picker: null = hidden, "START" or "END"
@@ -316,13 +321,28 @@ fun LeaveScreen(
                     endCal = endCal,
                     reason = reason,
                     onStatus = { status -> submitStatusText = status },
-                    onOtpRequired = { maskedPhone, onSubmitOtp, onCancel ->
+                    onOtpRequired = { maskedPhone, onSubmitOtp, onResendOtp, onCancel ->
                         isSubmitting = false
+                        isSubmittingParentOtp = false
+                        isResendingOtp = false
                         parentOtpPhoneTarget = maskedPhone
                         parentOtpCode = ""
+                        parentOtpErrorMessage = null
+                        parentOtpInfoMessage = null
                         parentOtpSubmitAction = onSubmitOtp
+                        parentOtpResendAction = onResendOtp
                         parentOtpCancelAction = onCancel
                         showParentOtpDialog = true
+                    },
+                    onOtpError = { errorMsg, _ ->
+                        isSubmittingParentOtp = false
+                        parentOtpErrorMessage = errorMsg
+                    },
+                    onOtpResent = {
+                        isResendingOtp = false
+                        parentOtpInfoMessage = "New OTP sent to parent's registered mobile."
+                        parentOtpErrorMessage = null
+                        parentOtpCode = ""
                     }
                 )
 
@@ -339,7 +359,12 @@ fun LeaveScreen(
                             !resMsg.contains("curfew", ignoreCase = true)
 
                     if (isRealSuccess) {
+                        showParentOtpDialog = false
                         isSubmitting = false
+                        isSubmittingParentOtp = false
+                        isResendingOtp = false
+                        parentOtpErrorMessage = null
+                        parentOtpInfoMessage = null
                         val idMatch = "\\b\\d{5,8}\\b".toRegex().find(resMsg)
                         successLeaveIdDialog = when {
                             idMatch != null -> "Leave ID #${idMatch.value}"
@@ -354,7 +379,12 @@ fun LeaveScreen(
                             } catch (_: Exception) {}
                         }
                     } else {
+                        showParentOtpDialog = false
                         isSubmitting = false
+                        isSubmittingParentOtp = false
+                        isResendingOtp = false
+                        parentOtpErrorMessage = null
+                        parentOtpInfoMessage = null
                         errorMessageDialog = resMsg
                     }
                 } else {
@@ -1321,8 +1351,10 @@ fun LeaveScreen(
     if (showParentOtpDialog) {
         AlertDialog(
             onDismissRequest = {
-                showParentOtpDialog = false
-                parentOtpCancelAction?.invoke()
+                if (!isSubmittingParentOtp && !isResendingOtp) {
+                    showParentOtpDialog = false
+                    parentOtpCancelAction?.invoke()
+                }
             },
             icon = {
                 Icon(
@@ -1368,11 +1400,78 @@ fun LeaveScreen(
                         )
                         Spacer(modifier = Modifier.height(14.dp))
                     }
+
+                    if (!parentOtpErrorMessage.isNullOrBlank()) {
+                        Surface(
+                            color = DangerRed.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(6.dp),
+                            border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = DangerRed,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = parentOtpErrorMessage ?: "",
+                                    color = DangerRed,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    lineHeight = 14.sp
+                                )
+                            }
+                        }
+                    }
+
+                    if (!parentOtpInfoMessage.isNullOrBlank()) {
+                        Surface(
+                            color = SuccessGreen.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(6.dp),
+                            border = BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = SuccessGreen,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = parentOtpInfoMessage ?: "",
+                                    color = SuccessGreen,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    lineHeight = 14.sp
+                                )
+                            }
+                        }
+                    }
+
                     OutlinedTextField(
                         value = parentOtpCode,
-                        onValueChange = { parentOtpCode = it.filter { ch -> ch.isLetterOrDigit() }.take(10) },
-                        label = { Text("Parent OTP Code", color = Slate, fontSize = 12.sp) },
-                        placeholder = { Text("Enter OTP", color = Slate.copy(alpha = 0.5f), fontSize = 13.sp) },
+                        onValueChange = {
+                            parentOtpCode = it.filter { ch -> ch.isLetterOrDigit() }.take(10)
+                            parentOtpErrorMessage = null
+                            parentOtpInfoMessage = null
+                        },
+                        label = { Text("Enter OTP", color = Slate, fontSize = 12.sp) },
+                        placeholder = { Text("Please enter OTP", color = Slate.copy(alpha = 0.5f), fontSize = 13.sp) },
                         singleLine = true,
                         textStyle = androidx.compose.ui.text.TextStyle(
                             fontFamily = FontFamily.Monospace,
@@ -1402,27 +1501,64 @@ fun LeaveScreen(
                 Button(
                     onClick = {
                         if (parentOtpCode.isNotBlank()) {
-                            showParentOtpDialog = false
-                            isSubmitting = true
-                            submitStatusText = "Submitting Parent OTP..."
+                            isSubmittingParentOtp = true
+                            parentOtpErrorMessage = null
+                            parentOtpInfoMessage = null
+                            submitStatusText = "Validating OTP with UMS..."
                             parentOtpSubmitAction?.invoke(parentOtpCode)
                         }
                     },
-                    enabled = parentOtpCode.isNotBlank(),
+                    enabled = parentOtpCode.isNotBlank() && !isSubmittingParentOtp && !isResendingOtp,
                     colors = ButtonDefaults.buttonColors(containerColor = Blaze),
                     shape = RoundedCornerShape(4.dp)
                 ) {
-                    Text("VERIFY & APPLY", color = Ink, fontWeight = FontWeight.Bold)
+                    if (isSubmittingParentOtp) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            color = Ink,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("VALIDATING...", color = Ink, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    } else {
+                        Text("VALIDATE & APPLY", color = Ink, fontWeight = FontWeight.Bold)
+                    }
                 }
             },
             dismissButton = {
-                TextButton(
-                    onClick = {
-                        showParentOtpDialog = false
-                        parentOtpCancelAction?.invoke()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = {
+                            showParentOtpDialog = false
+                            parentOtpCancelAction?.invoke()
+                        },
+                        enabled = !isSubmittingParentOtp && !isResendingOtp
+                    ) {
+                        Text("CANCEL", color = Slate, fontWeight = FontWeight.Medium)
                     }
-                ) {
-                    Text("CANCEL", color = Slate, fontWeight = FontWeight.Medium)
+
+                    if (parentOtpResendAction != null) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        TextButton(
+                            onClick = {
+                                isResendingOtp = true
+                                parentOtpErrorMessage = null
+                                parentOtpInfoMessage = "Requesting new OTP from UMS..."
+                                parentOtpResendAction?.invoke()
+                            },
+                            enabled = !isSubmittingParentOtp && !isResendingOtp
+                        ) {
+                            if (isResendingOtp) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(12.dp),
+                                    color = Blaze,
+                                    strokeWidth = 1.5.dp
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+                            Text("RESEND OTP", color = Blaze, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
                 }
             },
             containerColor = SlabElevated
