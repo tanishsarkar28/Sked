@@ -1,13 +1,13 @@
 {
-  "versionCode": 19,
-  "versionName": "1.4.8",
+  "versionCode": 20,
+  "versionName": "1.4.9",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Streamlined Hostel Leave screen to focus on live balance and application form\n• Fixed live Day and Night leave balance parsing from UMS portal",
+  "releaseNotes": "• Added alphanumeric keyboard and input support for Parent Verification OTP in Hostel Leave",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
   "directIpaDownloadUrl": "/downloads/sked-ios.ipa",
   "fileSize": "14.3 MB",
   "ipaFileSize": "7.6 MB",
-  "updatedAt": "2026-11-02"
+  "updatedAt": "2026-11-03"
 }

@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -1369,11 +1370,21 @@ fun LeaveScreen(
                     }
                     OutlinedTextField(
                         value = parentOtpCode,
-                        onValueChange = { parentOtpCode = it.filter { ch -> ch.isDigit() }.take(8) },
+                        onValueChange = { parentOtpCode = it.filter { ch -> ch.isLetterOrDigit() }.take(10) },
                         label = { Text("Parent OTP Code", color = Slate, fontSize = 12.sp) },
                         placeholder = { Text("Enter OTP", color = Slate.copy(alpha = 0.5f), fontSize = 13.sp) },
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                            letterSpacing = 1.sp,
+                            color = Chalk
+                        ),
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Characters,
+                            keyboardType = KeyboardType.Ascii
+                        ),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = Blaze,
                             unfocusedBorderColor = Rule,
