@@ -398,8 +398,14 @@ fun LeaveScreen(
                             err.contains("re-auth", ignoreCase = true) ||
                             err.contains("expired", ignoreCase = true)
 
+                    showParentOtpDialog = false
+                    isSubmitting = false
+                    isSubmittingParentOtp = false
+                    isResendingOtp = false
+                    parentOtpErrorMessage = null
+                    parentOtpInfoMessage = null
+
                     if (isExpired && allowSessionRefresh && onRefreshSession != null) {
-                        isSubmitting = false
                         Toast.makeText(context, "UMS session expired. Refreshing session...", Toast.LENGTH_SHORT).show()
                         onRefreshSession.invoke { success ->
                             if (success) {
@@ -410,11 +416,9 @@ fun LeaveScreen(
                             }
                         }
                     } else if (isExpired && allowSessionRefresh && onReSync != null) {
-                        isSubmitting = false
                         Toast.makeText(context, "UMS session expired. Refreshing session...", Toast.LENGTH_SHORT).show()
                         onReSync.invoke()
                     } else {
-                        isSubmitting = false
                         errorMessageDialog = err
                     }
                 }

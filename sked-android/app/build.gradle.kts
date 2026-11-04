@@ -12,8 +12,8 @@ android {
         applicationId = "com.sked.sked_app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 26
-        versionName = "1.5.5"
+        versionCode = 27
+        versionName = "1.5.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

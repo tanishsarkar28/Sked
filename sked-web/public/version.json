@@ -1,8 +1,8 @@
 {
-  "versionCode": 26,
-  "versionName": "1.5.5",
+  "versionCode": 27,
+  "versionName": "1.5.6",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Aligned winter curfew timing strictly from November 1st to February 28/29 per official circulars\n• Robust leave submission engine: solved postback synchronization hangs, WebView bridge concurrency & stream descriptor lifecycle\n• Fixed return date parsing order and hardened UI memory management across leave pass views",
+  "releaseNotes": "\u2022 Fixed Parent OTP verification postback: added multi-button fallback, ASP.NET validation bypass & robust postback triggers\n\u2022 Resolved OTP validation hang on 'VALIDATING...' by fixing polling chain continuity and immediate onPageFinished checks\n\u2022 Prevented premature OTP error reporting and ensured proper dialog state resets on submission outcomes",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",

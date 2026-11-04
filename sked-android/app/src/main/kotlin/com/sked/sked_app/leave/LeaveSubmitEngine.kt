@@ -283,6 +283,7 @@ object LeaveSubmitEngine {
             val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
             val isResumed = java.util.concurrent.atomic.AtomicBoolean(false)
             var timeoutRunnable: Runnable? = null
+            var activeOtpPollRunnable: Runnable? = null
 
             val webView = WebView(context)
             webView.settings.javaScriptEnabled = true
@@ -296,6 +297,7 @@ object LeaveSubmitEngine {
 
             fun finishWith(result: Result<String>) {
                 mainHandler.post {
+                    activeOtpPollRunnable = null
                     if (isResumed.compareAndSet(false, true)) {
                         timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
                         try {
@@ -1316,34 +1318,74 @@ object LeaveSubmitEngine {
                                                                     var txt = document.getElementById('ctl00_cphHeading_txtOTP') || 
                                                                               document.querySelector('input[id*="txtOTP" i], input[id*="otp" i]');
                                                                     if (txt) {
+                                                                        txt.focus();
                                                                         txt.value = $safeOtp;
                                                                         txt.dispatchEvent(new Event('input', { bubbles: true }));
                                                                         txt.dispatchEvent(new Event('change', { bubbles: true }));
+                                                                        txt.blur();
                                                                     }
 
                                                                     if (typeof Page_BlockSubmit !== 'undefined') Page_BlockSubmit = false;
                                                                     if (typeof Page_ValidationActive !== 'undefined') Page_ValidationActive = false;
+                                                                    if (typeof Page_IsValid !== 'undefined') Page_IsValid = true;
 
-                                                                    var btn = document.getElementById('ctl00_cphHeading_btnValidate');
-                                                                    if (btn) {
-                                                                        btn.click();
-                                                                        return 'btnValidate_clicked';
-                                                                    }
+                                                                    var btn = document.getElementById('ctl00_cphHeading_btnValidate') ||
+                                                                              document.getElementById('ctl00_cphHeading_btnSubmitOTP') ||
+                                                                              document.getElementById('ctl00_cphHeading_btnOTPValidate') ||
+                                                                              document.getElementById('ctl00_cphHeading_btnValidateOTP');
 
-                                                                    if (typeof WebForm_DoPostBackWithOptions !== 'undefined') {
-                                                                        WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions("ctl00${'$'}cphHeading${'$'}btnValidate", "", true, "otp", "", false, false));
-                                                                        return 'webform_postback';
+                                                                    if (!btn) {
+                                                                        var otpContainer = document.getElementById('ctl00_cphHeading_RadToolTip1') || document.querySelector('[id*="RadToolTip" i]') || document;
+                                                                        var candidates = otpContainer.querySelectorAll('input[type="submit"], input[type="button"], button, a');
+                                                                        for (var bi = 0; bi < candidates.length; bi++) {
+                                                                            var c = candidates[bi];
+                                                                            var val = (c.value || c.textContent || c.innerText || '').trim().toLowerCase();
+                                                                            var cid = (c.id || '').toLowerCase();
+                                                                            if (val.indexOf('resend') !== -1 || cid.indexOf('resend') !== -1) continue;
+                                                                            if (val.indexOf('cancel') !== -1 || cid.indexOf('cancel') !== -1 || val.indexOf('close') !== -1) continue;
+                                                                            if (val.indexOf('validate') !== -1 || val.indexOf('submit') !== -1 || val.indexOf('verify') !== -1 || val.indexOf('ok') !== -1 ||
+                                                                                cid.indexOf('validate') !== -1 || cid.indexOf('submit') !== -1 || cid.indexOf('verify') !== -1) {
+                                                                                btn = c;
+                                                                                break;
+                                                                            }
+                                                                        }
                                                                     }
 
                                                                     var theForm = document.forms['aspnetForm'] || document.querySelector('form');
+                                                                    var targetName = btn ? (btn.name || btn.id) : 'ctl00${'$'}cphHeading${'$'}btnValidate';
+
                                                                     if (theForm) {
-                                                                        if (theForm.__EVENTTARGET) {
-                                                                            theForm.__EVENTTARGET.value = 'ctl00${'$'}cphHeading${'$'}btnValidate';
-                                                                        }
-                                                                        theForm.submit();
-                                                                        return 'submitted';
+                                                                        if (theForm.__EVENTTARGET) theForm.__EVENTTARGET.value = targetName;
+                                                                        if (theForm.__EVENTARGUMENT) theForm.__EVENTARGUMENT.value = '';
                                                                     }
-                                                                    return 'no_form';
+
+                                                                    if (btn) {
+                                                                        try {
+                                                                            btn.click();
+                                                                            return 'btn_clicked: ' + targetName;
+                                                                        } catch(e) {}
+                                                                    }
+
+                                                                    if (typeof WebForm_DoPostBackWithOptions !== 'undefined' && targetName) {
+                                                                        try {
+                                                                            WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions(targetName, "", true, "", "", false, false));
+                                                                            return 'webform_postback: ' + targetName;
+                                                                        } catch(e) {}
+                                                                    }
+
+                                                                    if (typeof __doPostBack === 'function' && targetName) {
+                                                                        try {
+                                                                            __doPostBack(targetName, '');
+                                                                            return '__doPostBack: ' + targetName;
+                                                                        } catch(e) {}
+                                                                    }
+
+                                                                    if (theForm) {
+                                                                        theForm.submit();
+                                                                        return 'form_submitted';
+                                                                    }
+
+                                                                    return 'no_submission_path';
                                                                 } catch(e) {
                                                                     return 'error: ' + e.toString();
                                                                 }
@@ -1358,52 +1400,95 @@ object LeaveSubmitEngine {
                                                             override fun run() {
                                                                 if (isResumed.get() || stage != 4) return
                                                                 otpPollCount++
+
+                                                                fun scheduleNext() {
+                                                                    if (!isResumed.get() && stage == 4) {
+                                                                        if (otpPollCount < 20) {
+                                                                            mainHandler.postDelayed(this, 1200)
+                                                                        } else {
+                                                                            stage = 3
+                                                                            mainHandler.post {
+                                                                                onOtpError?.invoke("OTP verification took longer than expected. Please verify your OTP or tap Resend OTP.", true)
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+
                                                                 webView.evaluateJavascript(jsCheckResult) { checkRes ->
                                                                     if (isResumed.get() || stage != 4) return@evaluateJavascript
-                                                                    if (checkRes == null || checkRes.isBlank() || checkRes == "null" || checkRes == "undefined") return@evaluateJavascript
+                                                                    if (checkRes == null || checkRes.isBlank() || checkRes == "null" || checkRes == "undefined") {
+                                                                        scheduleNext()
+                                                                        return@evaluateJavascript
+                                                                    }
                                                                     try {
                                                                         val cJson = if (checkRes.startsWith("\"") && checkRes.endsWith("\"")) {
                                                                             org.json.JSONObject("{\"v\":$checkRes}").getString("v")
                                                                         } else checkRes
                                                                         val cObj = org.json.JSONObject(cJson)
                                                                         val curStatus = cObj.optString("status")
-                                                                        if (curStatus == "table_check") {
-                                                                            val curLeaveId = cObj.optString("leaveId")
-                                                                            val curLStatus = cObj.optString("leaveStatus", "Existing")
-                                                                            val isDiff = initialTopLeaveId != null && curLeaveId.isNotBlank() && curLeaveId != initialTopLeaveId
-                                                                            val isFirst = initialTopLeaveId.isNullOrBlank() && curLeaveId.isNotBlank()
-                                                                            if (isDiff || isFirst || curLStatus.equals("Applied", true) || curLStatus.equals("Approved", true)) {
-                                                                                finishWith(Result.success("Leave ID #$curLeaveId"))
+
+                                                                        when (curStatus) {
+                                                                            "success" -> {
+                                                                                val msg = cObj.optString("message", "Leave Applied Successfully")
+                                                                                finishWith(Result.success(msg))
                                                                                 return@evaluateJavascript
                                                                             }
-                                                                        } else if (curStatus == "otp_required") {
-                                                                            val err = cObj.optString("otpError")
-                                                                            val resendAvail = cObj.optBoolean("canResend", false)
-                                                                            if (err.isNotBlank() || resendAvail) {
-                                                                                stage = 3
-                                                                                val finalErr = if (err.isNotBlank()) err else "Incorrect OTP. Please enter valid OTP or tap Resend OTP."
-                                                                                onOtpError?.invoke(finalErr, resendAvail)
-                                                                                return@evaluateJavascript
+                                                                            "table_check" -> {
+                                                                                val curLeaveId = cObj.optString("leaveId")
+                                                                                val curLStatus = cObj.optString("leaveStatus", "Existing")
+                                                                                val isDiff = initialTopLeaveId != null && curLeaveId.isNotBlank() && curLeaveId != initialTopLeaveId
+                                                                                val isFirst = initialTopLeaveId.isNullOrBlank() && curLeaveId.isNotBlank()
+
+                                                                                val dfYmd = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                                                                                val dfMdy = java.text.SimpleDateFormat("M/d/yyyy", java.util.Locale.US)
+                                                                                val dfDmy = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.US)
+                                                                                val todayDate = java.util.Date()
+                                                                                val applyDateRaw = cObj.optString("applyDate", "").trim()
+                                                                                val dateMatches = applyDateRaw.isNotBlank() && (
+                                                                                    applyDateRaw.contains(dfYmd.format(todayDate)) ||
+                                                                                    applyDateRaw.contains(dfMdy.format(todayDate)) ||
+                                                                                    applyDateRaw.contains(dfDmy.format(todayDate))
+                                                                                )
+                                                                                val isStatusNew = curLStatus.equals("Applied", true) || curLStatus.equals("Approved", true)
+
+                                                                                if (isDiff || isFirst || (dateMatches && isStatusNew)) {
+                                                                                    finishWith(Result.success("Leave ID #$curLeaveId"))
+                                                                                    return@evaluateJavascript
+                                                                                }
                                                                             }
-                                                                        } else if (curStatus == "error") {
-                                                                            val errMsg = cObj.optString("message")
-                                                                            if (isOtpError(errMsg)) {
-                                                                                stage = 3
-                                                                                onOtpError?.invoke(errMsg, true)
-                                                                                return@evaluateJavascript
-                                                                            } else {
-                                                                                finishWith(Result.failure(Exception(errMsg)))
-                                                                                return@evaluateJavascript
+                                                                            "otp_required" -> {
+                                                                                val err = cObj.optString("otpError").trim()
+                                                                                val resendAvail = cObj.optBoolean("canResend", false)
+                                                                                // Only report error if a real error message was detected
+                                                                                if (err.isNotBlank()) {
+                                                                                    stage = 3
+                                                                                    mainHandler.post {
+                                                                                        onOtpError?.invoke(err, resendAvail)
+                                                                                    }
+                                                                                    return@evaluateJavascript
+                                                                                }
+                                                                            }
+                                                                            "error" -> {
+                                                                                val errMsg = cObj.optString("message").trim()
+                                                                                if (isOtpError(errMsg)) {
+                                                                                    stage = 3
+                                                                                    mainHandler.post {
+                                                                                        onOtpError?.invoke(errMsg, true)
+                                                                                    }
+                                                                                    return@evaluateJavascript
+                                                                                } else {
+                                                                                    finishWith(Result.failure(Exception(errMsg)))
+                                                                                    return@evaluateJavascript
+                                                                                }
                                                                             }
                                                                         }
                                                                     } catch (_: Exception) {}
-                                                                    if (!isResumed.get() && stage == 4 && otpPollCount < 15) {
-                                                                        mainHandler.postDelayed(this, 1500)
-                                                                    }
+                                                                    scheduleNext()
                                                                 }
                                                             }
                                                         }
-                                                        mainHandler.postDelayed(pollOtpRunnable, 2000)
+                                                        activeOtpPollRunnable = pollOtpRunnable
+                                                        mainHandler.postDelayed(pollOtpRunnable, 1500)
                                                     }
 
                                                     val resendOtpFn: () -> Unit = {
@@ -1470,9 +1555,27 @@ object LeaveSubmitEngine {
                                                             override fun run() {
                                                                 if (isResumed.get() || stage != 5) return
                                                                 resendPollCount++
+
+                                                                fun scheduleNextResend() {
+                                                                    if (!isResumed.get() && stage == 5) {
+                                                                        if (resendPollCount < 10) {
+                                                                            mainHandler.postDelayed(this, 1500)
+                                                                        } else {
+                                                                            stage = 3
+                                                                            mainHandler.post {
+                                                                                onOtpResent?.invoke()
+                                                                                onStatus("Parent verification OTP required...")
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+
                                                                 webView.evaluateJavascript(jsCheckResult) { checkRes ->
                                                                     if (isResumed.get() || stage != 5) return@evaluateJavascript
-                                                                    if (checkRes == null || checkRes.isBlank() || checkRes == "null" || checkRes == "undefined") return@evaluateJavascript
+                                                                    if (checkRes == null || checkRes.isBlank() || checkRes == "null" || checkRes == "undefined") {
+                                                                        scheduleNextResend()
+                                                                        return@evaluateJavascript
+                                                                    }
                                                                     try {
                                                                         val cJson = if (checkRes.startsWith("\"") && checkRes.endsWith("\"")) {
                                                                             org.json.JSONObject("{\"v\":$checkRes}").getString("v")
@@ -1481,14 +1584,14 @@ object LeaveSubmitEngine {
                                                                         val curStatus = cObj.optString("status")
                                                                         if (curStatus == "otp_required") {
                                                                             stage = 3
-                                                                            onOtpResent?.invoke()
-                                                                            onStatus("Parent verification OTP required...")
+                                                                            mainHandler.post {
+                                                                                onOtpResent?.invoke()
+                                                                                onStatus("Parent verification OTP required...")
+                                                                            }
                                                                             return@evaluateJavascript
                                                                         }
                                                                     } catch (_: Exception) {}
-                                                                    if (!isResumed.get() && stage == 5 && resendPollCount < 10) {
-                                                                        mainHandler.postDelayed(this, 1500)
-                                                                    }
+                                                                    scheduleNextResend()
                                                                 }
                                                             }
                                                         }
@@ -1615,8 +1718,15 @@ object LeaveSubmitEngine {
                             mainHandler.postDelayed(checkSubmissionRunnable, 600)
                         }
 
-                        3, 4, 5 -> {
-                            // OTP interaction in progress; verification handled by pollOtpRunnable / pollResendRunnable
+                        4 -> {
+                            // OTP postback finished loading! Run immediate check
+                            mainHandler.postDelayed({
+                                activeOtpPollRunnable?.run()
+                            }, 350)
+                        }
+
+                        3, 5 -> {
+                            // Waiting for user OTP or resend postback in progress
                         }
                     }
                 }
