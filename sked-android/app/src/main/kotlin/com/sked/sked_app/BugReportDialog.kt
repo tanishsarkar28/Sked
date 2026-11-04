@@ -63,63 +63,36 @@ fun BugReportFooterCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 12.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFF101010))
-            .border(1.dp, Rule, RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(bottom = 8.dp),
+        contentAlignment = Alignment.Center
     ) {
         Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 10.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.weight(1f)
+            horizontalArrangement = Arrangement.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(24.dp)
-                    .clip(CircleShape)
-                    .background(Blaze.copy(alpha = 0.15f))
-                    .border(1.dp, Blaze.copy(alpha = 0.3f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.BugReport,
-                    contentDescription = "Report Bug",
-                    tint = Blaze,
-                    modifier = Modifier.size(13.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Column {
-                Text(
-                    text = "FOUND A BUG? REPORT AN ISSUE",
-                    fontFamily = BarlowCondensed,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    letterSpacing = 0.5.sp,
-                    color = Chalk
-                )
-                Text(
-                    text = "Help us improve Sked",
-                    fontSize = 10.sp,
-                    color = Slate
-                )
-            }
+            Icon(
+                imageVector = Icons.Default.BugReport,
+                contentDescription = null,
+                tint = Blaze,
+                modifier = Modifier.size(13.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "Found a bug? Report an issue",
+                fontFamily = BarlowCondensed,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.5.sp,
+                color = Blaze,
+                letterSpacing = 0.3.sp
+            )
         }
-
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-            contentDescription = null,
-            tint = Slate,
-            modifier = Modifier.size(14.dp)
-        )
     }
 }
 
