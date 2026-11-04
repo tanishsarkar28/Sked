@@ -97,7 +97,7 @@ fun BugReportFooterCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(bottom = 8.dp),
+            .padding(top = 12.dp, bottom = 16.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(
