@@ -1006,7 +1006,6 @@ fun DashboardScreen(
     val context = LocalContext.current
     var activeTab by remember { mutableStateOf("HOME") }
     var showAboutDialog by remember { mutableStateOf(false) }
-    var showBugReportDialog by remember { mutableStateOf(false) }
     var pendingUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
 
     // Intercept back button when inside a subview to return to HOME
@@ -1416,7 +1415,7 @@ fun DashboardScreen(
                                         )
                                         Spacer(modifier = Modifier.height(24.dp))
                                         DeveloperFooterCard(onClick = { showAboutDialog = true })
-                                        BugReportFooterCard(onClick = { showBugReportDialog = true })
+                                        BugReportFooterCard(onClick = { openBugReportForm(context) })
                                     }
                                 }
                             } else {
@@ -1536,7 +1535,7 @@ fun DashboardScreen(
 
                                     item {
                                         DeveloperFooterCard(onClick = { showAboutDialog = true })
-                                        BugReportFooterCard(onClick = { showBugReportDialog = true })
+                                        BugReportFooterCard(onClick = { openBugReportForm(context) })
                                         Spacer(modifier = Modifier.height(24.dp))
                                     }
                                 }
@@ -1852,7 +1851,7 @@ fun DashboardScreen(
                         item {
                             Spacer(modifier = Modifier.height(16.dp))
                             DeveloperFooterCard(onClick = { showAboutDialog = true })
-                            BugReportFooterCard(onClick = { showBugReportDialog = true })
+                            BugReportFooterCard(onClick = { openBugReportForm(context) })
                             Spacer(modifier = Modifier.height(24.dp))
                         }
                     }
@@ -1869,10 +1868,6 @@ fun DashboardScreen(
                 pendingUpdate = update
             }
         )
-    }
-
-    if (showBugReportDialog) {
-        BugReportDialog(onDismiss = { showBugReportDialog = false })
     }
 
     if (pendingUpdate != null) {

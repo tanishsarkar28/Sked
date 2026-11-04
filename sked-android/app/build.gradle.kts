@@ -66,6 +66,7 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.8.5")
 
     // Networking & WebKit
+    implementation("androidx.browser:browser:1.8.0")
     implementation("androidx.webkit:webkit:1.12.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

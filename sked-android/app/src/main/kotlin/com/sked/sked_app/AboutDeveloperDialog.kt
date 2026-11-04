@@ -443,8 +443,6 @@ fun AboutDeveloperDialog(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    var showBugReportDialogInAbout by remember { mutableStateOf(false) }
-
                     // Report a Bug Row
                     Surface(
                         shape = RoundedCornerShape(8.dp),
@@ -452,7 +450,7 @@ fun AboutDeveloperDialog(
                         border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { showBugReportDialogInAbout = true }
+                            .clickable { openBugReportForm(context) }
                     ) {
                         Row(
                             modifier = Modifier
@@ -503,10 +501,6 @@ fun AboutDeveloperDialog(
                                 modifier = Modifier.size(16.dp)
                             )
                         }
-                    }
-
-                    if (showBugReportDialogInAbout) {
-                        BugReportDialog(onDismiss = { showBugReportDialogInAbout = false })
                     }
 
                     Spacer(modifier = Modifier.height(18.dp))

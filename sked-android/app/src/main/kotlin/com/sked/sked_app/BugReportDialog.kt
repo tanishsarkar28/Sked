@@ -1,5 +1,6 @@
 package com.sked.sked_app
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -11,6 +12,8 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.browser.customtabs.CustomTabColorSchemeParams
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,10 +30,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
@@ -48,7 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,11 +59,41 @@ import androidx.compose.ui.window.DialogProperties
 
 const val BUG_REPORT_FORM_URL = "https://forms.gle/YGqY216NCnHJih7h7"
 
+/**
+ * Opens Google Forms using Chrome Custom Tabs within the app.
+ * Keeps the dark theme styling, provides an instant close button back to Sked,
+ * and seamlessly shares the user's logged-in Google account for file uploads with zero login prompt.
+ */
+fun openBugReportForm(context: Context) {
+    val uri = Uri.parse(BUG_REPORT_FORM_URL)
+    val customTabsIntent = CustomTabsIntent.Builder()
+        .setShowTitle(true)
+        .setDefaultColorSchemeParams(
+            CustomTabColorSchemeParams.Builder()
+                .setToolbarColor(android.graphics.Color.parseColor("#141414"))
+                .setNavigationBarColor(android.graphics.Color.parseColor("#000000"))
+                .build()
+        )
+        .build()
+
+    try {
+        customTabsIntent.launchUrl(context, uri)
+    } catch (_: Exception) {
+        val browserIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(browserIntent)
+        } catch (_: Exception) {}
+    }
+}
+
 @Composable
 fun BugReportFooterCard(
-    onClick: () -> Unit,
+    onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -72,7 +103,13 @@ fun BugReportFooterCard(
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
-                .clickable(onClick = onClick)
+                .clickable {
+                    if (onClick != null) {
+                        onClick()
+                    } else {
+                        openBugReportForm(context)
+                    }
+                }
                 .padding(horizontal = 10.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
