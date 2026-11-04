@@ -223,6 +223,20 @@ fun parseUmsReturnDate(returnDateStr: String): Date? {
         "dd-MMM-yyyy h:mm a",
         "dd-MMM-yyyy HH:mm",
 
+        // UMS ASP.NET month-first standard formats (e.g. "9/30/2026 3:34:44 PM", "10/30/2026 10:45:00 PM")
+        "M/d/yyyy hh:mm:ss a",
+        "M/d/yyyy h:mm:ss a",
+        "M/d/yyyy hh:mm a",
+        "M/d/yyyy h:mm a",
+        "MM/dd/yyyy hh:mm:ss a",
+        "MM/dd/yyyy h:mm:ss a",
+        "MM/dd/yyyy hh:mm a",
+        "MM/dd/yyyy h:mm a",
+        "M/d/yyyy HH:mm:ss",
+        "M/d/yyyy HH:mm",
+        "MM/dd/yyyy HH:mm:ss",
+        "MM/dd/yyyy HH:mm",
+
         // Indian day-first numeric formats (dd/MM/yyyy and dd-MM-yyyy)
         "dd/MM/yyyy hh:mm:ss a",
         "dd/MM/yyyy h:mm:ss a",
@@ -240,13 +254,7 @@ fun parseUmsReturnDate(returnDateStr: String): Date? {
         // ISO formats
         "yyyy-MM-dd HH:mm:ss",
         "yyyy-MM-dd HH:mm",
-        "yyyy-MM-dd hh:mm a",
-
-        // US month-first fallback
-        "MM/dd/yyyy hh:mm:ss a",
-        "MM/dd/yyyy h:mm:ss a",
-        "MM/dd/yyyy hh:mm a",
-        "MM/dd/yyyy h:mm a"
+        "yyyy-MM-dd hh:mm a"
     )
 
     for (pattern in patterns) {
@@ -291,6 +299,17 @@ fun LeaveSlipScreen(
     var isFetchingSlip by remember { mutableStateOf(false) }
     var showSlipBridge by remember { mutableStateOf(false) }
     var backgroundWebViewRef by remember { mutableStateOf<WebView?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                backgroundWebViewRef?.stopLoading()
+                backgroundWebViewRef?.removeJavascriptInterface("HiddenBridge")
+                backgroundWebViewRef?.destroy()
+                backgroundWebViewRef = null
+            } catch (_: Exception) {}
+        }
+    }
 
     // Live clock for authentic warden verification (seconds tick live)
     var liveTimeText by remember { mutableStateOf("") }
@@ -1616,6 +1635,9 @@ private fun UmsPortalWebView(
         onDispose {
             try {
                 webViewRef?.stopLoading()
+                webViewRef?.removeJavascriptInterface("SkedSlipBridge")
+                webViewRef?.destroy()
+                webViewRef = null
             } catch (_: Exception) {}
         }
     }
@@ -1989,6 +2011,17 @@ fun LeaveSlipFetchBridgeDialog(
     var isDone by remember { mutableStateOf(false) }
     var showTurnstileManual by remember { mutableStateOf(false) }
     var waitTicks by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                webViewRef?.stopLoading()
+                webViewRef?.removeJavascriptInterface("SlipBridge")
+                webViewRef?.destroy()
+                webViewRef = null
+            } catch (_: Exception) {}
+        }
+    }
 
     if (showPasswordInput) {
         Dialog(onDismissRequest = onDismiss) {

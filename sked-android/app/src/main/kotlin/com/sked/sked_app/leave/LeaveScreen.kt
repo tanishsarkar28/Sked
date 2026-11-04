@@ -180,7 +180,7 @@ fun LeaveScreen(
 
     var endCal by remember {
         mutableStateOf((startCal.clone() as Calendar).apply {
-            val maxHour = if (isWinterCurfew()) 21 else 22
+            val maxHour = if (isWinterCurfew(this)) 21 else 22
             set(Calendar.HOUR_OF_DAY, maxHour)
             set(Calendar.MINUTE, 45)
             set(Calendar.SECOND, 0)
@@ -199,7 +199,7 @@ fun LeaveScreen(
         }
 
         val c = (startCal.clone() as Calendar)
-        val maxHour = if (isWinterCurfew()) 21 else 22
+        val maxHour = if (isWinterCurfew(c)) 21 else 22
         when (selectedType) {
             LeaveTypeOption.DAY_EXTENDED -> {
                 c.set(Calendar.HOUR_OF_DAY, maxHour)
@@ -1047,7 +1047,7 @@ fun LeaveScreen(
                                     Toast.makeText(context, "Return date & time must be after departure time", Toast.LENGTH_SHORT).show()
                                     return@Button
                                 }
-                                if (startCal.timeInMillis < System.currentTimeMillis() - 15 * 60 * 1000) {
+                                if (startCal.timeInMillis < System.currentTimeMillis() - 60 * 1000) {
                                     Toast.makeText(context, "Departure time cannot be in the past. Please select an upcoming slot.", Toast.LENGTH_SHORT).show()
                                     return@Button
                                 }
@@ -1179,7 +1179,7 @@ fun LeaveScreen(
                                                 endCal = Calendar.getInstance().apply {
                                                     timeInMillis = newCal.timeInMillis
                                                     if (selectedType == LeaveTypeOption.DAY_EXTENDED) {
-                                                        val maxH = if (isWinterCurfew()) 21 else 22
+                                                        val maxH = if (isWinterCurfew(this)) 21 else 22
                                                         set(Calendar.HOUR_OF_DAY, maxH)
                                                         set(Calendar.MINUTE, 45)
                                                     } else if (selectedType == LeaveTypeOption.DAY_STANDARD) {
@@ -1258,7 +1258,8 @@ fun LeaveScreen(
                                         timeInMillis = endCal.timeInMillis
                                         set(Calendar.YEAR, y)
                                         set(Calendar.MONTH, m)
-                                        set(Calendar.DAY_OF_MONTH, d + 1)
+                                        set(Calendar.DAY_OF_MONTH, d)
+                                        add(Calendar.DAY_OF_YEAR, 1)
                                     }
                                 }
                             } else {

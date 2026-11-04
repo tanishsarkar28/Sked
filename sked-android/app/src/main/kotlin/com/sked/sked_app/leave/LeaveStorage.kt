@@ -35,21 +35,7 @@ object LeaveStorage {
 
     val DEFAULT_GATE_PASS = HostelGatePass()
 
-    val DEFAULT_RECORDS = listOf(
-        LeaveRecord("5821114", "Day Leave(Extended Leave Timing)", "10/30/2026 5:57:00 PM", "10/30/2026 6:00:00 PM", "10/30/2026 10:45:00 PM", "Approved", "10/30/2026 6:06:00 PM", "10/30/2026 9:45:00 PM"),
-        LeaveRecord("5768261", "Day Leave(Extended Leave Timing)", "10/20/2026 2:46:21 PM", "10/20/2026 3:00:00 PM", "10/20/2026 10:45:00 PM", "Approved", "10/20/2026 2:50:47 PM", "10/20/2026 9:43:22 PM"),
-        LeaveRecord("5757328", "Day Leave(Extended Leave Timing)", "10/18/2026 5:25:49 PM", "10/18/2026 5:30:00 PM", "10/18/2026 10:45:00 PM", "Approved", "10/18/2026 5:39:33 PM", "10/18/2026 8:43:58 PM"),
-        LeaveRecord("5725392", "Day Leave(Extended Leave Timing)", "10/7/2026 4:56:02 PM", "10/7/2026 5:00:00 PM", "10/7/2026 10:45:00 PM", "Approved", "10/7/2026 5:07:25 PM", "10/7/2026 9:07:07 PM"),
-        LeaveRecord("5719382", "Night Leave", "9/30/2026 3:34:44 PM", "9/30/2026 7:45:00 PM", "10/5/2026 12:00:00 PM", "Approved", "9/30/2026 3:59:22 PM", "10/5/2026 6:23:16 PM"),
-        LeaveRecord("5690559", "Day Leave(Extended Leave Timing)", "9/26/2026 6:26:32 PM", "9/26/2026 6:45:00 PM", "9/26/2026 10:45:00 PM", "Approved", "9/26/2026 7:14:17 PM", "9/26/2026 8:55:28 PM"),
-        LeaveRecord("5626446", "Day Leave(Extended Leave Timing)", "9/12/2026 5:52:26 PM", "9/12/2026 6:00:00 PM", "9/12/2026 10:45:00 PM", "Approved", "9/12/2026 7:23:47 PM", "9/12/2026 8:47:57 PM"),
-        LeaveRecord("5600847", "Day Leave(Extended Leave Timing)", "9/6/2026 4:57:50 PM", "9/6/2026 6:00:00 PM", "9/6/2026 10:45:00 PM", "Approved", "9/6/2026 6:50:58 PM", "9/6/2026 8:58:10 PM"),
-        LeaveRecord("5553802", "Night Leave", "8/27/2026 5:24:59 PM", "8/27/2026 7:45:00 PM", "8/31/2026 11:00:00 AM", "Approved", "8/27/2026 7:38:27 PM", "8/31/2026 5:49:03 AM"),
-        LeaveRecord("5525638", "Day Leave(Extended Leave Timing)", "8/21/2026 3:02:38 PM", "8/21/2026 6:30:00 PM", "8/21/2026 10:45:00 PM", "Approved", "8/21/2026 7:51:37 PM", "8/21/2026 9:31:32 PM"),
-        LeaveRecord("5504154", "Day Leave", "8/15/2026 12:01:15 PM", "8/15/2026 12:15:00 PM", "8/15/2026 5:00:00 PM", "Approved", "8/15/2026 1:15:46 PM", "8/15/2026 1:57:59 PM"),
-        LeaveRecord("5501602", "Day Leave(Extended Leave Timing)", "8/14/2026 6:39:28 PM", "8/14/2026 7:00:00 PM", "8/14/2026 10:45:00 PM", "Approved", "8/14/2026 7:51:26 PM", "8/14/2026 9:26:01 PM"),
-        LeaveRecord("5486983", "Day Leave(Extended Leave Timing)", "8/9/2026 5:07:56 PM", "8/9/2026 5:15:00 PM", "8/9/2026 10:45:00 PM", "Approved", "8/9/2026 5:48:08 PM", "8/9/2026 9:12:44 PM")
-    )
+    val DEFAULT_RECORDS = emptyList<LeaveRecord>()
 
     fun saveBalance(context: Context, balance: LeaveBalance) {
         if (balance.dayTotal <= 0 && balance.nightTotal <= 0) return
@@ -82,12 +68,7 @@ object LeaveStorage {
                 nightAvailed = obj.optInt("nightAvailed", 0),
                 nightBalance = obj.optInt("nightBalance", 0)
             )
-            // If stored balance is the corrupted dummy placeholder (0/75 used & 0/60 used), restore DEFAULT_BALANCE
-            if (bal.dayTotal == 75 && bal.dayAvailed == 0 && bal.dayBalance == 75 &&
-                bal.nightTotal == 60 && bal.nightAvailed == 0 && bal.nightBalance == 60
-            ) {
-                return DEFAULT_BALANCE
-            }
+
             // If stored balance was corrupted by DOM bleed (dayTotal was overwritten with nightTotal 60)
             if (bal.dayTotal == 60 && bal.nightTotal == 60 && bal.dayAvailed == bal.nightAvailed) {
                 return DEFAULT_BALANCE
@@ -298,13 +279,8 @@ object LeaveStorage {
                 photoUrl = obj.optString("photoUrl", "")
             )
             if (pass.hasActivePass || pass.leaveId.isNotBlank() || pass.name.isNotBlank()) {
-                // Remove pass from storage once the last leave time on entry (dateOfReturn) has completely passed
-                if (pass.dateOfReturn.isNotBlank() && isLeaveExpired(pass.dateOfReturn, bufferMinutes = 30)) {
-                    clearGatePass(context)
-                    DEFAULT_GATE_PASS
-                } else {
-                    pass
-                }
+                // Keep pass accessible even if late so student can present to security; do not auto-delete on 30m overdue
+                pass
             } else {
                 DEFAULT_GATE_PASS
             }

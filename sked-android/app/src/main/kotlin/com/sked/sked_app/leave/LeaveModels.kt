@@ -64,8 +64,8 @@ fun isWinterCurfew(cal: java.util.Calendar = java.util.Calendar.getInstance()): 
     return month == java.util.Calendar.NOVEMBER ||
            month == java.util.Calendar.DECEMBER ||
            month == java.util.Calendar.JANUARY ||
-           month == java.util.Calendar.FEBRUARY ||
-           month == java.util.Calendar.MARCH
+           month == java.util.Calendar.FEBRUARY
+
 }
 
 enum class LeaveTypeOption(

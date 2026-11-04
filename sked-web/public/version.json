@@ -1,8 +1,8 @@
 {
-  "versionCode": 25,
-  "versionName": "1.5.4",
+  "versionCode": 26,
+  "versionName": "1.5.5",
   "minSupportedVersion": 1,
-  "releaseNotes": "• In-app 'Report a Bug' integration: report issues & feedback directly within the app via embedded Google Form\n• Matching secondary footer card with one-tap access across timetable and dashboard screens",
+  "releaseNotes": "• Aligned winter curfew timing strictly from November 1st to February 28/29 per official circulars\n• Robust leave submission engine: solved postback synchronization hangs, WebView bridge concurrency & stream descriptor lifecycle\n• Fixed return date parsing order and hardened UI memory management across leave pass views",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",

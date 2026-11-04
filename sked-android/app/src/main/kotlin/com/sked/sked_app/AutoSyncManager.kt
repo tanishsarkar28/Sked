@@ -240,7 +240,7 @@ object AutoSyncManager {
 
                 val pageCode = pageConn.responseCode
                 val pageStream = if (pageCode in 200..299) pageConn.inputStream else pageConn.errorStream
-                val pageHtml = pageStream?.bufferedReader()?.readText() ?: ""
+                val pageHtml = pageStream?.bufferedReader()?.use { it.readText() } ?: ""
 
                 if (pageCode in 300..399 || pageCode == 401 || pageCode == 403 || pageCode == 500 ||
                     pageHtml.contains("LoginNew") || pageHtml.contains("lockerror") ||
@@ -295,7 +295,7 @@ object AutoSyncManager {
 
                 val code = conn.responseCode
                 val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-                val body = stream?.bufferedReader()?.readText() ?: ""
+                val body = stream?.bufferedReader()?.use { it.readText() } ?: ""
 
                 Log.i("AutoSyncManager", "GetTimeTable HTTP code: $code, response length: ${body.length}")
 

@@ -281,7 +281,7 @@ object LeaveSubmitEngine {
     ): Result<String> = withContext(Dispatchers.Main) {
         suspendCancellableCoroutine { continuation ->
             val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
-            var isResumed = false
+            val isResumed = java.util.concurrent.atomic.AtomicBoolean(false)
             var timeoutRunnable: Runnable? = null
 
             val webView = WebView(context)
@@ -295,14 +295,27 @@ object LeaveSubmitEngine {
             }
 
             fun finishWith(result: Result<String>) {
-                if (!isResumed) {
-                    isResumed = true
-                    timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
-                    try {
-                        webView.stopLoading()
-                        webView.destroy()
-                    } catch (_: Exception) {}
-                    continuation.resume(result)
+                mainHandler.post {
+                    if (isResumed.compareAndSet(false, true)) {
+                        timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+                        try {
+                            webView.stopLoading()
+                            webView.destroy()
+                        } catch (_: Exception) {}
+                        continuation.resume(result)
+                    }
+                }
+            }
+
+            continuation.invokeOnCancellation {
+                mainHandler.post {
+                    if (isResumed.compareAndSet(false, true)) {
+                        timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+                        try {
+                            webView.stopLoading()
+                            webView.destroy()
+                        } catch (_: Exception) {}
+                    }
                 }
             }
 
@@ -327,6 +340,7 @@ object LeaveSubmitEngine {
             var savedMaskedPhone = ""
             var stage = 0 // 0: initial load, 1: leaveType set postback, 2: submitted
             var executeSubmitFn: (() -> Unit)? = null
+            var isTypeReady = false
 
             fun isOtpError(msg: String): Boolean {
                 val lower = msg.lowercase()
@@ -385,7 +399,11 @@ object LeaveSubmitEngine {
                 @JavascriptInterface
                 fun onLeaveTypeReady() {
                     mainHandler.post {
-                        executeSubmitFn?.invoke()
+                        if (executeSubmitFn != null) {
+                            executeSubmitFn?.invoke()
+                        } else {
+                            isTypeReady = true
+                        }
                     }
                 }
 
@@ -403,7 +421,9 @@ object LeaveSubmitEngine {
                         if (isSuccessMessage(clean)) {
                             finishWith(Result.success(clean))
                         } else if (isOtpError(clean)) {
-                            onOtpError?.invoke(clean, true)
+                            mainHandler.post {
+                                onOtpError?.invoke(clean, true)
+                            }
                         } else {
                             finishWith(Result.failure(Exception(clean)))
                         }
@@ -775,6 +795,11 @@ object LeaveSubmitEngine {
                     webView.evaluateJavascript(jsFillAndSubmit, null)
                 }
             }
+            executeSubmitFn = performSubmit
+            if (isTypeReady) {
+                mainHandler.post { performSubmit() }
+            }
+
             fun injectHooks(wv: WebView?) {
                 val hookJs = """
                     (function() {
@@ -911,18 +936,15 @@ object LeaveSubmitEngine {
                         }
 
                         2 -> {
-                            // Step 3: After submit postback, wait for DOM and alert events to settle, then verify table
+                            // Step 3: After submit postback, poll DOM and table for new leave or errors
                             onStatus("Verifying leave submission...")
-                            webView.evaluateJavascript("document.documentElement.outerHTML") { rawHtml ->
-                                try {
-                                    val unquoted = if (rawHtml.startsWith("\"") && rawHtml.endsWith("\"")) {
-                                        org.json.JSONObject("{\"v\":$rawHtml}").getString("v")
-                                    } else rawHtml
-                                    val file = context.getExternalFilesDir(null)?.resolve("ums_postback_dump.html")
-                                    file?.writeText(unquoted)
-                                } catch (_: Exception) {}
-                            }
-                            mainHandler.postDelayed({
+
+                            var checkAttempts = 0
+                            val maxCheckAttempts = 6
+                            val checkSubmissionRunnable = object : Runnable {
+                                override fun run() {
+                                    if (isResumed.get()) return
+                                    checkAttempts++
                                 val safeInitialId = org.json.JSONObject.quote(initialTopLeaveId ?: "")
                                 val jsCheckResult = """
                                     (function() {
@@ -1237,6 +1259,13 @@ object LeaveSubmitEngine {
                                 """.trimIndent()
 
                                 webView.evaluateJavascript(jsCheckResult) { res ->
+                                    if (isResumed.get()) return@evaluateJavascript
+                                    if (res == null || res.isBlank() || res == "null" || res == "undefined") {
+                                        if (checkAttempts < maxCheckAttempts) {
+                                            mainHandler.postDelayed(this, 600)
+                                        }
+                                        return@evaluateJavascript
+                                    }
                                     try {
                                         val cleanJson = if (res.startsWith("\"") && res.endsWith("\"")) {
                                             org.json.JSONObject("{\"v\":$res}").getString("v")
@@ -1327,10 +1356,11 @@ object LeaveSubmitEngine {
                                                         var otpPollCount = 0
                                                         val pollOtpRunnable = object : Runnable {
                                                             override fun run() {
-                                                                if (isResumed || stage != 4) return
+                                                                if (isResumed.get() || stage != 4) return
                                                                 otpPollCount++
                                                                 webView.evaluateJavascript(jsCheckResult) { checkRes ->
-                                                                    if (isResumed || stage != 4) return@evaluateJavascript
+                                                                    if (isResumed.get() || stage != 4) return@evaluateJavascript
+                                                                    if (checkRes == null || checkRes.isBlank() || checkRes == "null" || checkRes == "undefined") return@evaluateJavascript
                                                                     try {
                                                                         val cJson = if (checkRes.startsWith("\"") && checkRes.endsWith("\"")) {
                                                                             org.json.JSONObject("{\"v\":$checkRes}").getString("v")
@@ -1367,7 +1397,7 @@ object LeaveSubmitEngine {
                                                                             }
                                                                         }
                                                                     } catch (_: Exception) {}
-                                                                    if (!isResumed && stage == 4 && otpPollCount < 15) {
+                                                                    if (!isResumed.get() && stage == 4 && otpPollCount < 15) {
                                                                         mainHandler.postDelayed(this, 1500)
                                                                     }
                                                                 }
@@ -1438,10 +1468,11 @@ object LeaveSubmitEngine {
                                                         var resendPollCount = 0
                                                         val pollResendRunnable = object : Runnable {
                                                             override fun run() {
-                                                                if (isResumed || stage != 5) return
+                                                                if (isResumed.get() || stage != 5) return
                                                                 resendPollCount++
                                                                 webView.evaluateJavascript(jsCheckResult) { checkRes ->
-                                                                    if (isResumed || stage != 5) return@evaluateJavascript
+                                                                    if (isResumed.get() || stage != 5) return@evaluateJavascript
+                                                                    if (checkRes == null || checkRes.isBlank() || checkRes == "null" || checkRes == "undefined") return@evaluateJavascript
                                                                     try {
                                                                         val cJson = if (checkRes.startsWith("\"") && checkRes.endsWith("\"")) {
                                                                             org.json.JSONObject("{\"v\":$checkRes}").getString("v")
@@ -1455,7 +1486,7 @@ object LeaveSubmitEngine {
                                                                             return@evaluateJavascript
                                                                         }
                                                                     } catch (_: Exception) {}
-                                                                    if (!isResumed && stage == 5 && resendPollCount < 10) {
+                                                                    if (!isResumed.get() && stage == 5 && resendPollCount < 10) {
                                                                         mainHandler.postDelayed(this, 1500)
                                                                     }
                                                                 }
@@ -1497,8 +1528,11 @@ object LeaveSubmitEngine {
                                                 if (isDifferentId || isFirstEverLeave || (dateMatches && isStatusNew)) {
                                                     // New leave ID successfully posted to UMS
                                                     finishWith(Result.success("Leave ID #$leaveId"))
+                                                } else if (checkAttempts < maxCheckAttempts) {
+                                                    // Table may not have refreshed yet; re-check after delay
+                                                    mainHandler.postDelayed(this, 600)
                                                 } else {
-                                                    // Leave ID is unchanged: submission was NOT accepted by UMS
+                                                    // Leave ID is unchanged after max attempts: submission was NOT accepted by UMS
                                                     val alertMsg = capturedAlert
                                                     if (!alertMsg.isNullOrBlank()) {
                                                         finishWith(Result.failure(Exception(alertMsg)))
@@ -1514,7 +1548,7 @@ object LeaveSubmitEngine {
                                                                 applyDateRaw.contains(dfMdy.format(todayDate)) ||
                                                                 applyDateRaw.contains(dfDmy.format(todayDate))
 
-                                                        val isWinter = isWinterCurfew()
+                                                        val isWinter = isWinterCurfew(endCal)
                                                         val endH = endCal.get(java.util.Calendar.HOUR_OF_DAY)
                                                         val endM = endCal.get(java.util.Calendar.MINUTE)
                                                         val isDayLeave = leaveTypeCode == "6" || leaveTypeCode == "3"
@@ -1550,25 +1584,35 @@ object LeaveSubmitEngine {
                                                 }
                                             }
                                             else -> {
-                                                val alertMsg = capturedAlert
-                                                if (!alertMsg.isNullOrBlank()) {
-                                                    if (isSuccessMessage(alertMsg)) {
-                                                        finishWith(Result.success(alertMsg))
-                                                    } else {
-                                                        finishWith(Result.failure(Exception(alertMsg)))
-                                                    }
+                                                if (checkAttempts < maxCheckAttempts) {
+                                                    mainHandler.postDelayed(this, 600)
                                                 } else {
-                                                    finishWith(Result.failure(Exception(
-                                                        "Leave submission could not be confirmed by UMS. Please check your leave history."
-                                                    )))
+                                                    val alertMsg = capturedAlert
+                                                    if (!alertMsg.isNullOrBlank()) {
+                                                        if (isSuccessMessage(alertMsg)) {
+                                                            finishWith(Result.success(alertMsg))
+                                                        } else {
+                                                            finishWith(Result.failure(Exception(alertMsg)))
+                                                        }
+                                                    } else {
+                                                        finishWith(Result.failure(Exception(
+                                                            "Leave submission could not be confirmed by UMS. Please check your leave history."
+                                                        )))
+                                                    }
                                                 }
                                             }
                                         }
                                     } catch (e: Exception) {
-                                        finishWith(Result.failure(Exception("Failed to verify submission: ${e.message}")))
+                                        if (checkAttempts < maxCheckAttempts) {
+                                            mainHandler.postDelayed(this, 600)
+                                        } else {
+                                            finishWith(Result.failure(Exception("Failed to verify submission: ${e.message}")))
+                                        }
                                     }
                                 }
-                            }, 600)
+                            }
+                            }
+                            mainHandler.postDelayed(checkSubmissionRunnable, 600)
                         }
 
                         3, 4, 5 -> {
