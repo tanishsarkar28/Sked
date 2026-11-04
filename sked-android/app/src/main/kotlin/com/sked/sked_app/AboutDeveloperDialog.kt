@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
@@ -440,6 +441,74 @@ fun AboutDeveloperDialog(
                         }
                     }
 
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    var showBugReportDialogInAbout by remember { mutableStateOf(false) }
+
+                    // Report a Bug Row
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Slab,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Rule),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showBugReportDialogInAbout = true }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Blaze.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.BugReport,
+                                        contentDescription = "Report a Bug",
+                                        tint = Blaze,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Column {
+                                    Text(
+                                        text = "Report a Bug / Feedback",
+                                        fontFamily = BarlowCondensed,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        color = Chalk
+                                    )
+                                    Text(
+                                        text = "Help us improve Sked",
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = Slate
+                                    )
+                                }
+                            }
+
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                contentDescription = null,
+                                tint = Slate,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    if (showBugReportDialogInAbout) {
+                        BugReportDialog(onDismiss = { showBugReportDialogInAbout = false })
+                    }
+
                     Spacer(modifier = Modifier.height(18.dp))
 
                     HorizontalDivider(thickness = 1.dp, color = Rule)
@@ -541,12 +610,13 @@ fun SocialLinkRow(
 
 @Composable
 fun DeveloperFooterCard(
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 16.dp)
+            .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(Color(0xFF101010))
             .border(1.dp, Rule, RoundedCornerShape(8.dp))

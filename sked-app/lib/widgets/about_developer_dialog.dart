@@ -215,6 +215,38 @@ class AboutDeveloperDialog extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(height: 8),
+
+            // Report a Bug Row
+            InkWell(
+              onTap: () => _openLink('https://forms.gle/YGqY216NCnHJih7h7'),
+              borderRadius: BorderRadius.circular(6),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: SkedColors.ink,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: SkedColors.rule),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.bug_report_outlined, size: 16, color: SkedColors.blaze),
+                    const SizedBox(width: 8),
+                    Text(
+                      'FOUND A BUG? REPORT AN ISSUE',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: SkedColors.chalk,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 12),
 
             // Update & Version row

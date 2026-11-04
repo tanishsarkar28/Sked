@@ -1,13 +1,13 @@
 {
-  "versionCode": 24,
-  "versionName": "1.5.3",
+  "versionCode": 25,
+  "versionName": "1.5.4",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Smart Just-In-Time Turnstile verification: automatically reveals portal when human verification is required, and seamlessly auto-hides upon completion\n• Clear guidance header during Cloudflare verification\n• Instant auto-submission on Turnstile success",
+  "releaseNotes": "• In-app 'Report a Bug' integration: report issues & feedback directly within the app via embedded Google Form\n• Matching secondary footer card with one-tap access across timetable and dashboard screens",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
   "directIpaDownloadUrl": "/downloads/sked-ios.ipa",
   "fileSize": "14.3 MB",
   "ipaFileSize": "7.6 MB",
-  "updatedAt": "2026-11-03"
+  "updatedAt": "2026-11-04"
 }
