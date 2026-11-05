@@ -1,13 +1,13 @@
 {
-  "versionCode": 27,
-  "versionName": "1.5.6",
+  "versionCode": 28,
+  "versionName": "1.5.7",
   "minSupportedVersion": 1,
-  "releaseNotes": "\u2022 Fixed Parent OTP verification postback: added multi-button fallback, ASP.NET validation bypass & robust postback triggers\n\u2022 Resolved OTP validation hang on 'VALIDATING...' by fixing polling chain continuity and immediate onPageFinished checks\n\u2022 Prevented premature OTP error reporting and ensured proper dialog state resets on submission outcomes",
+  "releaseNotes": "\u2022 Fixed Parent OTP submission postback: eliminated __EVENTTARGET override to restore standard button execution\n\u2022 Resolved OTP validation hang: fixed isOtpVisible false positives on static DOM markup and enabled immediate server error alerts\n\u2022 Expanded Resend OTP selector coverage across all UMS link buttons, dialog containers, and text variations",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
   "directIpaDownloadUrl": "/downloads/sked-ios.ipa",
   "fileSize": "14.3 MB",
   "ipaFileSize": "7.6 MB",
-  "updatedAt": "2026-11-04"
+  "updatedAt": "2026-11-05"
 }

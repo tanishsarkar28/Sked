@@ -972,17 +972,20 @@ object LeaveSubmitEngine {
                                             }
 
                                             // 2. Check for OTP modal (RadToolTip1 / txtOTP / OTP Validation)
-                                            var otpTip = document.getElementById('ctl00_cphHeading_RadToolTip1') || document.querySelector('[id*="RadToolTip"]');
+                                            var otpTip = document.getElementById('ctl00_cphHeading_RadToolTip1') || document.querySelector('[id*="RadToolTip" i]');
                                             var txtOtp = document.getElementById('ctl00_cphHeading_txtOTP') || document.querySelector('input[id*="txtOTP" i], input[id*="otp" i]');
+                                            function isElementVisible(el) {
+                                                if (!el) return false;
+                                                var st = window.getComputedStyle ? window.getComputedStyle(el) : el.style;
+                                                if (st && (st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0')) return false;
+                                                return (el.offsetWidth > 0 || el.offsetHeight > 0 || (el.getClientRects && el.getClientRects().length > 0));
+                                            }
                                             var isOtpVisible = false;
-                                            if (otpTip && (otpTip.style.display !== 'none' && otpTip.style.visibility !== 'hidden')) {
+                                            if (isElementVisible(txtOtp) || isElementVisible(otpTip)) {
                                                 isOtpVisible = true;
-                                            }
-                                            if (txtOtp && txtOtp.offsetParent !== null) {
+                                            } else if (otpTip && (otpTip.style.display !== 'none' && otpTip.style.visibility !== 'hidden' && otpTip.innerHTML.indexOf('txtOTP') !== -1)) {
                                                 isOtpVisible = true;
-                                            }
-                                            var bodyText = document.body ? (document.body.innerText || document.body.textContent || '') : '';
-                                            if (bodyText.indexOf('OTP Validation') !== -1 || bodyText.indexOf('registered mobile number') !== -1) {
+                                            } else if (txtOtp && txtOtp.offsetParent !== null) {
                                                 isOtpVisible = true;
                                             }
                                             if (isOtpVisible) {
@@ -1315,6 +1318,8 @@ object LeaveSubmitEngine {
                                                         val jsSubmitOtp = """
                                                             (function() {
                                                                 try {
+                                                                    var theForm = document.forms['aspnetForm'] || document.querySelector('form');
+
                                                                     var txt = document.getElementById('ctl00_cphHeading_txtOTP') || 
                                                                               document.querySelector('input[id*="txtOTP" i], input[id*="otp" i]');
                                                                     if (txt) {
@@ -1325,9 +1330,16 @@ object LeaveSubmitEngine {
                                                                         txt.blur();
                                                                     }
 
-                                                                    if (typeof Page_BlockSubmit !== 'undefined') Page_BlockSubmit = false;
-                                                                    if (typeof Page_ValidationActive !== 'undefined') Page_ValidationActive = false;
-                                                                    if (typeof Page_IsValid !== 'undefined') Page_IsValid = true;
+                                                                    window.Page_BlockSubmit = false;
+                                                                    window.Page_ValidationActive = false;
+                                                                    window.Page_IsValid = true;
+                                                                    window.ValidatorOnSubmit = function() { return true; };
+                                                                    window.WebForm_OnSubmit = function() { return true; };
+                                                                    if (typeof window.Page_Validators !== 'undefined' && window.Page_Validators) {
+                                                                        for (var i = 0; i < window.Page_Validators.length; i++) {
+                                                                            window.Page_Validators[i].isvalid = true;
+                                                                        }
+                                                                    }
 
                                                                     var btn = document.getElementById('ctl00_cphHeading_btnValidate') ||
                                                                               document.getElementById('ctl00_cphHeading_btnSubmitOTP') ||
@@ -1341,7 +1353,7 @@ object LeaveSubmitEngine {
                                                                             var c = candidates[bi];
                                                                             var val = (c.value || c.textContent || c.innerText || '').trim().toLowerCase();
                                                                             var cid = (c.id || '').toLowerCase();
-                                                                            if (val.indexOf('resend') !== -1 || cid.indexOf('resend') !== -1) continue;
+                                                                            if (val.indexOf('resend') !== -1 || cid.indexOf('resend') !== -1 || val.indexOf('re-send') !== -1) continue;
                                                                             if (val.indexOf('cancel') !== -1 || cid.indexOf('cancel') !== -1 || val.indexOf('close') !== -1) continue;
                                                                             if (val.indexOf('validate') !== -1 || val.indexOf('submit') !== -1 || val.indexOf('verify') !== -1 || val.indexOf('ok') !== -1 ||
                                                                                 cid.indexOf('validate') !== -1 || cid.indexOf('submit') !== -1 || cid.indexOf('verify') !== -1) {
@@ -1351,41 +1363,45 @@ object LeaveSubmitEngine {
                                                                         }
                                                                     }
 
-                                                                    var theForm = document.forms['aspnetForm'] || document.querySelector('form');
                                                                     var targetName = btn ? (btn.name || btn.id) : 'ctl00${'$'}cphHeading${'$'}btnValidate';
 
+                                                                    // Clear __EVENTTARGET to ensure ASP.NET handles submit button postback
                                                                     if (theForm) {
-                                                                        if (theForm.__EVENTTARGET) theForm.__EVENTTARGET.value = targetName;
-                                                                        if (theForm.__EVENTARGUMENT) theForm.__EVENTARGUMENT.value = '';
+                                                                        var et = document.getElementById('__EVENTTARGET') || theForm.__EVENTTARGET;
+                                                                        if (et) et.value = '';
+                                                                        var ea = document.getElementById('__EVENTARGUMENT') || theForm.__EVENTARGUMENT;
+                                                                        if (ea) ea.value = '';
+
+                                                                        var hiddenBtn = document.getElementById('__sked_btnValidate');
+                                                                        if (!hiddenBtn) {
+                                                                            hiddenBtn = document.createElement('input');
+                                                                            hiddenBtn.type = 'hidden';
+                                                                            hiddenBtn.id = '__sked_btnValidate';
+                                                                            theForm.appendChild(hiddenBtn);
+                                                                        }
+                                                                        hiddenBtn.name = targetName;
+                                                                        hiddenBtn.value = btn ? (btn.value || 'Validate') : 'Validate';
                                                                     }
 
+                                                                    var result = '';
                                                                     if (btn) {
                                                                         try {
                                                                             btn.click();
-                                                                            return 'btn_clicked: ' + targetName;
-                                                                        } catch(e) {}
+                                                                            result = 'btn_clicked: ' + targetName;
+                                                                        } catch(e) {
+                                                                            result = 'btn_click_err: ' + e.toString();
+                                                                        }
                                                                     }
 
-                                                                    if (typeof WebForm_DoPostBackWithOptions !== 'undefined' && targetName) {
+                                                                    setTimeout(function() {
                                                                         try {
-                                                                            WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions(targetName, "", true, "", "", false, false));
-                                                                            return 'webform_postback: ' + targetName;
+                                                                            if (theForm) {
+                                                                                theForm.submit();
+                                                                            }
                                                                         } catch(e) {}
-                                                                    }
+                                                                    }, 250);
 
-                                                                    if (typeof __doPostBack === 'function' && targetName) {
-                                                                        try {
-                                                                            __doPostBack(targetName, '');
-                                                                            return '__doPostBack: ' + targetName;
-                                                                        } catch(e) {}
-                                                                    }
-
-                                                                    if (theForm) {
-                                                                        theForm.submit();
-                                                                        return 'form_submitted';
-                                                                    }
-
-                                                                    return 'no_submission_path';
+                                                                    return result || 'submit_initiated';
                                                                 } catch(e) {
                                                                     return 'error: ' + e.toString();
                                                                 }
@@ -1498,19 +1514,67 @@ object LeaveSubmitEngine {
                                                             (function() {
                                                                 try {
                                                                     var theForm = document.forms['aspnetForm'] || document.querySelector('form');
-                                                                    if (typeof Page_BlockSubmit !== 'undefined') Page_BlockSubmit = false;
-                                                                    if (typeof Page_ValidationActive !== 'undefined') Page_ValidationActive = false;
+                                                                    window.Page_BlockSubmit = false;
+                                                                    window.Page_ValidationActive = false;
+                                                                    window.Page_IsValid = true;
+                                                                    window.ValidatorOnSubmit = function() { return true; };
+                                                                    window.WebForm_OnSubmit = function() { return true; };
 
                                                                     var resendEl = (function() {
-                                                                        var inputs = document.querySelectorAll('input[type="submit"], input[type="button"], button, a');
-                                                                        for (var bi = 0; bi < inputs.length; bi++) {
-                                                                            var val = (inputs[bi].value || inputs[bi].textContent || '').trim().toLowerCase();
-                                                                            if (val.indexOf('resend') !== -1) return inputs[bi];
+                                                                        var directIds = [
+                                                                            'ctl00_cphHeading_btnResendOTP',
+                                                                            'ctl00_cphHeading_btnResend',
+                                                                            'ctl00_cphHeading_btnOTPResend',
+                                                                            'ctl00_cphHeading_lbtnResend',
+                                                                            'ctl00_cphHeading_lnkResend',
+                                                                            'ctl00_cphHeading_LinkButton1',
+                                                                            'ctl00_cphHeading_lbtnResendOTP'
+                                                                        ];
+                                                                        for (var di = 0; di < directIds.length; di++) {
+                                                                            var el = document.getElementById(directIds[di]);
+                                                                            if (el) return el;
                                                                         }
-                                                                        return document.getElementById('ctl00_cphHeading_btnResendOTP') ||
-                                                                               document.getElementById('ctl00_cphHeading_btnResend') ||
-                                                                               document.querySelector('[id*="btnResend" i]') ||
-                                                                               document.querySelector('[id*="resend" i]');
+
+                                                                        var otpContainer = document.getElementById('ctl00_cphHeading_RadToolTip1') || 
+                                                                                           document.querySelector('[id*="RadToolTip" i]') || 
+                                                                                           document;
+                                                                        var allCandidates = otpContainer.querySelectorAll('input, button, a, span, label, div');
+                                                                        for (var bi = 0; bi < allCandidates.length; bi++) {
+                                                                            var c = allCandidates[bi];
+                                                                            var val = (c.value || c.textContent || c.innerText || '').trim().toLowerCase();
+                                                                            var cid = (c.id || '').toLowerCase();
+                                                                            var chref = (c.getAttribute('href') || '').toLowerCase();
+                                                                            var conclick = (c.getAttribute('onclick') || '').toLowerCase();
+
+                                                                            if (val.indexOf('resend') !== -1 || val.indexOf('re-send') !== -1 || 
+                                                                                val.indexOf('regenerate') !== -1 || val.indexOf('send again') !== -1 ||
+                                                                                cid.indexOf('resend') !== -1 || chref.indexOf('resend') !== -1 || conclick.indexOf('resend') !== -1) {
+                                                                                return c;
+                                                                            }
+                                                                        }
+
+                                                                        var docCandidates = document.querySelectorAll('input[type="submit"], input[type="button"], button, a');
+                                                                        for (var i = 0; i < docCandidates.length; i++) {
+                                                                            var el = docCandidates[i];
+                                                                            var t = (el.value || el.textContent || el.innerText || '').trim().toLowerCase();
+                                                                            var id = (el.id || '').toLowerCase();
+                                                                            if (t.indexOf('resend') !== -1 || t.indexOf('re-send') !== -1 || id.indexOf('resend') !== -1) {
+                                                                                return el;
+                                                                            }
+                                                                        }
+
+                                                                        var iframes = document.querySelectorAll('iframe');
+                                                                        for (var fi = 0; fi < iframes.length; fi++) {
+                                                                            try {
+                                                                                var idoc = iframes[fi].contentDocument || iframes[fi].contentWindow.document;
+                                                                                if (idoc) {
+                                                                                    var iResend = idoc.querySelector('[id*="resend" i], a, input[type="submit"], button');
+                                                                                    if (iResend) return iResend;
+                                                                                }
+                                                                            } catch(e) {}
+                                                                        }
+
+                                                                        return null;
                                                                     })();
 
                                                                     if (resendEl) {
@@ -1525,16 +1589,14 @@ object LeaveSubmitEngine {
                                                                                 h.value = resendEl.value || 'Resend OTP';
                                                                                 theForm.appendChild(h);
                                                                             }
-                                                                            if (theForm.__EVENTTARGET) {
-                                                                                theForm.__EVENTTARGET.value = targetName;
-                                                                            }
-                                                                            if (theForm.__EVENTARGUMENT) {
-                                                                                theForm.__EVENTARGUMENT.value = '';
-                                                                            }
+                                                                            var et = document.getElementById('__EVENTTARGET') || theForm.__EVENTTARGET;
+                                                                            if (et) et.value = '';
+                                                                            var ea = document.getElementById('__EVENTARGUMENT') || theForm.__EVENTARGUMENT;
+                                                                            if (ea) ea.value = '';
                                                                         }
                                                                         try { 
                                                                             resendEl.click(); 
-                                                                            return 'resend_clicked';
+                                                                            return 'resend_clicked: ' + targetName;
                                                                         } catch(e) {
                                                                             if (theForm) { theForm.submit(); return 'resend_form_submit'; }
                                                                         }
