@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.jpg" alt="SKED — Never Miss A Class Again" width="100%" />
+  <img src="sked-web/public/assets/banner.jpg" alt="SKED — Never Miss A Class Again" width="100%" />
 </p>
 
 <h1 align="center">SKED<span>.</span></h1>
