@@ -57,3 +57,10 @@ Check In Check Out*
 *.py
 device_current.png
 device_widget.xml
+
+# Excluded from git repository (kept local)
+sked-android/
+sked-app/
+assets/
+.agents/
+.github/
