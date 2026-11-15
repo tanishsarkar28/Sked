@@ -1,8 +1,8 @@
 {
-  "versionCode": 30,
-  "versionName": "1.5.9",
+  "versionCode": 31,
+  "versionName": "1.6.0",
   "minSupportedVersion": 1,
-  "releaseNotes": "\u2022 Fix Parent OTP verification: eliminated destructive form submit to preserve ASP.NET AJAX partial postback\n\u2022 Dual-layer OTP input injection: synchronized DOM value and Telerik RadTextBox client-side state\n\u2022 Resolved infinite VALIDATING state with direct UMS error parsing and responsive retry",
+  "releaseNotes": "• Ultra-fast 1-2s login: immediate entry to class timetable without blocking\n• Decoupled background lazy-sync for exam seating plan, datesheets, and hostel leaves\n• Automatic background refresh of gate pass slips and student photos using live session cookies",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
