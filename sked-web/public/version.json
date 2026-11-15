@@ -2,7 +2,7 @@
   "versionCode": 33,
   "versionName": "1.6.2",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Optimized background seating plan engine: enabled cross-domain cookies & early exit on session expiry\n• Enhanced stability & resource cleanup for background WebViews preventing memory limits\n• Refined leave departure validations and eliminated compiler deprecations across all modules",
+  "releaseNotes": "• Hostel Leave & Gate Pass slip with turnstile barcode\n• 2×2 Quick Access dashboard with live badges\n• Ultra-fast 1.5s parallel schedule sync & iOS parity",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
