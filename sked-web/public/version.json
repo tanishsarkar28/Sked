@@ -1,8 +1,8 @@
 {
-  "versionCode": 32,
-  "versionName": "1.6.1",
+  "versionCode": 33,
+  "versionName": "1.6.2",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Normal students without OTP can apply leave directly inside the app with full biometric authorization\n• Accounts requiring Parent OTP show a clear Feature Coming Soon notice with a 1-tap shortcut to open UMS\n• Ultra-fast 1-2s login with parallel in-WebView data sync and attached background seating plan engine",
+  "releaseNotes": "• Optimized background seating plan engine: enabled cross-domain cookies & early exit on session expiry\n• Enhanced stability & resource cleanup for background WebViews preventing memory limits\n• Refined leave departure validations and eliminated compiler deprecations across all modules",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
