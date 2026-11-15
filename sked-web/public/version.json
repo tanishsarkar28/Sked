@@ -1,8 +1,8 @@
 {
-  "versionCode": 31,
-  "versionName": "1.6.0",
+  "versionCode": 32,
+  "versionName": "1.6.1",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Ultra-fast 1-2s login: immediate entry to class timetable without blocking\n• Decoupled background lazy-sync for exam seating plan, datesheets, and hostel leaves\n• Automatic background refresh of gate pass slips and student photos using live session cookies",
+  "releaseNotes": "• Normal students without OTP can apply leave directly inside the app with full biometric authorization\n• Accounts requiring Parent OTP show a clear Feature Coming Soon notice with a 1-tap shortcut to open UMS\n• Ultra-fast 1-2s login with parallel in-WebView data sync and attached background seating plan engine",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
