@@ -1,8 +1,8 @@
 {
-  "versionCode": 29,
-  "versionName": "1.5.8",
+  "versionCode": 30,
+  "versionName": "1.5.9",
   "minSupportedVersion": 1,
-  "releaseNotes": "\u2022 Automatically remove hostel leave slip from storage and UI when UMS reports no active pass\n\u2022 Instant auto-clear of expired leave slips and badges when scheduled return time passes\n\u2022 Prevent past approved leave records from resurrecting as active passes",
+  "releaseNotes": "\u2022 Fix Parent OTP verification: eliminated destructive form submit to preserve ASP.NET AJAX partial postback\n\u2022 Dual-layer OTP input injection: synchronized DOM value and Telerik RadTextBox client-side state\n\u2022 Resolved infinite VALIDATING state with direct UMS error parsing and responsive retry",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
