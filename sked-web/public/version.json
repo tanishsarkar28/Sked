@@ -1,13 +1,13 @@
 {
-  "versionCode": 28,
-  "versionName": "1.5.7",
+  "versionCode": 29,
+  "versionName": "1.5.8",
   "minSupportedVersion": 1,
-  "releaseNotes": "\u2022 Fixed Parent OTP submission postback: eliminated __EVENTTARGET override to restore standard button execution\n\u2022 Resolved OTP validation hang: fixed isOtpVisible false positives on static DOM markup and enabled immediate server error alerts\n\u2022 Expanded Resend OTP selector coverage across all UMS link buttons, dialog containers, and text variations",
+  "releaseNotes": "\u2022 Automatically remove hostel leave slip from storage and UI when UMS reports no active pass\n\u2022 Instant auto-clear of expired leave slips and badges when scheduled return time passes\n\u2022 Prevent past approved leave records from resurrecting as active passes",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
   "directIpaDownloadUrl": "/downloads/sked-ios.ipa",
   "fileSize": "14.3 MB",
   "ipaFileSize": "7.6 MB",
-  "updatedAt": "2026-11-05"
+  "updatedAt": "2026-11-15"
 }
