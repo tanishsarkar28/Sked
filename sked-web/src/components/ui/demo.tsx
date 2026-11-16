@@ -1,22 +1,43 @@
-"use client";
+import { LiquidNavbar, NimbusIcons } from "@/components/ui/liquid-glass-navbar"
 
-import LiquidMetalHero from '@/components/ui/liquid-metal-hero';
-
-export default function LiquidMetalHeroDemo() {
+export default function Demo() {
   return (
-    <LiquidMetalHero
-      badge="✨ Next Generation UI"
-      title="Fluid Design Excellence"
-      subtitle="Experience the future of web interfaces with liquid metal aesthetics that adapt, flow, and captivate. Built for modern applications that demand both beauty and performance."
-      primaryCtaLabel="Start Building"
-      secondaryCtaLabel="View Examples"
-      onPrimaryCtaClick={() => alert("Primary CTA clicked!")}
-      onSecondaryCtaClick={() => alert("Secondary CTA clicked!")}
-      features={[
-        "Seamless Animations",
-        "Responsive Excellence", 
-        "Modern Architecture"
-      ]}
-    />
-  );
+    <div
+      style={{
+        minHeight: "100vh",
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 28,
+        padding: "0 16px",
+        background: "#DCEBF5",
+      }}
+    >
+      <LiquidNavbar
+        tone="light"
+        defaultActive={0}
+        sound={false}
+        items={[
+          { label: "Home", icon: NimbusIcons.home, fx: "glow" },
+          { label: "Explore", icon: NimbusIcons.globe, fx: "spin" },
+          { label: "Flights", icon: NimbusIcons.plane, fx: "plane" },
+          { label: "Weather", icon: NimbusIcons.drop, fx: "drop" },
+          { label: "Profile", icon: NimbusIcons.user, fx: "wave" },
+        ]}
+      />
+      <span
+        style={{
+          font: "500 12px/1 ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif",
+          color: "rgba(11,19,43,.5)",
+        }}
+      >
+        by{" "}
+        <a href="https://guglielmogiannattasio.it" target="_blank" rel="noopener noreferrer" style={{ color: "rgba(11,19,43,.7)" }}>
+          guglielmogiannattasio.it
+        </a>
+      </span>
+    </div>
+  )
 }

@@ -34,7 +34,7 @@ export default function App() {
       <Navbar onInstallClick={scrollToInstall} />
 
       {/* Liquid Metal Hero Section */}
-      <div className="pt-16 sm:pt-20">
+      <div className="pt-20 sm:pt-24">
         <LiquidMetalHero
           badge="✨ SKED FOR LPU • ANDROID & iOS COMPANION"
           title="Never Miss A Class Again"
