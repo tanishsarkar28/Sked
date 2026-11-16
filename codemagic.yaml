@@ -1,0 +1,59 @@
+workflows:
+  ios-build:
+    name: Build iOS IPA (Sked)
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+    scripts:
+      - name: Setup iOS Scaffolding
+        script: |
+          cd sked-app
+          if [ ! -d "ios/Runner.xcodeproj" ]; then
+            echo "Generating iOS project files..."
+            flutter create --project-name sked_app --platforms=ios --org com.sked .
+          fi
+          if [ -f "ios/Runner/Info.plist" ]; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Sked" ios/Runner/Info.plist 2>/dev/null || \
+            /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Sked" ios/Runner/Info.plist 2>/dev/null || true
+          fi
+
+      - name: Install Flutter Dependencies
+        script: |
+          cd sked-app
+          flutter pub get
+
+      - name: Configure Native Timetable Widget
+        script: |
+          cd sked-app
+          flutter build ios --config-only --release --no-codesign
+          if [ -f "ios/setup_widget_target.rb" ]; then
+            gem install xcodeproj --no-document 2>/dev/null || true
+            ruby ios/setup_widget_target.rb || echo "Widget target configuration skipped"
+          fi
+
+      - name: Build & Package Native iOS IPA
+        script: |
+          cd sked-app
+          flutter build ios --release --no-codesign
+          mkdir -p Payload
+          if [ -d "build/ios/iphoneos/Runner.app" ]; then
+            cp -R "build/ios/iphoneos/Runner.app" Payload/
+          else
+            RUNNER_PATH=$(find build/ios -name "Runner.app" -type d | head -n 1)
+            cp -R "$RUNNER_PATH" Payload/
+          fi
+          zip -r -y sked-ios.ipa Payload
+          ls -lh sked-ios.ipa
+
+    artifacts:
+      - sked-app/sked-ios.ipa
