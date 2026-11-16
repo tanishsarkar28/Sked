@@ -1,13 +1,13 @@
 {
-  "versionCode": 33,
-  "versionName": "1.6.2",
+  "versionCode": 34,
+  "versionName": "1.6.3",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Hostel Leave & Gate Pass slip with turnstile barcode\n• 2×2 Quick Access dashboard with live badges",
+  "releaseNotes": "• Ultra-fast parallel UMS datesheet & seating plan sync\n• Fixed datesheet re-sync button with instant progress feedback\n• Full iOS native build support",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
   "directIpaDownloadUrl": "/downloads/sked-ios.ipa",
   "fileSize": "14.3 MB",
   "ipaFileSize": "7.6 MB",
-  "updatedAt": "2026-11-15"
+  "updatedAt": "2026-11-16"
 }
