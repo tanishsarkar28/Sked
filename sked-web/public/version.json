@@ -2,7 +2,7 @@
   "versionCode": 33,
   "versionName": "1.6.2",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Hostel Leave & Gate Pass slip with turnstile barcode\n• 2×2 Quick Access dashboard with live badges\n• Ultra-fast 1.5s parallel schedule sync & iOS parity",
+  "releaseNotes": "• Hostel Leave & Gate Pass slip with turnstile barcode\n• 2×2 Quick Access dashboard with live badges",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
