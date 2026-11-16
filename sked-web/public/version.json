@@ -1,8 +1,8 @@
 {
-  "versionCode": 34,
-  "versionName": "1.6.3",
+  "versionCode": 35,
+  "versionName": "1.6.4",
   "minSupportedVersion": 1,
-  "releaseNotes": "• Ultra-fast parallel UMS datesheet & seating plan sync\n• Fixed datesheet re-sync button with instant progress feedback\n• Full iOS native build support",
+  "releaseNotes": "• Fixed UMS examination SSO token exchange on studentums.lpu.in\n• Resolved Android WebView anti-app header detection\n• Native datesheet & seating plan live sync",
   "apkUrl": "https://sked-gold.vercel.app/downloads/sked-android.apk",
   "ipaUrl": "https://sked-gold.vercel.app/downloads/sked-ios.ipa",
   "directDownloadUrl": "/downloads/sked-android.apk",
