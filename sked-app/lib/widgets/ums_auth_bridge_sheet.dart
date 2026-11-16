@@ -1,0 +1,1298 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import '../models/exam_item.dart';
+import '../services/timetable_parser.dart';
+import '../services/exam_parser.dart';
+import '../services/sync_service.dart';
+import '../services/leave_parser.dart';
+import '../services/leave_storage.dart';
+import '../theme/app_theme.dart';
+
+class UmsAuthBridgeSheet extends StatefulWidget {
+  final String userId;
+  final String password;
+  final VoidCallback onDismiss;
+  final ValueChanged<String> onSuccess;
+  final ValueChanged<String>? onError;
+
+  const UmsAuthBridgeSheet({
+    super.key,
+    required this.userId,
+    required this.password,
+    required this.onDismiss,
+    required this.onSuccess,
+    this.onError,
+  });
+
+  @override
+  State<UmsAuthBridgeSheet> createState() => _UmsAuthBridgeSheetState();
+}
+
+class _UmsAuthBridgeSheetState extends State<UmsAuthBridgeSheet>
+    with SingleTickerProviderStateMixin {
+  late final WebViewController _controller;
+  String _statusText = 'Connecting to LPU UMS...';
+  bool _isSyncing = false;
+  bool _isDone = false;
+  bool _showRawWebView = false;
+  int _elapsedSeconds = 0;
+  double _maxProgress = 0.12;
+
+  Timer? _pollTimer;
+  Timer? _secondTimer;
+  Timer? _crawlTimer;
+  int _lastStage = -1;
+  int _stageStartTime = 0;
+
+  late final AnimationController _pulseController;
+  late final Animation<double> _pulseScale;
+  late final Animation<double> _pulseAlpha;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+
+    _pulseScale = Tween<double>(begin: 0.92, end: 1.08).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+
+    _pulseAlpha = Tween<double>(begin: 0.08, end: 0.22).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+
+    _secondTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        setState(() {
+          _elapsedSeconds++;
+        });
+      }
+    });
+
+    _crawlTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
+      if (mounted && _maxProgress < 1.0) {
+        setState(() {});
+      }
+    });
+
+    _initWebView();
+  }
+
+  void _initWebView() {
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(SkedColors.ink)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (url) {
+            if (mounted && !_isSyncing) {
+              setState(() => _statusText = 'Loading UMS Portal...');
+            }
+          },
+          onPageFinished: (url) {
+            if (mounted && !_isSyncing) {
+              setState(() => _statusText = 'Verifying security check...');
+            }
+          },
+          onWebResourceError: (error) {
+            if (mounted && !_isDone && !_isSyncing) {
+              setState(() => _statusText = 'Connection notice: ${error.description}');
+            }
+          },
+        ),
+      )
+      ..loadRequest(Uri.parse('https://ums.lpu.in/lpuums/LoginNew.aspx'));
+
+    _startPolling();
+  }
+
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(milliseconds: 900), (_) => _tick());
+  }
+
+  Future<void> _tick() async {
+    if (_isDone || !mounted) return;
+
+    final safeUser = jsonEncode(widget.userId);
+    final safePass = jsonEncode(widget.password);
+
+    final tickJs = '''
+(function() {
+    try {
+        var u = document.getElementById('txtU');
+        var p = document.querySelector('input[type="password"]');
+        var cf = document.querySelector('[name="cf-turnstile-response"]');
+        var form = document.querySelector('form');
+
+        if (u) {
+            u.removeAttribute('onchange');
+            u.onchange = null;
+            if ($safeUser && (!u.value || u.value.length === 0)) {
+                u.value = $safeUser;
+            }
+        }
+        if (p && $safePass && (!p.value || p.value.length === 0)) {
+            p.value = $safePass;
+        }
+
+        if (window._skedTimetableResult) {
+            return JSON.stringify({ hasResult: true, status: 'Parsing timetable...' });
+        }
+
+        if (window._skedIsSyncing) {
+            return JSON.stringify({ syncing: true, status: window._skedStatus || 'Authenticating with UMS...' });
+        }
+
+        function triggerSubmit() {
+            if (window._skedIsSyncing || window._skedTimetableResult) return;
+            var curU = document.getElementById('txtU');
+            var curP = document.querySelector('input[type="password"]');
+            var curCf = document.querySelector('[name="cf-turnstile-response"]');
+
+            if (curU && !curU.value && $safeUser) curU.value = $safeUser;
+            if (curP && !curP.value && $safePass) curP.value = $safePass;
+
+            if (!curU || !curU.value) {
+                window._skedStatus = 'Please enter Registration No';
+                return;
+            }
+            if (!curP || !curP.value) {
+                window._skedStatus = 'Please enter password';
+                return;
+            }
+            if (!curCf || !curCf.value) {
+                window._skedStatus = 'Please complete Turnstile check';
+                return;
+            }
+
+            window._skedIsSyncing = true;
+            window._skedStatus = 'Authenticating with UMS...';
+
+            var fd = new FormData(form);
+            var params = new URLSearchParams(fd);
+            var submitBtn = form ? form.querySelector('input[type="submit"]') : null;
+            if (submitBtn && !params.has(submitBtn.name)) {
+                params.append(submitBtn.name, submitBtn.value || 'Login');
+            }
+
+            function fetchAllData(loginHtml, curUser, curPass) {
+                window._skedStatus = 'Fetching schedule & datesheet...';
+
+                function safeFetch(url, name) {
+                    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+                    var timeoutId = controller ? setTimeout(function() { controller.abort(); }, 3500) : null;
+                    return fetch(url, { credentials: 'include', signal: controller ? controller.signal : undefined })
+                        .then(function(r) {
+                            if (timeoutId) clearTimeout(timeoutId);
+                            if (!r.ok) return { name: name, status: r.status, html: '' };
+                            return r.text().then(function(t) {
+                                if (t.includes('LoginNew') || t.includes('lockerror') || t.includes('lblError')) {
+                                    return { name: name, status: 401, html: '' };
+                                }
+                                return { name: name, status: r.status, html: t };
+                            });
+                        })
+                        .catch(function(e) {
+                            if (timeoutId) clearTimeout(timeoutId);
+                            return { name: name, status: 0, html: '', error: e.toString() };
+                        });
+                }
+
+                var ttPromise = safeFetch('/lpuums/frmMyCurrentTimeTable.aspx', 'ttAspx')
+                    .then(function(res) {
+                        var m = res.html ? res.html.match(/id=["']Select1["'][^>]*>([\\s\\S]*?)<\\/select>/i) : null;
+                        var termId = '';
+                        if (m) {
+                            var selM = m[1].match(/selected[^>]*value=["']([^"']+)["']/i)
+                                    || m[1].match(/value=["']([^"']+)["'][^>]*selected/i)
+                                    || m[1].match(/value=["']([^"']+)["']/i);
+                            if (selM) termId = selM[1];
+                        }
+                        return fetch('/lpuums/frmMyCurrentTimeTable.aspx/GetTimeTable', {
+                            method: 'POST',
+                            credentials: 'include',
+                            headers: {
+                                'Content-Type': 'application/json; charset=utf-8',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: JSON.stringify({ TermId: termId || null })
+                        }).then(function(r) { return r.text(); });
+                    })
+                    .then(function(json) {
+                        window._skedTimetableResult = json;
+                    })
+                    .catch(function(e) {
+                        window._skedError = 'Failed to fetch timetable: ' + e.toString();
+                    });
+
+                var dsUrls = [
+                    '/lpuums/frmStudentDateSheet.aspx',
+                    '/lpuums/frmSeatingPlan.aspx'
+                ];
+                try {
+                    var regex = /href=["']([^"']*(?:datesheet|seating|exam|schedule)[^"']*)["']/gi;
+                    var match;
+                    while ((match = regex.exec(loginHtml)) !== null) {
+                        var u = match[1];
+                        if (u && !u.startsWith('javascript:') && !u.startsWith('#') && u.indexOf('openapp.aspx') === -1 && dsUrls.indexOf(u) === -1) {
+                            dsUrls.push(u);
+                        }
+                    }
+                    var links = document.querySelectorAll('a[href]');
+                    for (var li = 0; li < links.length; li++) {
+                        var href = links[li].getAttribute('href') || '';
+                        if (href && /(?:datesheet|seating|exam)/i.test(href) && !href.startsWith('javascript:') && !href.startsWith('#') && href.indexOf('openapp.aspx') === -1 && dsUrls.indexOf(href) === -1) {
+                            dsUrls.push(href);
+                        }
+                    }
+                } catch(e) {}
+
+                var dsPromise = Promise.all(
+                    dsUrls.map(function(u) {
+                        return safeFetch(u, u);
+                    })
+                ).then(function(results) {
+                    var combinedHtml = '';
+                    for (var i = 0; i < results.length; i++) {
+                        var h = results[i].html || '';
+                        if (h && (/[A-Z]{2,5}\\d{3,4}/.test(h) || /datesheet|seating|exam/i.test(h))) {
+                            combinedHtml += '\\n<!-- PAGE: ' + results[i].name + ' -->\\n' + h;
+                        }
+                    }
+                    window._skedDatesheetResult = combinedHtml;
+                }).catch(function() {
+                    window._skedDatesheetResult = '';
+                });
+
+                var leavePromise = fetch('/lpuums/frmStudentHostelLeaveApplicationTermWise.aspx', { credentials: 'include' })
+                    .then(function(r) {
+                        if (!r.ok) {
+                            window._skedLeaveResult = '';
+                            return;
+                        }
+                        return r.text().then(function(t) {
+                            if (t && !t.includes('LoginNew.aspx') && !t.includes('lockerror')) {
+                                window._skedLeaveResult = t;
+                            } else {
+                                window._skedLeaveResult = '';
+                            }
+                        });
+                    })
+                    .catch(function(e) {
+                        window._skedLeaveResult = '';
+                    });
+
+                var slipPromise = safeFetch('/lpuums/frmHostelLeaveSlipTest.aspx', 'slipAspx')
+                    .then(function(res) {
+                        if (res.html && !res.html.includes('LoginNew.aspx') && !res.html.includes('lockerror')) {
+                            window._skedSlipResult = res.html;
+                        } else {
+                            window._skedSlipResult = '';
+                        }
+                    })
+                    .catch(function(e) {
+                        window._skedSlipResult = '';
+                    });
+
+                return Promise.all([ttPromise, dsPromise, leavePromise, slipPromise]);
+            }
+
+            fetch(form ? form.action : window.location.href, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params.toString()
+            }).then(function(r) {
+                return r.text();
+            }).then(function(html) {
+                if (html.includes('StudentDashboard') || html.includes('frmMyCurrentTimeTable') || html.includes('w-schedule') || html.includes('Default3')) {
+                    return fetchAllData(html, curU.value, curP.value);
+                }
+
+                // Authentication Failure Detection
+                window._skedIsSyncing = false;
+                window._skedAuthFailed = true;
+
+                var errM = html.match(/id=["']lockerror["'][^>]*>([^<]+)<\\/span>/i)
+                        || html.match(/id=["']lblError["'][^>]*>([^<]+)<\\/span>/i)
+                        || html.match(/class=["'][^"']*error[^"']*["'][^>]*>([^<]+)<\\//i);
+
+                var serverMsg = errM ? errM[1].replace(/<[^>]+>/g, '').trim() : '';
+
+                if (serverMsg) {
+                    window._skedError = serverMsg;
+                } else if (/invalid\\s*(?:user\\s*name\\s*\\/?\\s*)?password/i.test(html) || /wrong\\s*password/i.test(html) || /incorrect/i.test(html)) {
+                    window._skedError = 'Invalid Registration No or Password.';
+                } else if (/account\\s*is\\s*locked/i.test(html) || /locked/i.test(html)) {
+                    window._skedError = 'Account locked. Please reset password on UMS.';
+                } else {
+                    window._skedError = 'Invalid Registration No or Password.';
+                }
+            }).catch(function(err) {
+                window._skedIsSyncing = false;
+                window._skedError = 'Network error: ' + err.toString();
+            });
+        }
+
+        window.skedForceSubmit = function() {
+            window._skedAuthFailed = false;
+            window._skedError = '';
+            triggerSubmit();
+        };
+
+        if (form && !form.__skedBound) {
+            form.__skedBound = true;
+            form.onsubmit = function(e) {
+                if (e) { e.preventDefault(); e.stopPropagation(); }
+                window._skedAuthFailed = false;
+                window._skedError = '';
+                triggerSubmit();
+                return false;
+            };
+            var submitBtn = form.querySelector('input[type="submit"]');
+            if (submitBtn) {
+                submitBtn.onclick = function(e) {
+                    if (e) { e.preventDefault(); e.stopPropagation(); }
+                    window._skedAuthFailed = false;
+                    window._skedError = '';
+                    triggerSubmit();
+                    return false;
+                };
+            }
+        }
+
+        if (!window._skedIsSyncing && !window._skedTimetableResult && !window._skedAuthFailed) {
+            if (window.location.href.includes('Default3') || window.location.href.includes('StudentDashboard') || window.location.href.includes('frmMyCurrentTimeTable')) {
+                window._skedIsSyncing = true;
+                fetchAllData(document.documentElement.outerHTML, $safeUser, $safePass);
+            } else if (cf && cf.value && cf.value.length > 20 && u && u.value && p && p.value) {
+                triggerSubmit();
+            }
+        }
+
+        var hasToken = !!(cf && cf.value && cf.value.length > 20);
+        var tsIframe = document.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]');
+        var needsInteraction = false;
+        if (!hasToken && !window._skedIsSyncing && !window._skedTimetableResult && !window._skedAuthFailed) {
+            if (!window._skedLoginLoadTime) window._skedLoginLoadTime = Date.now();
+            var waitDuration = Date.now() - window._skedLoginLoadTime;
+            if (tsIframe || waitDuration > 2200) {
+                needsInteraction = true;
+            }
+        }
+
+        var st = 'Waiting for Turnstile verification...';
+        if (needsInteraction) st = '👉 Tap "Verify you are human" below';
+        if (hasToken) st = 'Turnstile verified! Submitting...';
+
+        return JSON.stringify({
+            status: window._skedError || st,
+            error: window._skedError || '',
+            syncing: !!window._skedIsSyncing,
+            authFailed: !!window._skedAuthFailed,
+            hasResult: !!window._skedTimetableResult,
+            needsInteraction: needsInteraction,
+            hasToken: hasToken
+        });
+    } catch(e) {
+        return JSON.stringify({ error: e.toString() });
+    }
+})();
+''';
+
+    try {
+      final raw = await _controller.runJavaScriptReturningResult(tickJs);
+      final rawStr = raw.toString().trim();
+      if (rawStr.isEmpty || rawStr == '""' || rawStr == 'null') return;
+
+      var unquoted = rawStr;
+      if (unquoted.startsWith('"') && unquoted.endsWith('"')) {
+        try {
+          final dec = jsonDecode('{"v":$unquoted}') as Map<String, dynamic>;
+          unquoted = dec['v'] as String? ?? '';
+        } catch (_) {}
+      }
+
+      final stateObj = jsonDecode(unquoted) as Map<String, dynamic>;
+      final st = stateObj['status'] as String? ?? '';
+      final err = stateObj['error'] as String? ?? '';
+      final syncing = stateObj['syncing'] == true;
+      final authFailed = stateObj['authFailed'] == true;
+      final hasRes = stateObj['hasResult'] == true;
+      final needsInteraction = stateObj['needsInteraction'] == true;
+      final hasToken = stateObj['hasToken'] == true;
+
+      if (mounted) {
+        setState(() {
+          if (st.isNotEmpty) _statusText = st;
+          if (err.isNotEmpty) _statusText = err;
+          _isSyncing = syncing;
+
+          // Smart auto-reveal & auto-hide
+          if (hasToken || syncing || hasRes) {
+            if (_showRawWebView) _showRawWebView = false;
+          } else if (needsInteraction && !authFailed && !_isDone) {
+            if (!_showRawWebView) _showRawWebView = true;
+          }
+        });
+      }
+
+      if (authFailed) {
+        _isDone = true;
+        _pollTimer?.cancel();
+        _secondTimer?.cancel();
+        final errText = err.isNotEmpty ? err : 'Invalid Registration No or Password.';
+        if (mounted) {
+          setState(() {
+            _isSyncing = false;
+            _statusText = errText;
+          });
+        }
+        if (widget.onError != null) {
+          widget.onError!(errText);
+        } else {
+          widget.onDismiss();
+        }
+        return;
+      }
+
+      if (hasRes && !_isDone) {
+        _isDone = true;
+        _pollTimer?.cancel();
+        if (mounted) {
+          setState(() {
+            _statusText = 'Syncing schedule & datesheet...';
+            _isSyncing = true;
+          });
+        }
+        await _processResults();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _processResults() async {
+    try {
+      final ttRawObj = await _controller.runJavaScriptReturningResult('window._skedTimetableResult');
+      final dsRawObj = await _controller.runJavaScriptReturningResult("window._skedDatesheetResult || ''");
+
+      final ttRaw = ttRawObj.toString();
+      var dsRaw = dsRawObj.toString();
+
+      // Save session cookies for background on-device auto-sync
+      try {
+        final cookieObj = await _controller.runJavaScriptReturningResult('document.cookie');
+        var cookieStr = cookieObj.toString();
+        if (cookieStr.startsWith('"') && cookieStr.endsWith('"')) {
+          final dec = jsonDecode('{"v":$cookieStr}') as Map<String, dynamic>;
+          cookieStr = dec['v'] as String? ?? '';
+        }
+        if (cookieStr.isNotEmpty) {
+          await SyncService.saveSessionCookies(cookieStr);
+        }
+      } catch (_) {}
+
+      if (dsRaw.startsWith('"') && dsRaw.endsWith('"')) {
+        try {
+          final dec = jsonDecode('{"v":$dsRaw}') as Map<String, dynamic>;
+          dsRaw = dec['v'] as String? ?? '';
+        } catch (_) {}
+      }
+
+      final entries = TimetableParser.parse(ttRaw);
+      if (entries.isNotEmpty) {
+        await TimetableParser.saveToPrefs(entries, widget.userId);
+      }
+      final titleMap = {
+        for (final e in entries)
+          if (e.courseCode.isNotEmpty && e.description.isNotEmpty)
+            e.courseCode.toUpperCase(): e.description
+      };
+
+      // Extract and save leave balances, records, profile and gate pass slip
+      try {
+        final leaveRawObj = await _controller.runJavaScriptReturningResult("window._skedLeaveResult || ''");
+        final slipRawObj = await _controller.runJavaScriptReturningResult("window._skedSlipResult || ''");
+        var leaveRaw = leaveRawObj.toString();
+        var slipRaw = slipRawObj.toString();
+        if (leaveRaw.startsWith('"') && leaveRaw.endsWith('"')) {
+          try {
+            final dec = jsonDecode('{"v":$leaveRaw}') as Map<String, dynamic>;
+            leaveRaw = dec['v'] as String? ?? '';
+          } catch (_) {}
+        }
+        if (slipRaw.startsWith('"') && slipRaw.endsWith('"')) {
+          try {
+            final dec = jsonDecode('{"v":$slipRaw}') as Map<String, dynamic>;
+            slipRaw = dec['v'] as String? ?? '';
+          } catch (_) {}
+        }
+        if (leaveRaw.isNotEmpty) {
+          final parsedLeave = LeaveParser.parse(leaveRaw);
+          if (parsedLeave.balance.dayTotal > 0 || parsedLeave.balance.nightTotal > 0) {
+            await LeaveStorage.saveBalance(parsedLeave.balance);
+          }
+          if (parsedLeave.profile.uid.isNotEmpty || parsedLeave.profile.name.isNotEmpty) {
+            await LeaveStorage.saveProfile(parsedLeave.profile);
+          }
+          if (parsedLeave.records.isNotEmpty) {
+            await LeaveStorage.saveRecords(parsedLeave.records);
+          }
+          if (parsedLeave.requiresOtp) {
+            await LeaveStorage.setOtpRequired(true);
+          }
+        }
+        if (slipRaw.isNotEmpty) {
+          final parsedSlip = LeaveParser.parseGatePass(slipRaw);
+          if (parsedSlip != null && parsedSlip.hasActivePass) {
+            await LeaveStorage.saveGatePass(parsedSlip);
+          }
+        }
+      } catch (_) {}
+
+      // 1. FAST PATH (Classic UMS): Check if classic UMS HTML already contains exams with allocated rooms
+      List<ExamItem> examsFound = [];
+      List<ExamItem> classicExams = [];
+      if (dsRaw.isNotEmpty) {
+        classicExams = ExamParser.parseDatesheetHtml(dsRaw, titleMap);
+        final hasRealAllocations = classicExams.any((e) => e.room.isNotEmpty && e.room != 'Seating Awaited');
+        if (classicExams.isNotEmpty && hasRealAllocations) {
+          examsFound = classicExams;
+        } else if (classicExams.isNotEmpty) {
+          // If classic exams exist, prioritize them for ultra-fast login
+          examsFound = classicExams;
+        }
+      }
+
+      // 2. MODERN PORTAL PATH (1st & 2nd Year): Load via official UMS SSO redirect
+      if (examsFound.isEmpty) {
+        if (mounted) {
+          setState(() => _statusText = 'Syncing Examination Schedule...');
+        }
+
+        // Navigate WebView to official openapp.aspx SSO redirect which forwards to studentums.lpu.in with authentic 256-hex token
+        await _controller.loadRequest(
+          Uri.parse('https://ums.lpu.in/lpuums/openapp.aspx?from=ums&toApp=nextproject&pagename=dashboard/examination/conduct/seatingplan'),
+        );
+
+        for (var attempt = 0; attempt < 12; attempt++) {
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (!mounted) return;
+
+          final elapsedSec = (attempt + 1) ~/ 2;
+          if (mounted) {
+            setState(() => _statusText = 'Syncing Examination Schedule (${elapsedSec}s)...');
+          }
+
+          try {
+            // Check if redirected to studentdashboard without seatingplan, redirect in JS & hook Next.js console
+            final redirectCheckJs = '''
+(function() {
+    try {
+        var href = window.location.href;
+        if (href.indexOf('studentdashboard') !== -1 && href.indexOf('seatingplan') === -1) {
+            window.location.href = 'https://studentums.lpu.in/dashboard/examination/conduct/seatingplan';
+        }
+        if (!window._skedConsoleHooked) {
+            window._skedConsoleHooked = true;
+            var origLog = console.log;
+            console.log = function() {
+                try {
+                    for (var i = 0; i < arguments.length; i++) {
+                        var a = arguments[i];
+                        if (typeof a === 'string' && (a.indexOf('Parsed Data:') !== -1 || a.indexOf('Response seatingPlan') !== -1)) {
+                            window._skedRawExamsJson = a;
+                        }
+                    }
+                } catch(e) {}
+                return origLog.apply(console, arguments);
+            };
+        }
+        var txt = document.body ? document.body.innerText : '';
+        return JSON.stringify({
+            txt: txt,
+            rawJson: window._skedRawExamsJson || ''
+        });
+    } catch(e) {
+        return JSON.stringify({ txt: '', rawJson: '' });
+    }
+})()
+''';
+            final resObj = await _controller.runJavaScriptReturningResult(redirectCheckJs);
+            var resStr = resObj.toString();
+            if (resStr.startsWith('"') && resStr.endsWith('"')) {
+              try {
+                final dec = jsonDecode('{"v":$resStr}') as Map<String, dynamic>;
+                resStr = dec['v'] as String? ?? '';
+              } catch (_) {}
+            }
+
+            var textRaw = '';
+            var rawJson = '';
+            try {
+              final payload = jsonDecode(resStr) as Map<String, dynamic>;
+              textRaw = payload['txt'] as String? ?? '';
+              rawJson = payload['rawJson'] as String? ?? '';
+            } catch (_) {
+              textRaw = resStr;
+            }
+
+            if (rawJson.isNotEmpty) {
+              final cleanHook = rawJson.contains('Parsed Data:')
+                  ? rawJson.substring(rawJson.indexOf('Parsed Data:') + 'Parsed Data:'.length).trim()
+                  : (rawJson.contains('Response seatingPlan')
+                      ? rawJson.substring(rawJson.indexOf('Response seatingPlan') + 'Response seatingPlan'.length).trim()
+                      : rawJson.trim());
+              if (cleanHook.startsWith('[') || cleanHook.startsWith('{')) {
+                final parsedJson = ExamParser.parseDatesheetHtml(cleanHook, titleMap);
+                if (parsedJson.isNotEmpty) {
+                  examsFound = parsedJson;
+                  break;
+                }
+              }
+            }
+
+            final parsed = ExamParser.parseDatesheetHtml(textRaw, titleMap);
+            if (parsed.isNotEmpty) {
+              examsFound = parsed;
+              break;
+            } else if (attempt >= 20 && (
+                textRaw.toLowerCase().contains('exam not scheduled') ||
+                textRaw.toLowerCase().contains('no record found') ||
+                (textRaw.contains('Total Exam 0') && !textRaw.toLowerCase().contains('loading'))
+            )) {
+              break;
+            }
+          } catch (_) {}
+        }
+
+        if (examsFound.isEmpty && classicExams.isNotEmpty) {
+          examsFound = classicExams;
+        }
+      }
+
+      if (examsFound.isNotEmpty) {
+        await ExamParser.saveExamsToPrefs(examsFound);
+      }
+      final exams = examsFound;
+
+      if (mounted) {
+        if (entries.isNotEmpty) {
+          setState(() {
+            _maxProgress = 1.0;
+            _statusText = 'Sync complete!';
+          });
+          await Future.delayed(const Duration(milliseconds: 400));
+          if (!mounted) return;
+          final examSuffix = exams.isNotEmpty ? ' & ${exams.length} exams' : '';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Synced timetable (${entries.length} classes$examSuffix)'),
+              backgroundColor: SkedColors.slab,
+            ),
+          );
+          widget.onSuccess(widget.userId);
+        } else {
+          setState(() {
+            _isSyncing = false;
+            _statusText = 'No classes found in timetable';
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+          _statusText = 'Parse error: $e';
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    _secondTimer?.cancel();
+    _crawlTimer?.cancel();
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  String _computeTitle() {
+    final s = _statusText.toLowerCase();
+    if (s.contains('exam') || s.contains('datesheet') || s.contains('seating')) {
+      return 'SYNCING EXAMS';
+    }
+    if (s.contains('schedule') || s.contains('classes') || s.contains('timetable')) {
+      return 'SYNCING TIMETABLE';
+    }
+    if (s.contains('authenticating') || s.contains('submitting') || s.contains('logging')) {
+      return 'LOGGING IN';
+    }
+    if (s.contains('turnstile') || s.contains('verifying') || s.contains('security')) {
+      return 'SECURITY CHECK';
+    }
+    return 'CONNECTING TO UMS';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: SkedColors.ink,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            // 1. Embedded Webview kept active in view hierarchy
+            Positioned.fill(
+              child: Padding(
+                padding: EdgeInsets.only(top: _showRawWebView ? 56 : 0),
+                child: WebViewWidget(controller: _controller),
+              ),
+            ),
+
+            // 2. Foreground UI: Portal Browser Inspection OR SKED Modern Loading Screen
+            if (_showRawWebView)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  color: SkedColors.slab,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'LPU UMS BROWSER',
+                              style: GoogleFonts.barlowCondensed(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                                color: SkedColors.chalk,
+                              ),
+                            ),
+                            Text(
+                              _statusText,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: _statusText.toLowerCase().contains('invalid') || _statusText.toLowerCase().contains('error')
+                                    ? SkedColors.dangerRed
+                                    : SkedColors.slate,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextButton(
+                            onPressed: () => setState(() => _showRawWebView = false),
+                            child: Text(
+                              'HIDE',
+                              style: GoogleFonts.barlowCondensed(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: SkedColors.blaze,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.refresh, color: SkedColors.slate, size: 20),
+                            onPressed: () => _controller.reload(),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, color: SkedColors.slate, size: 20),
+                            onPressed: widget.onDismiss,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Positioned.fill(
+                child: Container(
+                  color: SkedColors.ink,
+                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Top Bar
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'SKED.',
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                              color: SkedColors.blaze,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, color: SkedColors.slate, size: 22),
+                            onPressed: widget.onDismiss,
+                          ),
+                        ],
+                      ),
+
+                      // Center Content
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Pulsing Logo Indicator
+                          AnimatedBuilder(
+                            animation: _pulseController,
+                            builder: (context, child) {
+                              return SizedBox(
+                                width: 110,
+                                height: 110,
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    Transform.scale(
+                                      scale: _pulseScale.value,
+                                      child: Container(
+                                        width: 110,
+                                        height: 110,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: SkedColors.blaze.withOpacity(_pulseAlpha.value),
+                                        ),
+                                      ),
+                                    ),
+                                    Container(
+                                      width: 80,
+                                      height: 80,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: SkedColors.slab,
+                                        border: Border.all(color: SkedColors.rule),
+                                      ),
+                                    ),
+                                    const SizedBox(
+                                      width: 56,
+                                      height: 56,
+                                      child: CircularProgressIndicator(
+                                        color: SkedColors.blaze,
+                                        strokeWidth: 3,
+                                      ),
+                                    ),
+                                    Icon(
+                                      _isSyncing ? Icons.sync : Icons.lock,
+                                      color: SkedColors.blaze,
+                                      size: 24,
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+
+                          const SizedBox(height: 28),
+
+                          // Dynamic Step Title
+                          Text(
+                            _computeTitle(),
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              color: SkedColors.chalk,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
+
+                          const SizedBox(height: 8),
+
+                          // Status text
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: Text(
+                              _statusText,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: SkedColors.slate,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+
+                          const SizedBox(height: 18),
+
+                          // Sync Progress Bar
+                          Builder(
+                            builder: (context) {
+                              final st = _statusText.toLowerCase();
+                              int stage;
+                              if (st.contains('complete') || _maxProgress >= 1.0) {
+                                stage = 5;
+                              } else if (st.contains('exam') || st.contains('datesheet') || st.contains('seating')) {
+                                stage = 4;
+                              } else if (st.contains('schedule') || st.contains('timetable') || st.contains('classes')) {
+                                stage = 3;
+                              } else if (_isSyncing || st.contains('authenticating') || st.contains('submitting')) {
+                                stage = 2;
+                              } else if (st.contains('verified')) {
+                                stage = 1;
+                              } else if (st.contains('turnstile') || st.contains('security')) {
+                                stage = 1;
+                              } else {
+                                stage = 0;
+                              }
+
+                              final now = DateTime.now().millisecondsSinceEpoch;
+                              if (stage != _lastStage) {
+                                _lastStage = stage;
+                                _stageStartTime = now;
+                              }
+                              final stageElapsed = (_stageStartTime > 0 ? (now - _stageStartTime) / 1000.0 : 0.0).clamp(0.0, 60.0);
+
+                              double floor;
+                              double ceiling;
+                              double timeConstant;
+                              switch (stage) {
+                                case 5: floor = 1.0; ceiling = 1.0; timeConstant = 1.0; break;
+                                case 4: floor = 0.70; ceiling = 0.95; timeConstant = 6.0; break;
+                                case 3: floor = 0.55; ceiling = 0.70; timeConstant = 4.0; break;
+                                case 2: floor = 0.42; ceiling = 0.55; timeConstant = 4.0; break;
+                                case 1:
+                                  floor = st.contains('verified') ? 0.38 : 0.20;
+                                  ceiling = st.contains('verified') ? 0.42 : 0.38;
+                                  timeConstant = st.contains('verified') ? 2.0 : 6.0;
+                                  break;
+                                default: floor = 0.10; ceiling = 0.20; timeConstant = 4.0; break;
+                              }
+
+                              final current = stage == 5
+                                  ? 1.0
+                                  : floor + (ceiling - floor) * (1.0 - math.exp(-stageElapsed / timeConstant));
+
+                              if (current > _maxProgress) {
+                                _maxProgress = current;
+                              }
+
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          'SYNC PROGRESS',
+                                          style: GoogleFonts.barlowCondensed(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 1.0,
+                                            color: SkedColors.slate,
+                                          ),
+                                        ),
+                                        Text(
+                                          '${(_maxProgress * 100).toInt()}%',
+                                          style: GoogleFonts.barlowCondensed(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: SkedColors.blaze,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    _ShimmerProgressBar(progress: _maxProgress),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // Steps Milestone Checklist
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: SkedColors.slab,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: SkedColors.rule),
+                            ),
+                            child: Builder(
+                              builder: (context) {
+                                final hasReachedAuth = _maxProgress >= 0.40 || _isSyncing || _statusText.toLowerCase().contains('verified') || _statusText.toLowerCase().contains('authenticating');
+                                final isComplete = _maxProgress >= 0.99 || _statusText.toLowerCase().contains('complete');
+
+                                return Column(
+                                  children: [
+                                    _buildSyncStepRow(
+                                      title: 'Connect to LPU Portal',
+                                      isDone: true,
+                                      isActive: false,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    _buildSyncStepRow(
+                                      title: 'Cloudflare Security Check',
+                                      isDone: hasReachedAuth,
+                                      isActive: !hasReachedAuth && (_statusText.toLowerCase().contains('turnstile') || _statusText.toLowerCase().contains('loading') || _statusText.toLowerCase().contains('security') || _statusText.toLowerCase().contains('connecting')),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    _buildSyncStepRow(
+                                      title: 'Sync Schedule & Datesheet',
+                                      isDone: isComplete,
+                                      isActive: hasReachedAuth && !isComplete,
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Humorous & Relatable UMS Speed Indicator Pill
+                          if (_elapsedSeconds >= 4) ...[
+                            const SizedBox(height: 16),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: SkedColors.slab,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: SkedColors.blaze.withOpacity(0.35)),
+                              ),
+                              child: Text(
+                                _elapsedSeconds >= 14
+                                    ? 'UMS is dying right now 😭 hang tight...'
+                                    : _elapsedSeconds >= 9
+                                        ? 'UMS is painfully slow today 😭'
+                                        : 'UMS is too slow 😭',
+                                style: GoogleFonts.barlowCondensed(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: SkedColors.blaze,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+
+                      // Bottom Action Buttons
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_elapsedSeconds >= 8)
+                            TextButton(
+                              onPressed: () => setState(() => _showRawWebView = true),
+                              child: const Text(
+                                'Taking longer than usual? View Portal',
+                                style: TextStyle(
+                                  color: SkedColors.blaze,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            )
+                          else
+                            TextButton(
+                              onPressed: () => setState(() => _showRawWebView = true),
+                              child: Text(
+                                'VIEW BROWSER DETAILS',
+                                style: TextStyle(
+                                  color: SkedColors.slate.withOpacity(0.5),
+                                  fontSize: 11,
+                                  letterSpacing: 1.0,
+                                ),
+                              ),
+                            ),
+                          TextButton(
+                            onPressed: widget.onDismiss,
+                            child: const Text(
+                              'CANCEL',
+                              style: TextStyle(
+                                color: SkedColors.slate,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.0,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSyncStepRow({
+    required String title,
+    required bool isDone,
+    required bool isActive,
+  }) {
+    return Row(
+      children: [
+        if (isDone)
+          const Icon(Icons.check_circle, size: 16, color: SkedColors.blaze)
+        else if (isActive)
+          const SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              color: SkedColors.blaze,
+              strokeWidth: 2,
+            ),
+          )
+        else
+          Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: SkedColors.slate.withOpacity(0.4), width: 1.5),
+            ),
+          ),
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 14,
+            fontWeight: isActive || isDone ? FontWeight.w600 : FontWeight.w500,
+            color: isDone || isActive ? SkedColors.chalk : SkedColors.slate,
+            letterSpacing: 0.3,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ShimmerProgressBar extends StatefulWidget {
+  final double progress;
+
+  const _ShimmerProgressBar({required this.progress});
+
+  @override
+  State<_ShimmerProgressBar> createState() => _ShimmerProgressBarState();
+}
+
+class _ShimmerProgressBarState extends State<_ShimmerProgressBar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: CustomPaint(
+            size: const Size(double.infinity, 6),
+            painter: _ShimmerProgressPainter(
+              progress: widget.progress.clamp(0.0, 1.0),
+              shimmerValue: _controller.value,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ShimmerProgressPainter extends CustomPainter {
+  final double progress;
+  final double shimmerValue;
+
+  _ShimmerProgressPainter({
+    required this.progress,
+    required this.shimmerValue,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final trackRadius = Radius.circular(size.height / 2);
+    final trackRRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      trackRadius,
+    );
+
+    // 1. Inactive background track
+    final trackPaint = Paint()
+      ..color = SkedColors.rule
+      ..style = PaintingStyle.fill;
+    canvas.drawRRect(trackRRect, trackPaint);
+
+    // 2. Filled progress with continuous light stream
+    final progressWidth = size.width * progress;
+    if (progressWidth > 0) {
+      final progressRRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, 0, progressWidth, size.height),
+        trackRadius,
+      );
+
+      final beamWidth = (progressWidth * 0.40).clamp(40.0, 120.0);
+      final startX = -beamWidth + (progressWidth + 2 * beamWidth) * shimmerValue;
+
+      final gradient = ui.Gradient.linear(
+        Offset(startX, 0),
+        Offset(startX + beamWidth, 0),
+        [
+          SkedColors.blaze,
+          const Color(0xFFFF8533),
+          const Color(0xFFFFE0B2),
+          const Color(0xFFFF8533),
+          SkedColors.blaze,
+        ],
+        [0.0, 0.25, 0.5, 0.75, 1.0],
+        TileMode.clamp,
+      );
+
+      final progressPaint = Paint()
+        ..shader = gradient
+        ..style = PaintingStyle.fill;
+
+      canvas.drawRRect(progressRRect, progressPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ShimmerProgressPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.shimmerValue != shimmerValue;
+  }
+}
+

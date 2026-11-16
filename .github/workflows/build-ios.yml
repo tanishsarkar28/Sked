@@ -1,0 +1,146 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'sked-app/**'
+      - '.github/workflows/build-ios.yml'
+
+jobs:
+  build-ios:
+    name: Build & Package iOS IPA
+    runs-on: macos-14
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Verify Flutter Installation
+        run: flutter doctor -v
+
+      - name: Setup iOS Project Scaffolding
+        run: |
+          cd sked-app
+          if [ ! -d "ios/Runner.xcodeproj" ]; then
+            echo "Generating iOS platform project files with project-name sked_app..."
+            flutter create --project-name sked_app --platforms=ios --org com.sked .
+          fi
+          # Ensure display name is Sked using macOS PlistBuddy
+          if [ -f "ios/Runner/Info.plist" ]; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Sked" ios/Runner/Info.plist 2>/dev/null || \
+            /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Sked" ios/Runner/Info.plist 2>/dev/null || true
+          fi
+          # Disable code signing requirement in xcconfig files
+          echo "Disabling code signing requirement in xcconfig..."
+          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
+          echo "EXPANDED_CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
+
+          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Debug.xcconfig
+          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Debug.xcconfig
+          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Debug.xcconfig
+          echo "EXPANDED_CODE_SIGN_IDENTITY=" >> ios/Flutter/Debug.xcconfig
+
+          # Configure project.pbxproj for manual unsigned release build
+          if [ -f "ios/Runner.xcodeproj/project.pbxproj" ]; then
+            sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual; CODE_SIGNING_ALLOWED = NO; CODE_SIGNING_REQUIRED = NO; CODE_SIGN_IDENTITY = "";/g' ios/Runner.xcodeproj/project.pbxproj || true
+            sed -i '' 's/DevelopmentTeam = "";/DevelopmentTeam = "0000000000";/g' ios/Runner.xcodeproj/project.pbxproj || true
+          fi
+
+          # Pre-install xcodeproj gem
+          sudo gem install xcodeproj --no-document 2>/dev/null || gem install xcodeproj --no-document 2>/dev/null || true
+
+      - name: Install Flutter Dependencies
+        run: |
+          cd sked-app
+          flutter pub get
+
+      - name: Build iOS Release Binary (Unsigned)
+        run: |
+          cd sked-app
+          # Prepare Flutter framework and CocoaPods dependencies
+          flutter build ios --config-only --release --no-codesign
+
+          # Inject native WidgetKit extension target into Runner.xcodeproj
+          if [ -f "ios/setup_widget_target.rb" ]; then
+            echo "Configuring TimetableWidgetExtension target..."
+            ruby ios/setup_widget_target.rb || echo "Widget target configuration skipped"
+          fi
+
+          # Archive with Xcode without code signing, with fallback
+          xcodebuild -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO || \
+          xcodebuild -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/ios \
+            build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" || \
+          flutter build ios --release --no-codesign
+
+      - name: Package Unsigned .IPA
+        run: |
+          cd sked-app
+          echo "Locating Runner.app..."
+          mkdir -p Payload
+          if [ -d "build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app" ]; then
+            cp -R "build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app" Payload/
+          elif [ -d "build/ios/iphoneos/Runner.app" ]; then
+            cp -R "build/ios/iphoneos/Runner.app" Payload/
+          elif [ -d "build/ios/Build/Products/Release-iphoneos/Runner.app" ]; then
+            cp -R "build/ios/Build/Products/Release-iphoneos/Runner.app" Payload/
+          else
+            RUNNER_PATH=$(find build/ios -name "Runner.app" -type d | head -n 1)
+            if [ -n "$RUNNER_PATH" ]; then
+              cp -R "$RUNNER_PATH" Payload/
+            else
+              echo "Error: Runner.app not found!"
+              exit 1
+            fi
+          fi
+          # Check PlugIns in Runner.app
+          ls -la Payload/Runner.app/PlugIns || echo "No PlugIns found"
+          zip -r -y sked-ios.ipa Payload
+          ls -lh sked-ios.ipa
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sked-ios.ipa
+          path: sked-app/sked-ios.ipa
+          retention-days: 30
+
+      - name: Commit Updated IPA to Repository
+        run: |
+          mkdir -p sked-web/public/downloads
+          cp sked-app/sked-ios.ipa sked-web/public/downloads/sked-ios.ipa
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add sked-web/public/downloads/sked-ios.ipa
+          git commit -m "chore: update native sked-ios.ipa binary [skip ci]" || echo "No changes to commit"
+          git pull --rebase origin main || true
+          git push origin main || echo "Push skipped or permissions restricted in repo settings"
