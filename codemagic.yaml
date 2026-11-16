@@ -15,7 +15,7 @@ workflows:
           include: true
           source: true
     scripts:
-      - name: Setup iOS Scaffolding
+      - name: Setup iOS Scaffolding & Disable Code Signing
         script: |
           cd sked-app
           if [ ! -d "ios/Runner.xcodeproj" ]; then
@@ -25,6 +25,23 @@ workflows:
           if [ -f "ios/Runner/Info.plist" ]; then
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Sked" ios/Runner/Info.plist 2>/dev/null || \
             /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Sked" ios/Runner/Info.plist 2>/dev/null || true
+          fi
+
+          # Force disable code signing in xcconfig
+          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
+          echo "EXPANDED_CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
+
+          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Debug.xcconfig
+          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Debug.xcconfig
+          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Debug.xcconfig
+          echo "EXPANDED_CODE_SIGN_IDENTITY=" >> ios/Flutter/Debug.xcconfig
+
+          # Configure project.pbxproj for manual unsigned build (bypasses Xcode team requirement)
+          if [ -f "ios/Runner.xcodeproj/project.pbxproj" ]; then
+            sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual; CODE_SIGNING_ALLOWED = NO; CODE_SIGNING_REQUIRED = NO; CODE_SIGN_IDENTITY = "";/g' ios/Runner.xcodeproj/project.pbxproj || true
+            sed -i '' 's/DevelopmentTeam = "";/DevelopmentTeam = "0000000000";/g' ios/Runner.xcodeproj/project.pbxproj || true
           fi
 
       - name: Install Flutter Dependencies
@@ -44,16 +61,39 @@ workflows:
       - name: Build & Package Native iOS IPA
         script: |
           cd sked-app
-          flutter build ios --release --no-codesign
+          
+          # Build release binary with Xcode directly (bypasses Flutter Development Team check)
+          xcodebuild -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO || \
+          xcodebuild -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/ios \
+            build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+          echo "Packaging Runner.app into sked-ios.ipa..."
           mkdir -p Payload
-          if [ -d "build/ios/iphoneos/Runner.app" ]; then
-            cp -R "build/ios/iphoneos/Runner.app" Payload/
+          if [ -d "build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app" ]; then
+            cp -R "build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app" Payload/
+          elif [ -d "build/ios/Build/Products/Release-iphoneos/Runner.app" ]; then
+            cp -R "build/ios/Build/Products/Release-iphoneos/Runner.app" Payload/
           else
             RUNNER_PATH=$(find build/ios -name "Runner.app" -type d | head -n 1)
             cp -R "$RUNNER_PATH" Payload/
           fi
+
           zip -r -y sked-ios.ipa Payload
           ls -lh sked-ios.ipa
-
-    artifacts:
-      - sked-app/sked-ios.ipa
+          echo "IPA packaging complete!"
