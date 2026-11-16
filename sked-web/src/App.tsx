@@ -29,7 +29,12 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-[#E8E6E3] font-['Inter'] relative selection:bg-[#FF6B1A] selection:text-[#0A0A0A]">
+    <div className="min-h-screen bg-[#0A0A0A] text-[#E8E6E3] font-['Inter'] relative selection:bg-[#FF6B1A] selection:text-[#0A0A0A] overflow-hidden">
+      {/* Ambient Liquid Glow Orbs */}
+      <div className="absolute top-[28%] -left-40 w-[480px] h-[480px] bg-[#FF6B1A]/10 liquid-glow-orb pointer-events-none" />
+      <div className="absolute top-[52%] -right-40 w-[480px] h-[480px] bg-sky-500/10 liquid-glow-orb pointer-events-none" />
+      <div className="absolute top-[78%] left-1/4 w-[520px] h-[520px] bg-[#FF6B1A]/5 liquid-glow-orb pointer-events-none" />
+
       {/* Navigation */}
       <Navbar onInstallClick={scrollToInstall} />
 

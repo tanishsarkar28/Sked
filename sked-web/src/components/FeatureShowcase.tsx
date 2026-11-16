@@ -74,7 +74,7 @@ export const FeatureShowcase: React.FC = () => {
   return (
     <section id="features" className="py-24 px-6 max-w-7xl mx-auto border-t border-[#252525]">
       <div className="text-center mb-16 space-y-4">
-        <Badge variant="secondary" className="bg-[#FF6B1A]/10 text-[#FF6B1A] border-[#FF6B1A]/30 font-mono text-xs">
+        <Badge variant="secondary" className="bg-white/[0.06] text-[#FF6B1A] border border-white/15 backdrop-blur-xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.25)] font-mono text-xs py-1 px-3.5 rounded-full">
           ENGINEERED FOR LPU STUDENTS
         </Badge>
         <h2 className="text-4xl sm:text-5xl font-bold font-['Barlow_Condensed'] text-[#E8E6E3] tracking-wide">
@@ -87,12 +87,12 @@ export const FeatureShowcase: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {features.map((f, idx) => (
-          <Card key={idx} className="bg-[#141414] border-[#252525] p-6 rounded-xl hover:border-[#FF6B1A]/40 transition-all duration-300 group">
+          <Card key={idx} className="liquid-glass-card p-6 rounded-2xl group">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg bg-[#FF6B1A]/10 border border-[#FF6B1A]/30 flex items-center justify-center text-[#FF6B1A] group-hover:scale-110 transition-transform">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#FF6B1A]/20 to-[#FF6B1A]/5 border border-[#FF6B1A]/35 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_4px_16px_rgba(255,107,26,0.18)] flex items-center justify-center text-[#FF6B1A] group-hover:scale-110 group-hover:shadow-[inset_0_1px_2px_rgba(255,255,255,0.4),0_6px_20px_rgba(255,107,26,0.3)] transition-all duration-300">
                 <f.icon className="w-6 h-6" />
               </div>
-              <span className="text-[11px] font-mono text-[#7A7774] border border-[#252525] px-2 py-0.5 rounded">
+              <span className="text-[11px] font-mono text-[#A1A1AA] bg-white/[0.04] border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] px-2.5 py-0.5 rounded-full">
                 {f.tag}
               </span>
             </div>

@@ -67,7 +67,7 @@ export const WidgetPreview: React.FC = () => {
   return (
     <section id="widget" className="py-24 px-6 max-w-7xl mx-auto border-t border-[#252525]">
       <div className="text-center mb-16 space-y-4">
-        <Badge variant="secondary" className="bg-[#FF6B1A]/10 text-[#FF6B1A] border-[#FF6B1A]/30 font-mono text-xs">
+        <Badge variant="secondary" className="bg-white/[0.06] text-[#FF6B1A] border border-white/15 backdrop-blur-xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.25)] font-mono text-xs py-1 px-3.5 rounded-full">
           HOME SCREEN GLANCE WIDGET
         </Badge>
         <h2 className="text-4xl sm:text-5xl font-bold font-['Barlow_Condensed'] text-[#E8E6E3] tracking-wide">
@@ -82,13 +82,13 @@ export const WidgetPreview: React.FC = () => {
         {/* Widget Frame — simulates home screen placement */}
         <div className="w-full max-w-[520px]">
           {/* Fake wallpaper background with blur */}
-          <div className="relative rounded-3xl bg-gradient-to-br from-[#1a1520] via-[#0d1117] to-[#0a1628] p-6 border border-[#252525] shadow-2xl overflow-hidden">
+          <div className="relative rounded-3xl bg-gradient-to-br from-[#1a1520] via-[#0d1117] to-[#0a1628] p-6 border border-white/10 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] overflow-hidden">
             {/* Subtle wallpaper glow effects */}
             <div className="absolute top-0 left-0 w-40 h-40 bg-purple-900/20 rounded-full blur-[80px]" />
             <div className="absolute bottom-0 right-0 w-56 h-56 bg-blue-900/15 rounded-full blur-[100px]" />
 
             {/* Widget container */}
-            <div className="relative bg-[#0A0A0A]/95 backdrop-blur-sm rounded-2xl border border-[#252525] overflow-hidden">
+            <div className="relative bg-black/65 backdrop-blur-2xl rounded-2xl border border-white/15 shadow-[inset_0_1px_1px_rgba(255,255,255,0.2),0_16px_40px_rgba(0,0,0,0.6)] overflow-hidden">
               {/* Widget Header */}
               <div className="flex items-center justify-between px-4 pt-4 pb-2">
                 <div className="flex items-center gap-2">
@@ -105,15 +105,15 @@ export const WidgetPreview: React.FC = () => {
               </div>
 
               {/* Day Tabs */}
-              <div className="flex gap-0.5 px-3 pb-3">
+              <div className="flex gap-1 px-3 pb-3">
                 {widgetDays.map((d) => (
                   <button
                     key={d}
                     onClick={() => setWidgetDay(d)}
-                    className={`flex-1 py-1.5 rounded-md text-center transition-all text-[10px] font-['Barlow_Condensed'] font-bold tracking-wide ${
+                    className={`flex-1 py-1.5 rounded-lg text-center transition-all duration-200 text-[10px] font-['Barlow_Condensed'] font-bold tracking-wide ${
                       widgetDay === d
-                        ? 'bg-[#FF6B1A] text-[#0A0A0A] shadow-lg shadow-[#FF6B1A]/20'
-                        : 'text-[#7A7774] hover:text-[#E8E6E3] hover:bg-[#141414]'
+                        ? 'bg-gradient-to-b from-[#FF6B1A] to-[#FF8533] text-[#0A0A0A] shadow-md shadow-[#FF6B1A]/30'
+                        : 'text-[#7A7774] hover:text-[#E8E6E3] hover:bg-white/[0.04]'
                     }`}
                   >
                     {d}
@@ -122,7 +122,7 @@ export const WidgetPreview: React.FC = () => {
               </div>
 
               {/* Class Rows */}
-              <div className="px-3 pb-3 space-y-1">
+              <div className="px-3 pb-3 space-y-1.5">
                 {widgetDay === 'SUN' ? (
                   <div className="flex flex-col items-center justify-center py-8 space-y-3">
                     <img
@@ -150,7 +150,7 @@ export const WidgetPreview: React.FC = () => {
                     return (
                       <div
                         key={i}
-                        className="flex items-center gap-2.5 bg-[#141414] rounded-lg px-3 py-2 border border-[#1F1F1F] hover:border-[#FF6B1A]/20 transition-colors"
+                        className="flex items-center gap-2.5 bg-white/[0.03] backdrop-blur-md rounded-xl px-3 py-2 border border-white/10 hover:border-[#FF6B1A]/30 transition-all shadow-[inset_0_1px_1px_rgba(255,255,255,0.06)]"
                       >
                         {/* Status dot */}
                         <div className={`w-2 h-2 rounded-full ${sc.dot} flex-shrink-0`} />

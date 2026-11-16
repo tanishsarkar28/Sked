@@ -114,7 +114,7 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
       )}
 
       <div className="text-center mb-12 space-y-4">
-        <Badge variant="secondary" className="bg-[#FF6B1A]/10 text-[#FF6B1A] border-[#FF6B1A]/30 font-mono text-xs">
+        <Badge variant="secondary" className="bg-white/[0.06] text-[#FF6B1A] border border-white/15 backdrop-blur-xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.25)] font-mono text-xs py-1 px-3.5 rounded-full">
           INSTALLATION PORTAL
         </Badge>
         <h2 className="text-4xl sm:text-5xl font-bold font-['Barlow_Condensed'] text-[#E8E6E3] tracking-wide">
@@ -130,12 +130,12 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
           <span className="text-[11px] font-mono tracking-widest uppercase text-[#7A7774] mb-2.5">
             Step 1: Choose Your Platform
           </span>
-          <div className="inline-flex p-1.5 rounded-2xl bg-[#141414] border border-[#252525] shadow-inner">
+          <div className="inline-flex p-1.5 rounded-2xl bg-white/[0.04] backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15),0_8px_30px_rgba(0,0,0,0.3)]">
             <button
               onClick={() => handleTabClick('android')}
               className={`flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === 'android'
-                  ? 'bg-[#FF6B1A] text-[#0A0A0A] shadow-md font-bold'
+                  ? 'bg-gradient-to-r from-[#FF6B1A] to-[#FF8533] text-[#0A0A0A] shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_6px_20px_rgba(255,107,26,0.35)] font-bold'
                   : 'text-[#7A7774] hover:text-[#E8E6E3]'
               }`}
               title="Click to select or download Android APK"
@@ -152,7 +152,7 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
               onClick={() => handleTabClick('ios')}
               className={`flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === 'ios'
-                  ? 'bg-[#38BDF8] text-[#0A0A0A] shadow-md font-bold'
+                  ? 'bg-gradient-to-r from-[#38BDF8] to-[#0284C7] text-[#0A0A0A] shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_6px_20px_rgba(56,189,248,0.35)] font-bold'
                   : 'text-[#7A7774] hover:text-[#E8E6E3]'
               }`}
               title="Click to select or download iOS IPA"
@@ -171,10 +171,10 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
           <div className="mt-5 w-full max-w-sm mx-auto sm:hidden">
             <button
               onClick={() => triggerDownload(activeTab)}
-              className={`w-full py-4 px-6 rounded-xl font-['Barlow_Condensed'] font-bold text-lg tracking-wide shadow-2xl flex items-center justify-center gap-2.5 transition-all active:scale-95 ${
+              className={`w-full py-4 px-6 rounded-2xl font-['Barlow_Condensed'] font-bold text-lg tracking-wide shadow-2xl flex items-center justify-center gap-2.5 transition-all active:scale-95 ${
                 activeTab === 'android'
-                  ? 'bg-[#FF6B1A] text-[#0A0A0A] hover:bg-[#FF6B1A]/90'
-                  : 'bg-[#38BDF8] text-[#0A0A0A] hover:bg-[#38BDF8]/90'
+                  ? 'bg-gradient-to-r from-[#FF6B1A] to-[#FF8533] text-[#0A0A0A] hover:opacity-95 shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_8px_24px_rgba(255,107,26,0.35)]'
+                  : 'bg-gradient-to-r from-[#38BDF8] to-[#0284C7] text-[#0A0A0A] hover:opacity-95 shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_8px_24px_rgba(56,189,248,0.35)]'
               }`}
             >
               <Download className="w-5 h-5 animate-bounce" />
@@ -195,12 +195,12 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* Main Download Card */}
           <div className="lg:col-span-5">
-            <Card className="bg-[#141414] border-[#252525] p-8 rounded-2xl relative overflow-hidden shadow-2xl">
+            <Card className="liquid-glass-card p-8 rounded-3xl relative overflow-hidden shadow-2xl">
               <div className="absolute top-0 right-0 w-32 h-32 bg-[#FF6B1A]/10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />
               
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-[#FF6B1A]/15 border border-[#FF6B1A]/30 flex items-center justify-center text-[#FF6B1A]">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#FF6B1A]/25 to-[#FF6B1A]/5 border border-[#FF6B1A]/35 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25)] flex items-center justify-center text-[#FF6B1A]">
                     <AndroidIcon className="w-6 h-6" />
                   </div>
                   <div>
@@ -224,7 +224,7 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                   download="sked-android.apk"
                   className="w-full block"
                 >
-                  <Button className="w-full bg-[#FF6B1A] text-[#0A0A0A] hover:bg-[#FF6B1A]/90 font-bold font-['Barlow_Condensed'] text-xl py-6 tracking-wide shadow-xl flex items-center justify-center gap-2 rounded-xl">
+                  <Button className="w-full bg-gradient-to-r from-[#FF6B1A] to-[#FF8533] text-[#0A0A0A] hover:from-[#FF7528] hover:to-[#FF8F42] font-bold font-['Barlow_Condensed'] text-xl py-6 tracking-wide shadow-[inset_0_1px_1px_rgba(255,255,255,0.5),0_10px_32px_rgba(255,107,26,0.4)] border border-[#FF8533]/50 flex items-center justify-center gap-2 rounded-2xl transition-all duration-300">
                     <Download className="w-5 h-5" />
                     DOWNLOAD APK (DIRECT)
                   </Button>
@@ -274,7 +274,7 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
             </Card>
 
             {/* ADB Command Box for developers */}
-            <Card className="bg-[#0D0D0D] border-[#252525] p-5 rounded-xl mt-6">
+            <Card className="bg-white/[0.03] backdrop-blur-xl border border-white/10 p-5 rounded-2xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] mt-6">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-mono text-[#7A7774] flex items-center gap-2">
                   <Terminal className="w-3.5 h-3.5 text-[#FF6B1A]" />
@@ -288,7 +288,7 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                   {copiedAdb ? 'COPIED' : 'COPY'}
                 </button>
               </div>
-              <code className="block bg-[#0A0A0A] p-3 rounded text-xs font-mono text-emerald-400 border border-[#1A1A1A] select-all">
+              <code className="block bg-[#0A0A0A] p-3 rounded-xl text-xs font-mono text-emerald-400 border border-white/10 select-all">
                 {adbCommand}
               </code>
             </Card>
@@ -326,9 +326,9 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                 icon: Sparkles,
               },
             ].map((item, idx) => (
-              <Card key={idx} className="bg-[#141414] border-[#252525] p-5 rounded-xl hover:border-[#FF6B1A]/40 transition-colors">
+              <Card key={idx} className="liquid-glass-card p-5 rounded-2xl hover:border-[#FF6B1A]/40 transition-colors">
                 <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-[#FF6B1A]/10 border border-[#FF6B1A]/30 flex items-center justify-center font-mono font-bold text-[#FF6B1A] shrink-0 text-sm">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#FF6B1A]/20 to-[#FF6B1A]/5 border border-[#FF6B1A]/35 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25)] flex items-center justify-center font-mono font-bold text-[#FF6B1A] shrink-0 text-sm">
                     {item.step}
                   </div>
                   <div className="space-y-1">
@@ -344,7 +344,7 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
             ))}
 
             {/* Battery Saver Tip */}
-            <div className="p-4 rounded-xl bg-[#FF6B1A]/10 border border-[#FF6B1A]/20 flex items-start gap-3 text-xs text-[#E8E6E3]">
+            <div className="p-4 rounded-2xl bg-[#FF6B1A]/10 border border-[#FF6B1A]/25 backdrop-blur-md flex items-start gap-3 text-xs text-[#E8E6E3] shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)]">
               <AlertCircle className="w-5 h-5 text-[#FF6B1A] shrink-0 mt-0.5" />
               <div>
                 <span className="font-bold text-[#FF6B1A]">Background Widget & Makeup Sync: </span>
@@ -357,12 +357,12 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* iOS Card */}
           <div className="lg:col-span-5">
-            <Card className="bg-[#141414] border-[#252525] p-8 rounded-2xl relative overflow-hidden shadow-2xl">
+            <Card className="liquid-glass-card p-8 rounded-3xl relative overflow-hidden shadow-2xl">
               <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />
 
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-500/25 to-sky-500/5 border border-sky-500/35 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25)] flex items-center justify-center text-sky-400">
                     <AppleIcon className="w-6 h-6" />
                   </div>
                   <div>
@@ -386,7 +386,7 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                   download="sked-ios.ipa"
                   className="w-full block"
                 >
-                  <Button className="w-full bg-[#38BDF8] text-[#0A0A0A] hover:bg-[#38BDF8]/90 font-bold font-['Barlow_Condensed'] text-xl py-6 tracking-wide shadow-xl flex items-center justify-center gap-2 rounded-xl">
+                  <Button className="w-full bg-gradient-to-r from-[#38BDF8] to-[#0284C7] text-[#0A0A0A] hover:from-[#48C7FF] hover:to-[#0AA0E8] font-bold font-['Barlow_Condensed'] text-xl py-6 tracking-wide shadow-[inset_0_1px_1px_rgba(255,255,255,0.5),0_10px_32px_rgba(56,189,248,0.4)] border border-[#38BDF8]/50 flex items-center justify-center gap-2 rounded-2xl transition-all duration-300">
                     <Download className="w-5 h-5" />
                     DOWNLOAD .IPA (DIRECT)
                   </Button>
@@ -402,7 +402,7 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                   download="sked-ios-source.zip"
                   className="w-full block mt-3"
                 >
-                  <Button variant="outline" className="w-full border-[#252525] bg-[#0F0F0F] text-[#E8E6E3] hover:bg-[#1C1C1C] hover:border-sky-500/40 text-xs font-mono py-2.5 h-auto flex items-center justify-center gap-2 transition-all">
+                  <Button variant="outline" className="w-full border-white/10 bg-white/[0.04] text-[#E8E6E3] hover:bg-white/[0.08] hover:border-sky-500/40 text-xs font-mono py-2.5 h-auto flex items-center justify-center gap-2 rounded-xl transition-all shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]">
                     <Download className="w-3.5 h-3.5 text-sky-400" />
                     DOWNLOAD XCODE SOURCE (.ZIP)
                   </Button>
@@ -410,31 +410,31 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
               </div>
 
               <div className="space-y-4 mb-6 text-sm text-[#7A7774]">
-                <div className="flex items-center justify-between py-2 border-b border-[#252525]">
+                <div className="flex items-center justify-between py-2 border-b border-white/[0.08]">
                   <span>Bundle Identifier</span>
                   <span className="font-mono text-[#E8E6E3]">com.sked.sked_app</span>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-[#252525]">
+                <div className="flex items-center justify-between py-2 border-b border-white/[0.08]">
                   <span>Framework</span>
                   <span className="font-mono text-[#E8E6E3]">Flutter / Dart (sked-app)</span>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-[#252525]">
+                <div className="flex items-center justify-between py-2 border-b border-white/[0.08]">
                   <span>Supported iOS</span>
                   <span className="font-mono text-[#E8E6E3]">iOS 14.0+ (iPhone & iPad)</span>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-[#252525]">
+                <div className="flex items-center justify-between py-2 border-b border-white/[0.08]">
                   <span>Feature Parity</span>
                   <span className="font-mono text-sky-400">100% Android Match (Leave, Exams, Sync)</span>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-[#252525]">
+                <div className="flex items-center justify-between py-2 border-b border-white/[0.08]">
                   <span>Hostel & Gate Pass</span>
                   <span className="font-mono text-sky-400">Digital Slip & Code 128 Barcode</span>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-[#252525]">
+                <div className="flex items-center justify-between py-2 border-b border-white/[0.08]">
                   <span>Sideload Tools</span>
                   <span className="font-mono text-emerald-400">AltStore, SideStore, Sideloadly</span>
                 </div>
-                <div className="flex items-center justify-between py-2 border-b border-[#252525]">
+                <div className="flex items-center justify-between py-2 border-b border-white/[0.08]">
                   <span>Free Apple ID</span>
                   <span className="font-mono text-[#E8E6E3]">Fully Supported (7-day free cert)</span>
                 </div>
@@ -447,7 +447,7 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
             </Card>
 
             {/* Sideload URL Box (Direct IPA link for SideStore/AltStore) */}
-            <Card className="bg-[#0D0D0D] border-[#252525] p-5 rounded-xl mt-6">
+            <Card className="bg-white/[0.03] backdrop-blur-xl border border-white/10 p-5 rounded-2xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] mt-6">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-mono text-[#7A7774] flex items-center gap-2">
                   <AppleIcon className="w-3.5 h-3.5 text-sky-400" />

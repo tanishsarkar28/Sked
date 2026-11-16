@@ -32,7 +32,7 @@ export const DeveloperCard: React.FC = () => {
   return (
     <section id="developer" className="py-24 px-6 max-w-4xl mx-auto border-t border-[#252525]">
       <div className="text-center mb-12 space-y-3">
-        <Badge variant="secondary" className="bg-[#FF6B1A]/10 text-[#FF6B1A] border-[#FF6B1A]/30 font-mono text-xs">
+        <Badge variant="secondary" className="bg-white/[0.06] text-[#FF6B1A] border border-white/15 backdrop-blur-xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.25)] font-mono text-xs py-1 px-3.5 rounded-full">
           CREATOR & MAINTAINER
         </Badge>
         <h2 className="text-4xl font-bold font-['Barlow_Condensed'] text-[#E8E6E3] tracking-wide">
@@ -43,10 +43,10 @@ export const DeveloperCard: React.FC = () => {
         </p>
       </div>
 
-      <Card className="bg-[#141414] border-[#252525] p-8 rounded-2xl shadow-2xl relative overflow-hidden">
+      <Card className="liquid-glass-card p-8 rounded-3xl shadow-2xl relative overflow-hidden backdrop-blur-2xl">
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 mb-8 text-center sm:text-left">
           {/* Monogram Avatar */}
-          <div className="w-20 h-20 rounded-2xl bg-[#FF6B1A]/15 border border-[#FF6B1A]/40 flex items-center justify-center text-[#FF6B1A] font-['Barlow_Condensed'] font-bold text-3xl shadow-inner shrink-0">
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#FF6B1A]/25 to-[#FF6B1A]/5 border border-[#FF6B1A]/40 shadow-[inset_0_1px_2px_rgba(255,255,255,0.3),0_8px_24px_rgba(255,107,26,0.25)] flex items-center justify-center text-[#FF6B1A] font-['Barlow_Condensed'] font-bold text-3xl shrink-0">
             TS
           </div>
 
@@ -55,7 +55,7 @@ export const DeveloperCard: React.FC = () => {
               <h3 className="text-2xl font-bold font-['Barlow_Condensed'] text-[#E8E6E3] tracking-wide">
                 TANISH SARKAR
               </h3>
-              <span className="text-xs font-mono text-[#FF6B1A] border border-[#FF6B1A]/30 bg-[#FF6B1A]/10 px-2 py-0.5 rounded">
+              <span className="text-xs font-mono text-[#FF6B1A] border border-[#FF6B1A]/30 bg-[#FF6B1A]/10 px-2 py-0.5 rounded-full">
                 B.TECH CSE • LPU
               </span>
             </div>
@@ -73,11 +73,11 @@ export const DeveloperCard: React.FC = () => {
               href={s.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center justify-between p-4 rounded-xl bg-[#0D0D0D] border border-[#252525] hover:border-[#FF6B1A]/50 hover:bg-[#1A1A1A] transition-all group"
+              className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] backdrop-blur-md border border-white/10 hover:border-[#FF6B1A]/40 hover:bg-white/[0.07] transition-all shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)] group"
             >
               <div className="flex items-center gap-3">
                 <div 
-                  className="w-10 h-10 rounded-lg flex items-center justify-center transition-transform group-hover:scale-105"
+                  className="w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 shadow-inner"
                   style={{ backgroundColor: `${s.color}18`, border: `1px solid ${s.color}35` }}
                 >
                   <s.icon className="w-5 h-5" style={{ color: s.color }} />

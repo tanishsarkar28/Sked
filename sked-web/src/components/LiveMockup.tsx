@@ -191,40 +191,40 @@ export const LiveMockup: React.FC = () => {
         <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
           <button
             onClick={() => setActiveView('timetable')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-mono transition-all ${
+            className={`px-4 py-2 rounded-2xl text-xs font-mono transition-all duration-300 ${
               activeView === 'timetable'
-                ? 'bg-[#FF6B1A] text-[#0A0A0A] font-bold shadow'
-                : 'bg-[#141414] text-[#7A7774] border border-[#252525] hover:text-[#E8E6E3]'
+                ? 'liquid-glass-pill-active font-bold shadow-lg shadow-[#FF6B1A]/20'
+                : 'liquid-glass-pill text-[#A1A1AA]'
             }`}
           >
             📅 Timetable View
           </button>
           <button
             onClick={() => setActiveView('exams')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-mono transition-all ${
+            className={`px-4 py-2 rounded-2xl text-xs font-mono transition-all duration-300 ${
               activeView === 'exams'
-                ? 'bg-[#FF6B1A] text-[#0A0A0A] font-bold shadow'
-                : 'bg-[#141414] text-[#7A7774] border border-[#252525] hover:text-[#E8E6E3]'
+                ? 'liquid-glass-pill-active font-bold shadow-lg shadow-[#FF6B1A]/20'
+                : 'liquid-glass-pill text-[#A1A1AA]'
             }`}
           >
             🎓 Exam Radar
           </button>
           <button
             onClick={() => setActiveView('leave')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-mono transition-all ${
+            className={`px-4 py-2 rounded-2xl text-xs font-mono transition-all duration-300 ${
               activeView === 'leave'
-                ? 'bg-[#FF6B1A] text-[#0A0A0A] font-bold shadow'
-                : 'bg-[#141414] text-[#7A7774] border border-[#252525] hover:text-[#E8E6E3]'
+                ? 'liquid-glass-pill-active font-bold shadow-lg shadow-[#FF6B1A]/20'
+                : 'liquid-glass-pill text-[#A1A1AA]'
             }`}
           >
             📝 Apply Leave
           </button>
           <button
             onClick={() => setActiveView('slip')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-mono transition-all ${
+            className={`px-4 py-2 rounded-2xl text-xs font-mono transition-all duration-300 ${
               activeView === 'slip'
-                ? 'bg-[#FF6B1A] text-[#0A0A0A] font-bold shadow'
-                : 'bg-[#141414] text-[#7A7774] border border-[#252525] hover:text-[#E8E6E3]'
+                ? 'liquid-glass-pill-active font-bold shadow-lg shadow-[#FF6B1A]/20'
+                : 'liquid-glass-pill text-[#A1A1AA]'
             }`}
           >
             🎫 Gate Pass Slip
@@ -234,7 +234,7 @@ export const LiveMockup: React.FC = () => {
 
       <div className="flex justify-center">
         {/* Phone Frame */}
-        <div className="w-full max-w-[400px] bg-[#0A0A0A] rounded-[44px] border-[6px] border-[#252525] p-4 shadow-2xl relative overflow-hidden">
+        <div className="w-full max-w-[400px] bg-[#0A0A0A]/90 backdrop-blur-2xl rounded-[44px] border-[5px] border-white/10 shadow-[inset_0_1px_2px_rgba(255,255,255,0.2),0_25px_60px_-15px_rgba(0,0,0,0.85),0_0_40px_rgba(255,107,26,0.12)] p-4 relative overflow-hidden">
           {/* Dynamic Island / Speaker */}
           <div className="w-28 h-4 bg-[#141414] rounded-full mx-auto mb-3" />
 
@@ -265,7 +265,7 @@ export const LiveMockup: React.FC = () => {
           </div>
 
           {/* User Registration Row */}
-          <div className="flex items-center justify-between px-2 mb-3 py-1.5 bg-[#121212] rounded-xl border border-[#202020]">
+          <div className="flex items-center justify-between px-3 mb-3 py-2 bg-white/[0.04] backdrop-blur-md rounded-2xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)]">
             <div>
               <span className="text-[10px] font-mono font-bold text-[#7A7774] block">
                 REG: 1240XXXX • SEC K24RL
@@ -288,15 +288,15 @@ export const LiveMockup: React.FC = () => {
             {/* Tile 1: Timetable */}
             <button
               onClick={() => setActiveView('timetable')}
-              className={`p-2.5 rounded-xl border text-left transition-all ${
+              className={`p-3 rounded-2xl border text-left transition-all duration-300 ${
                 activeView === 'timetable'
-                  ? 'bg-[#1C1510] border-[#FF6B1A] shadow-md shadow-[#FF6B1A]/10'
-                  : 'bg-[#141414] border-[#252525] hover:border-[#383838]'
+                  ? 'bg-gradient-to-br from-[#FF6B1A]/25 via-[#FF6B1A]/10 to-transparent border-[#FF6B1A]/70 shadow-[inset_0_1px_2px_rgba(255,255,255,0.35),0_8px_24px_rgba(255,107,26,0.25)]'
+                  : 'bg-white/[0.04] backdrop-blur-md border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] hover:border-white/25 hover:bg-white/[0.07]'
               }`}
             >
               <div className="flex items-center justify-between mb-1">
-                <CalendarClock className={`w-4 h-4 ${activeView === 'timetable' ? 'text-[#FF6B1A]' : 'text-[#7A7774]'}`} />
-                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-[#0A0A0A] text-[#E8E6E3] border border-[#252525]">
+                <CalendarClock className={`w-4 h-4 ${activeView === 'timetable' ? 'text-[#FF6B1A]' : 'text-[#A1A1AA]'}`} />
+                <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-white/[0.06] text-[#E8E6E3] border border-white/10 shadow-inner">
                   5 TODAY
                 </span>
               </div>
@@ -311,15 +311,15 @@ export const LiveMockup: React.FC = () => {
             {/* Tile 2: Exams */}
             <button
               onClick={() => setActiveView('exams')}
-              className={`p-2.5 rounded-xl border text-left transition-all ${
+              className={`p-3 rounded-2xl border text-left transition-all duration-300 ${
                 activeView === 'exams'
-                  ? 'bg-[#1C1510] border-[#FF6B1A] shadow-md shadow-[#FF6B1A]/10'
-                  : 'bg-[#141414] border-[#252525] hover:border-[#383838]'
+                  ? 'bg-gradient-to-br from-[#FF6B1A]/25 via-[#FF6B1A]/10 to-transparent border-[#FF6B1A]/70 shadow-[inset_0_1px_2px_rgba(255,255,255,0.35),0_8px_24px_rgba(255,107,26,0.25)]'
+                  : 'bg-white/[0.04] backdrop-blur-md border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] hover:border-white/25 hover:bg-white/[0.07]'
               }`}
             >
               <div className="flex items-center justify-between mb-1">
-                <GraduationCap className={`w-4 h-4 ${activeView === 'exams' ? 'text-[#FF6B1A]' : 'text-[#7A7774]'}`} />
-                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-[#0A0A0A] text-[#818CF8] border border-[#818CF8]/30">
+                <GraduationCap className={`w-4 h-4 ${activeView === 'exams' ? 'text-[#FF6B1A]' : 'text-[#A1A1AA]'}`} />
+                <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-[#818CF8]/15 text-[#818CF8] border border-[#818CF8]/30 shadow-inner">
                   3 EXAMS
                 </span>
               </div>
@@ -334,15 +334,15 @@ export const LiveMockup: React.FC = () => {
             {/* Tile 3: Leave */}
             <button
               onClick={() => setActiveView('leave')}
-              className={`p-2.5 rounded-xl border text-left transition-all ${
+              className={`p-3 rounded-2xl border text-left transition-all duration-300 ${
                 activeView === 'leave'
-                  ? 'bg-[#1C1510] border-[#FF6B1A] shadow-md shadow-[#FF6B1A]/10'
-                  : 'bg-[#141414] border-[#252525] hover:border-[#383838]'
+                  ? 'bg-gradient-to-br from-[#FF6B1A]/25 via-[#FF6B1A]/10 to-transparent border-[#FF6B1A]/70 shadow-[inset_0_1px_2px_rgba(255,255,255,0.35),0_8px_24px_rgba(255,107,26,0.25)]'
+                  : 'bg-white/[0.04] backdrop-blur-md border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] hover:border-white/25 hover:bg-white/[0.07]'
               }`}
             >
               <div className="flex items-center justify-between mb-1">
-                <QrCode className={`w-4 h-4 ${activeView === 'leave' ? 'text-[#FF6B1A]' : 'text-[#7A7774]'}`} />
-                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-[#0A0A0A] text-[#FF8533] border border-[#FF8533]/30">
+                <QrCode className={`w-4 h-4 ${activeView === 'leave' ? 'text-[#FF6B1A]' : 'text-[#A1A1AA]'}`} />
+                <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-[#FF8533]/15 text-[#FF8533] border border-[#FF8533]/30 shadow-inner">
                   APPLY
                 </span>
               </div>
@@ -357,15 +357,15 @@ export const LiveMockup: React.FC = () => {
             {/* Tile 4: Gate Pass */}
             <button
               onClick={() => setActiveView('slip')}
-              className={`p-2.5 rounded-xl border text-left transition-all ${
+              className={`p-3 rounded-2xl border text-left transition-all duration-300 ${
                 activeView === 'slip'
-                  ? 'bg-[#1C1510] border-[#FF6B1A] shadow-md shadow-[#FF6B1A]/10'
-                  : 'bg-[#141414] border-[#252525] hover:border-[#383838]'
+                  ? 'bg-gradient-to-br from-[#FF6B1A]/25 via-[#FF6B1A]/10 to-transparent border-[#FF6B1A]/70 shadow-[inset_0_1px_2px_rgba(255,255,255,0.35),0_8px_24px_rgba(255,107,26,0.25)]'
+                  : 'bg-white/[0.04] backdrop-blur-md border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] hover:border-white/25 hover:bg-white/[0.07]'
               }`}
             >
               <div className="flex items-center justify-between mb-1">
                 <ShieldCheck className={`w-4 h-4 ${activeView === 'slip' ? 'text-[#FF6B1A]' : 'text-emerald-400'}`} />
-                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-inner">
                   ✔ ACTIVE
                 </span>
               </div>
@@ -382,15 +382,15 @@ export const LiveMockup: React.FC = () => {
           {activeView === 'timetable' && (
             <div className="space-y-3">
               {/* Days Tab Strip */}
-              <div className="grid grid-cols-7 gap-1 bg-[#141414] p-1 rounded-xl border border-[#252525]">
+              <div className="grid grid-cols-7 gap-1 bg-white/[0.03] backdrop-blur-md p-1.5 rounded-2xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)]">
                 {days.map((d) => (
                   <button
                     key={d.name}
                     onClick={() => setSelectedDay(d.name)}
-                    className={`flex flex-col items-center py-1 rounded-lg transition-all ${
+                    className={`flex flex-col items-center py-1.5 rounded-xl transition-all duration-200 ${
                       selectedDay === d.name
-                        ? 'bg-[#FF6B1A] text-[#0A0A0A] font-bold shadow'
-                        : 'text-[#7A7774] hover:text-[#E8E6E3]'
+                        ? 'bg-gradient-to-b from-[#FF6B1A] to-[#FF8533] text-[#0A0A0A] font-bold shadow-md shadow-[#FF6B1A]/30'
+                        : 'text-[#7A7774] hover:text-[#E8E6E3] hover:bg-white/[0.04]'
                     }`}
                   >
                     <span className="text-[11px] font-['Barlow_Condensed'] font-bold">{d.name}</span>
@@ -402,7 +402,7 @@ export const LiveMockup: React.FC = () => {
               {/* Class List / Content */}
               <div className="space-y-2 max-h-[350px] overflow-y-auto pr-0.5 scrollbar-thin">
                 {selectedDay === 'SUN' ? (
-                  <div className="h-[280px] flex flex-col items-center justify-center p-6 text-center space-y-3 rounded-xl bg-[#141414] border border-[#252525]">
+                  <div className="h-[280px] flex flex-col items-center justify-center p-6 text-center space-y-3 rounded-2xl bg-white/[0.03] backdrop-blur-md border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)]">
                     <img
                       src="/assets/sunday_bitmoji.png"
                       alt="Sunday Relaxation Mascot"
@@ -421,7 +421,7 @@ export const LiveMockup: React.FC = () => {
                     </div>
                   </div>
                 ) : currentClasses.length === 0 ? (
-                  <div className="h-[240px] flex items-center justify-center text-center p-6 rounded-xl bg-[#141414] border border-[#252525]">
+                  <div className="h-[240px] flex items-center justify-center text-center p-6 rounded-2xl bg-white/[0.03] backdrop-blur-md border border-white/10">
                     <p className="font-mono text-xs text-[#7A7774]">No classes scheduled</p>
                   </div>
                 ) : (
@@ -432,19 +432,19 @@ export const LiveMockup: React.FC = () => {
                     return (
                       <Card
                         key={i}
-                        className={`bg-[#141414] ${styles.border} p-2.5 rounded-xl border-l-4 ${
+                        className={`bg-white/[0.04] backdrop-blur-md ${styles.border} p-3 rounded-2xl border-l-4 ${
                           styles.bar
-                        } hover:border-[#FF6B1A]/40 transition-colors`}
+                        } shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)] hover:border-[#FF6B1A]/40 transition-colors`}
                       >
                         <div className="flex items-center justify-between mb-0.5">
                           <span className="font-bold text-[#E8E6E3] font-['Barlow_Condensed'] text-base tracking-wide">
                             {c.code}
                           </span>
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[9px] font-mono text-[#7A7774] border border-[#252525] px-1.5 py-0.2 rounded">
+                            <span className="text-[9px] font-mono text-[#7A7774] border border-white/10 bg-white/[0.03] px-1.5 py-0.5 rounded-full">
                               {c.type}
                             </span>
-                            <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded border ${styles.pill}`}>
+                            <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full border ${styles.pill}`}>
                               {c.status}
                             </span>
                           </div>
@@ -458,7 +458,7 @@ export const LiveMockup: React.FC = () => {
                           <span className="text-[#E8E6E3] font-bold">{c.room}</span>
                         </div>
 
-                        <div className="text-[10px] font-mono text-[#52525B] truncate">
+                        <div className="text-[10px] font-mono text-[#71717A] truncate">
                           {c.faculty}
                         </div>
                       </Card>
@@ -478,12 +478,12 @@ export const LiveMockup: React.FC = () => {
               </div>
 
               {examData.map((e, idx) => (
-                <Card key={idx} className="bg-[#141414] border-[#252525] p-3 rounded-xl border-l-4 border-l-[#818CF8] hover:border-[#818CF8]/50 transition-colors">
+                <Card key={idx} className="liquid-glass-card p-3.5 rounded-2xl border-l-4 border-l-[#818CF8] hover:border-[#818CF8]/50 transition-colors">
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-bold text-[#E8E6E3] font-['Barlow_Condensed'] text-base tracking-wide">
                       {e.code}
                     </span>
-                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#818CF8]/15 border border-[#818CF8]/40 text-[#818CF8]">
+                    <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-[#818CF8]/15 border border-[#818CF8]/40 text-[#818CF8] shadow-inner">
                       {e.daysLeft}
                     </span>
                   </div>
@@ -492,7 +492,7 @@ export const LiveMockup: React.FC = () => {
                     {e.name}
                   </div>
 
-                  <div className="flex items-center justify-between pt-1 border-t border-[#222222] text-[10px] font-mono">
+                  <div className="flex items-center justify-between pt-1 border-t border-white/[0.08] text-[10px] font-mono">
                     <div className="flex items-center gap-1.5 text-[#FF8533]">
                       <Clock className="w-3 h-3" />
                       <span>{e.date} • {e.time.split(' - ')[0]}</span>
@@ -514,12 +514,12 @@ export const LiveMockup: React.FC = () => {
                 <span className="text-[10px] font-mono uppercase tracking-wider text-[#7A7774] block mb-1">
                   Leave Type
                 </span>
-                <div className="grid grid-cols-2 gap-1.5 bg-[#141414] p-1 rounded-xl border border-[#252525]">
+                <div className="grid grid-cols-2 gap-1.5 bg-white/[0.03] backdrop-blur-md p-1.5 rounded-2xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)]">
                   <button
                     onClick={() => setSelectedLeaveType('day')}
-                    className={`py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${
+                    className={`py-1.5 rounded-xl text-xs font-mono font-bold transition-all duration-200 ${
                       selectedLeaveType === 'day'
-                        ? 'bg-[#FF6B1A] text-[#0A0A0A]'
+                        ? 'bg-gradient-to-r from-[#FF6B1A] to-[#FF8533] text-[#0A0A0A] shadow-md shadow-[#FF6B1A]/30'
                         : 'text-[#7A7774] hover:text-[#E8E6E3]'
                     }`}
                   >
@@ -527,9 +527,9 @@ export const LiveMockup: React.FC = () => {
                   </button>
                   <button
                     onClick={() => setSelectedLeaveType('night')}
-                    className={`py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${
+                    className={`py-1.5 rounded-xl text-xs font-mono font-bold transition-all duration-200 ${
                       selectedLeaveType === 'night'
-                        ? 'bg-[#FF6B1A] text-[#0A0A0A]'
+                        ? 'bg-gradient-to-r from-[#FF6B1A] to-[#FF8533] text-[#0A0A0A] shadow-md shadow-[#FF6B1A]/30'
                         : 'text-[#7A7774] hover:text-[#E8E6E3]'
                     }`}
                   >
@@ -548,10 +548,10 @@ export const LiveMockup: React.FC = () => {
                     <button
                       key={p}
                       onClick={() => setSelectedPlace(p)}
-                      className={`py-1 px-1.5 rounded-lg text-[10px] font-mono truncate border transition-all ${
+                      className={`py-1.5 px-2 rounded-xl text-[10px] font-mono truncate border transition-all duration-200 ${
                         selectedPlace === p
-                          ? 'bg-[#FF6B1A]/20 border-[#FF6B1A] text-[#FF6B1A] font-bold'
-                          : 'bg-[#141414] border-[#252525] text-[#7A7774]'
+                          ? 'bg-[#FF6B1A]/20 border-[#FF6B1A] text-[#FF6B1A] font-bold shadow-inner'
+                          : 'bg-white/[0.03] border-white/10 text-[#7A7774] hover:text-[#E8E6E3]'
                       }`}
                     >
                       {p}
@@ -561,7 +561,7 @@ export const LiveMockup: React.FC = () => {
               </div>
 
               {/* Curfew Alert Banner */}
-              <div className="p-2.5 rounded-xl bg-[#FF6B1A]/10 border border-[#FF6B1A]/20 flex items-center gap-2 text-[10px] font-mono text-[#FF8533]">
+              <div className="p-2.5 rounded-2xl bg-[#FF6B1A]/10 border border-[#FF6B1A]/25 backdrop-blur-md flex items-center gap-2 text-[10px] font-mono text-[#FF8533] shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)]">
                 <Clock className="w-3.5 h-3.5 shrink-0" />
                 <span>Overnight Stay • Return before 8:00 PM curfew</span>
               </div>
@@ -571,15 +571,15 @@ export const LiveMockup: React.FC = () => {
                 <span className="text-[10px] font-mono uppercase tracking-wider text-[#7A7774] block mb-1">
                   Reason Quick Chips
                 </span>
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1.5">
                   {['Personal work', 'Market & Groceries', 'Medical'].map((r) => (
                     <button
                       key={r}
                       onClick={() => setSelectedReason(r)}
-                      className={`py-0.5 px-2 rounded-md text-[10px] font-mono border transition-all ${
+                      className={`py-1 px-2.5 rounded-xl text-[10px] font-mono border transition-all duration-200 ${
                         selectedReason === r
-                          ? 'bg-[#E8E6E3] text-[#0A0A0A] font-bold border-[#E8E6E3]'
-                          : 'bg-[#141414] border-[#252525] text-[#7A7774]'
+                          ? 'bg-white text-[#0A0A0A] font-bold border-white shadow-md'
+                          : 'bg-white/[0.03] border-white/10 text-[#7A7774] hover:text-[#E8E6E3]'
                       }`}
                     >
                       {r}
@@ -591,7 +591,7 @@ export const LiveMockup: React.FC = () => {
               {/* Submit Leave Button */}
               <button
                 onClick={() => setShowOtpDialog(true)}
-                className="w-full py-2.5 rounded-xl bg-[#FF6B1A] text-[#0A0A0A] font-['Barlow_Condensed'] font-bold text-base tracking-wide flex items-center justify-center gap-1.5 shadow-lg shadow-[#FF6B1A]/10 hover:bg-[#FF6B1A]/90 transition-all"
+                className="w-full py-3 rounded-2xl bg-gradient-to-r from-[#FF6B1A] to-[#FF8533] text-[#0A0A0A] font-['Barlow_Condensed'] font-bold text-base tracking-wide flex items-center justify-center gap-1.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_8px_24px_rgba(255,107,26,0.35)] hover:from-[#FF7528] hover:to-[#FF8F42] transition-all"
               >
                 <span>APPLY HOSTEL LEAVE</span>
                 <ChevronRight className="w-4 h-4" />
@@ -602,9 +602,9 @@ export const LiveMockup: React.FC = () => {
           {/* MAIN VIEWPORT: GATE PASS SLIP WITH TURNSTILE BARCODE */}
           {activeView === 'slip' && (
             <div className="space-y-3 max-h-[390px] overflow-y-auto pr-0.5">
-              <Card className="bg-[#141414] border-[#282828] p-3 rounded-2xl relative overflow-hidden">
+              <Card className="liquid-glass-card p-4 rounded-3xl border border-white/15 shadow-[inset_0_1px_2px_rgba(255,255,255,0.2),0_16px_40px_rgba(0,0,0,0.6)] relative overflow-hidden">
                 {/* Status Bar */}
-                <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#252525]">
+                <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-white/[0.08]">
                   <div>
                     <span className="text-[9px] font-mono text-[#7A7774] block uppercase">
                       LPU HOSTEL PASS
@@ -613,7 +613,7 @@ export const LiveMockup: React.FC = () => {
                       BH-4 • ROOM P103
                     </span>
                   </div>
-                  <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 text-[10px] font-mono flex items-center gap-1">
+                  <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 text-[10px] font-mono flex items-center gap-1 shadow-inner">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                     ✔ ACTIVATED
                   </Badge>
@@ -644,7 +644,7 @@ export const LiveMockup: React.FC = () => {
                 </div>
 
                 {/* Anti-Screenshot Ticking Clock */}
-                <div className="p-2 rounded-xl bg-[#0A0A0A] border border-[#252525] text-center mb-3">
+                <div className="p-2.5 rounded-2xl bg-black/60 border border-white/10 text-center mb-3 shadow-inner">
                   <span className="text-[9px] font-mono text-[#7A7774] block uppercase tracking-widest">
                     LIVE GATE SECURITY CLOCK
                   </span>
@@ -654,7 +654,7 @@ export const LiveMockup: React.FC = () => {
                 </div>
 
                 {/* Laser Turnstile Code 128 Barcode Simulation */}
-                <div className="bg-[#FFFFFF] p-2.5 rounded-xl text-center relative overflow-hidden group">
+                <div className="bg-[#FFFFFF] p-2.5 rounded-2xl text-center relative overflow-hidden group shadow-lg">
                   <div className="h-12 w-full flex items-center justify-between px-1">
                     {/* Barcode lines */}
                     {[3,1,4,2,1,3,2,4,1,2,3,1,4,2,3,1,2,4,1,3,2,1,4,2,3,1,3,2,4,1,2,3,4,1,2,3,1,4,2,3,1,2,4].map((w, idx) => (
@@ -677,8 +677,8 @@ export const LiveMockup: React.FC = () => {
 
           {/* PARENT OTP REQUIRED DIALOG POPUP MODAL (When clicking Apply) */}
           {showOtpDialog && (
-            <div className="absolute inset-0 bg-[#0A0A0A]/90 backdrop-blur-md z-40 p-5 flex flex-col justify-center items-center text-center animate-in fade-in duration-200">
-              <div className="w-12 h-12 rounded-2xl bg-[#FF6B1A]/20 border border-[#FF6B1A]/40 flex items-center justify-center text-[#FF6B1A] mb-3">
+            <div className="absolute inset-0 bg-[#0A0A0A]/85 backdrop-blur-2xl z-40 p-5 flex flex-col justify-center items-center text-center animate-in fade-in duration-200">
+              <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-[#FF6B1A]/25 to-[#FF6B1A]/5 border border-[#FF6B1A]/40 flex items-center justify-center text-[#FF6B1A] mb-3 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_20px_rgba(255,107,26,0.2)]">
                 <Lock className="w-6 h-6" />
               </div>
 
@@ -703,7 +703,7 @@ export const LiveMockup: React.FC = () => {
                   href="https://ums.lpu.in"
                   target="_blank"
                   rel="noreferrer"
-                  className="w-full py-2.5 rounded-xl bg-[#FF6B1A] text-[#0A0A0A] font-['Barlow_Condensed'] font-bold text-base tracking-wide flex items-center justify-center gap-2 hover:bg-[#FF6B1A]/90 transition-all block"
+                  className="w-full py-3 rounded-2xl bg-gradient-to-r from-[#FF6B1A] to-[#FF8533] text-[#0A0A0A] font-['Barlow_Condensed'] font-bold text-base tracking-wide flex items-center justify-center gap-2 shadow-[inset_0_1px_1px_rgba(255,255,255,0.4),0_8px_24px_rgba(255,107,26,0.35)] hover:from-[#FF7528] hover:to-[#FF8F42] transition-all block"
                 >
                   <ExternalLink className="w-4 h-4" />
                   <span>OPEN UMS PORTAL</span>
