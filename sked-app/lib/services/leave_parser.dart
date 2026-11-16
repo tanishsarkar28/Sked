@@ -211,7 +211,7 @@ class LeaveParser {
     final list = <LeaveRecord>[];
     try {
       final gridMatch = RegExp(
-        r'(?:id\s*=\s*["\'][^"\']*grdLeaveDetail[^"\']*["\']|grdLeaveDetail).*?>(.*?)</table>',
+        r'''(?:id\s*=\s*["'][^"']*grdLeaveDetail[^"']*["']|grdLeaveDetail).*?>(.*?)</table>''',
         caseSensitive: false,
         dotAll: true,
       ).firstMatch(html);

@@ -65,6 +65,9 @@ class ExamItem {
     'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
   };
 
+  /// Getter for sorting and date comparisons
+  DateTime? get examDate => getExamDate();
+
   /// Parses diverse date formats: e.g. "01 Oct 2026", "2026-10-01", "01-10-2026", "1 Oct 2026"
   DateTime? getExamDate() {
     final raw = dateStr.trim();

@@ -362,7 +362,7 @@ class _LeaveSlipScreenState extends State<LeaveSlipScreen> {
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        alignment: Alignment.Center,
+                        alignment: Alignment.center,
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -402,7 +402,7 @@ class _LeaveSlipScreenState extends State<LeaveSlipScreen> {
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        alignment: Alignment.Center,
+                        alignment: Alignment.center,
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -781,7 +781,7 @@ class _LeaveSlipScreenState extends State<LeaveSlipScreen> {
                           )
                         : Container(
                             color: const Color(0xFFEEEEEE),
-                            alignment: Alignment.Center,
+                            alignment: Alignment.center,
                             child: const Icon(Icons.person, color: Colors.grey, size: 28),
                           ),
                   ),

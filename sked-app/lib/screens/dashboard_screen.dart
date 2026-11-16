@@ -1045,7 +1045,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         shape: BoxShape.circle,
                         border: Border.all(color: SkedColors.blaze.withOpacity(0.3)),
                       ),
-                      alignment: Alignment.Center,
+                      alignment: Alignment.center,
                       child: Text(
                         'TS',
                         style: GoogleFonts.barlowCondensed(
@@ -1365,7 +1365,7 @@ class QuickAccessFeatureBox extends StatelessWidget {
                         color: SkedColors.blaze.withOpacity(0.12),
                         shape: BoxShape.circle,
                       ),
-                      alignment: Alignment.Center,
+                      alignment: Alignment.center,
                       child: Icon(icon, color: SkedColors.blaze, size: 26),
                     ),
                     Container(

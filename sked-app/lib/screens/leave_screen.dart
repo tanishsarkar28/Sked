@@ -307,7 +307,7 @@ class _LeaveScreenState extends State<LeaveScreen> {
                             color: isSelected ? SkedColors.blaze : SkedColors.rule,
                           ),
                         ),
-                        alignment: Alignment.Center,
+                        alignment: Alignment.center,
                         child: Text(
                           slot.display,
                           style: GoogleFonts.barlowCondensed(
@@ -1375,7 +1375,7 @@ class _LeaveScreenState extends State<LeaveScreen> {
               onTap: () => setState(() => _showParentOtpDialog = false),
               child: Container(
                 color: Colors.black.withOpacity(0.65),
-                alignment: Alignment.Center,
+                alignment: Alignment.center,
                 padding: const EdgeInsets.all(24),
                 child: GestureDetector(
                   onTap: () {}, // Prevent dismissal when tapping inside card
@@ -1405,7 +1405,7 @@ class _LeaveScreenState extends State<LeaveScreen> {
                             color: SkedColors.chalk,
                             letterSpacing: 0.5,
                           ),
-                          textAlign: TextAlign.Center,
+                          textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 14),
                         Container(
