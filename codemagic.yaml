@@ -97,3 +97,8 @@ workflows:
           zip -r -y sked-ios.ipa Payload
           ls -lh sked-ios.ipa
           echo "IPA packaging complete!"
+
+    artifacts:
+      - sked-app/sked-ios.ipa
+      - "*.ipa"
+      - "**/*.ipa"
