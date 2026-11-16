@@ -56,7 +56,8 @@ export default function App() {
           features={[
             "100% On-Device & Private",
             "Zero LPU Touch Logouts",
-            "Live Departures Widget"
+            "Hostel Leave & Gate Pass",
+            "Makeup Alerts & Glance Widget"
           ]}
         />
       </div>

@@ -184,8 +184,8 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
             </button>
             <p className="text-[11px] font-mono text-[#7A7774] text-center mt-2">
               {activeTab === 'android'
-                ? `Direct APK • ${versionData?.fileSize || '12.8 MB'} • v${versionData?.versionName || '1.2.3'}`
-                : `Direct IPA • ${versionData?.ipaFileSize || '7.6 MB'} • v${versionData?.versionName || '1.2.3'}`}
+                ? `Direct APK • ${versionData?.fileSize || '14.3 MB'} • v${versionData?.versionName || '1.6.2'}`
+                : `Direct IPA • ${versionData?.ipaFileSize || '7.6 MB'} • v${versionData?.versionName || '1.6.2'}`}
             </p>
           </div>
         </div>
@@ -208,7 +208,7 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                       SKED FOR ANDROID
                     </h3>
                     <p className="text-xs font-mono text-[#7A7774]">
-                      v{versionData?.versionName || '1.2.3'} • Jetpack Compose + Glance
+                      v{versionData?.versionName || '1.6.2'} • Jetpack Compose + Glance
                     </p>
                   </div>
                 </div>
@@ -231,7 +231,7 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                 </a>
                 <div className="flex items-center justify-between mt-2.5 px-1 text-xs text-[#7A7774] font-mono">
                   <span>File: sked-android.apk</span>
-                  <span>{versionData?.fileSize || '19.4 MB'}</span>
+                  <span>{versionData?.fileSize || '14.3 MB'}</span>
                 </div>
               </div>
 
@@ -254,7 +254,15 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                 </div>
                 <div className="flex items-center justify-between py-2 border-b border-[#252525]">
                   <span>Background Sync</span>
-                  <span className="font-mono text-[#E8E6E3]">Periodic (WorkManager)</span>
+                  <span className="font-mono text-[#E8E6E3]">Periodic (WorkManager 2h)</span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-[#252525]">
+                  <span>Makeup Radar</span>
+                  <span className="font-mono text-emerald-400">Automated Push Alerts</span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-[#252525]">
+                  <span>Hostel & Gate Pass</span>
+                  <span className="font-mono text-emerald-400">Laser Turnstile Barcode</span>
                 </div>
               </div>
 
@@ -339,8 +347,8 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
             <div className="p-4 rounded-xl bg-[#FF6B1A]/10 border border-[#FF6B1A]/20 flex items-start gap-3 text-xs text-[#E8E6E3]">
               <AlertCircle className="w-5 h-5 text-[#FF6B1A] shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold text-[#FF6B1A]">Background Widget Sync: </span>
-                To guarantee the widget updates seamlessly in the background, set Battery Usage for Sked to <strong className="text-white">Unrestricted</strong> in Android App Info.
+                <span className="font-bold text-[#FF6B1A]">Background Widget & Makeup Sync: </span>
+                To guarantee the widget and background makeup class alerts update seamlessly every 2 hours, set Battery Usage for Sked to <strong className="text-white">Unrestricted</strong> in Android App Info.
               </div>
             </div>
           </div>
@@ -362,7 +370,7 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                       SKED FOR iOS
                     </h3>
                     <p className="text-xs font-mono text-[#7A7774]">
-                      v{versionData?.versionName || '1.2.3'} • Flutter Client (sked-app)
+                      v{versionData?.versionName || '1.6.2'} • Flutter Client (sked-app)
                     </p>
                   </div>
                 </div>
@@ -413,6 +421,14 @@ export const InstallSteps: React.FC<InstallStepsProps> = ({
                 <div className="flex items-center justify-between py-2 border-b border-[#252525]">
                   <span>Supported iOS</span>
                   <span className="font-mono text-[#E8E6E3]">iOS 14.0+ (iPhone & iPad)</span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-[#252525]">
+                  <span>Feature Parity</span>
+                  <span className="font-mono text-sky-400">100% Android Match (Leave, Exams, Sync)</span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-[#252525]">
+                  <span>Hostel & Gate Pass</span>
+                  <span className="font-mono text-sky-400">Digital Slip & Code 128 Barcode</span>
                 </div>
                 <div className="flex items-center justify-between py-2 border-b border-[#252525]">
                   <span>Sideload Tools</span>
